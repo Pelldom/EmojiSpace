@@ -1,0 +1,212 @@
+{
+  "governments": [
+    {
+      "id": "free_trade_coalition",
+      "name": "Free Trade Coalition",
+      "description": "Loosely regulated, commerce-first governance with minimal state interference.",
+
+      "regulation_level": 15,
+      "enforcement_strength": 25,
+      "penalty_severity": 20,
+      "tolerance_bias": 80,
+      "bribery_susceptibility": 40,
+
+      "ideological_modifiers": {
+        "favored_tags": ["industrial", "luxury"],
+        "restricted_tags": []
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "corporate_authority",
+      "name": "Corporate Authority",
+      "description": "Profit-driven governance where law exists to protect corporate interests.",
+
+      "regulation_level": 40,
+      "enforcement_strength": 60,
+      "penalty_severity": 50,
+      "tolerance_bias": 30,
+      "bribery_susceptibility": 70,
+
+      "ideological_modifiers": {
+        "favored_tags": ["industrial", "luxury"],
+        "restricted_tags": ["recreational"]
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "fascist",
+      "name": "Fascist",
+      "description": "Highly authoritarian state with strict control and severe punishment for dissent.",
+
+      "regulation_level": 80,
+      "enforcement_strength": 85,
+      "penalty_severity": 90,
+      "tolerance_bias": 10,
+      "bribery_susceptibility": 15,
+
+      "ideological_modifiers": {
+        "favored_tags": ["military", "industrial"],
+        "restricted_tags": ["recreational", "luxury"]
+      },
+
+      "illegal_goods": ["recreational_drugs"]
+    },
+
+    {
+      "id": "anarchic",
+      "name": "Anarchic",
+      "description": "Absence of formal government; law is minimal or nonexistent.",
+
+      "regulation_level": 5,
+      "enforcement_strength": 5,
+      "penalty_severity": 10,
+      "tolerance_bias": 95,
+      "bribery_susceptibility": 0,
+
+      "ideological_modifiers": {
+        "favored_tags": [],
+        "restricted_tags": []
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "democracy",
+      "name": "Democracy",
+      "description": "Representative governance balancing civil liberties with public accountability.",
+
+      "regulation_level": 45,
+      "enforcement_strength": 50,
+      "penalty_severity": 40,
+      "tolerance_bias": 60,
+      "bribery_susceptibility": 25,
+
+      "ideological_modifiers": {
+        "favored_tags": ["essential", "medical"],
+        "restricted_tags": ["military", "recreational"]
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "republic",
+      "name": "Republic",
+      "description": "Rule-of-law governance emphasizing institutional stability and civic order.",
+
+      "regulation_level": 50,
+      "enforcement_strength": 55,
+      "penalty_severity": 50,
+      "tolerance_bias": 50,
+      "bribery_susceptibility": 35,
+
+      "ideological_modifiers": {
+        "favored_tags": ["industrial", "essential"],
+        "restricted_tags": ["recreational"]
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "socialist",
+      "name": "Socialist",
+      "description": "State-directed economy prioritizing equality and access to essential goods.",
+
+      "regulation_level": 65,
+      "enforcement_strength": 60,
+      "penalty_severity": 55,
+      "tolerance_bias": 45,
+      "bribery_susceptibility": 20,
+
+      "ideological_modifiers": {
+        "favored_tags": ["essential", "medical"],
+        "restricted_tags": ["luxury"]
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "communist",
+      "name": "Communist",
+      "description": "Centralized control of production and distribution with strict ideological enforcement.",
+
+      "regulation_level": 85,
+      "enforcement_strength": 80,
+      "penalty_severity": 75,
+      "tolerance_bias": 20,
+      "bribery_susceptibility": 10,
+
+      "ideological_modifiers": {
+        "favored_tags": ["essential", "industrial"],
+        "restricted_tags": ["luxury", "recreational"]
+      },
+
+      "illegal_goods": ["recreational_drugs"]
+    },
+
+    {
+      "id": "collective_commune",
+      "name": "Collective Commune",
+      "description": "Community-led governance emphasizing shared responsibility and mutual aid.",
+
+      "regulation_level": 55,
+      "enforcement_strength": 40,
+      "penalty_severity": 35,
+      "tolerance_bias": 70,
+      "bribery_susceptibility": 5,
+
+      "ideological_modifiers": {
+        "favored_tags": ["essential"],
+        "restricted_tags": ["luxury"]
+      },
+
+      "illegal_goods": []
+    },
+
+    {
+      "id": "theocracy",
+      "name": "Theocracy",
+      "description": "Religiously governed state where law is derived from doctrine.",
+
+      "regulation_level": 75,
+      "enforcement_strength": 70,
+      "penalty_severity": 80,
+      "tolerance_bias": 25,
+      "bribery_susceptibility": 10,
+
+      "ideological_modifiers": {
+        "favored_tags": ["religious", "essential"],
+        "restricted_tags": ["recreational"]
+      },
+
+      "illegal_goods": ["recreational_drugs"]
+    },
+
+    {
+      "id": "dictatorship",
+      "name": "Dictatorship",
+      "description": "Centralized personal rule with arbitrary but force-backed law enforcement.",
+
+      "regulation_level": 70,
+      "enforcement_strength": 75,
+      "penalty_severity": 70,
+      "tolerance_bias": 20,
+      "bribery_susceptibility": 60,
+
+      "ideological_modifiers": {
+        "favored_tags": ["industrial", "military"],
+        "restricted_tags": ["recreational"]
+      },
+
+      "illegal_goods": []
+    }
+  ]
+}

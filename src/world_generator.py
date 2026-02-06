@@ -28,9 +28,10 @@ class Sector:
 
 
 class WorldGenerator:
-    def __init__(self, seed: int, system_count: int = 5) -> None:
+    def __init__(self, seed: int, system_count: int = 5, government_ids: List[str] | None = None) -> None:
         self._seed = seed
         self._system_count = system_count
+        self._government_ids = government_ids or []
 
     def generate(self) -> Sector:
         rng = random.Random(self._seed)
@@ -57,7 +58,12 @@ class WorldGenerator:
             name = base_names[index % len(base_names)]
             profile_id = profiles[index % len(profiles)]
             population_level = self._weighted_population_level(rng)
-            attributes = {"profile_id": profile_id, "population_level": population_level}
+            government_id = self._choose_government_id(rng)
+            attributes = {
+                "profile_id": profile_id,
+                "population_level": population_level,
+                "government_id": government_id,
+            }
             systems.append(
                 System(
                     system_id=system_id,
@@ -81,6 +87,14 @@ class WorldGenerator:
             )
 
         return Sector(systems=systems)
+
+    def _choose_government_id(self, rng: random.Random) -> str:
+        if not self._government_ids:
+            raise ValueError("No government ids available for assignment.")
+        government_id = rng.choice(self._government_ids)
+        if government_id not in self._government_ids:
+            raise ValueError(f"Invalid government id: {government_id}")
+        return government_id
 
     @staticmethod
     def _weighted_population_level(rng: random.Random) -> int:

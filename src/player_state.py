@@ -2,6 +2,7 @@ class PlayerState:
     def __init__(self, start_system_id: str) -> None:
         self._location_system_id = start_system_id
         self._holdings: dict[str, int] = {}
+        self._reputation: int = 0
 
     @property
     def location_system_id(self) -> str:
@@ -26,3 +27,20 @@ class PlayerState:
 
     def holdings_snapshot(self) -> dict[str, int]:
         return dict(self._holdings)
+
+    def reputation(self) -> int:
+        return self._reputation
+
+    def adjust_reputation(self, delta: int) -> None:
+        self._reputation += delta
+
+    def confiscate(self, good_id: str, amount: int | None = None) -> int:
+        if good_id not in self._holdings or self._holdings[good_id] <= 0:
+            return 0
+        if amount is None:
+            confiscated = self._holdings[good_id]
+            self._holdings[good_id] = 0
+            return confiscated
+        confiscated = min(self._holdings[good_id], amount)
+        self._holdings[good_id] -= confiscated
+        return confiscated

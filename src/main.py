@@ -3,6 +3,8 @@ from pathlib import Path
 
 from economy_data import GOODS
 from economy_engine import EconomyEngine
+from government_registry import GovernmentRegistry
+from government_law_engine import GovernmentLawEngine
 from logger import Logger
 from player_state import PlayerState
 from time_engine import TimeEngine
@@ -38,7 +40,13 @@ def main() -> None:
     print(version_contents)
 
     seed = parse_seed(sys.argv)
-    generator = WorldGenerator(seed=seed, system_count=5)
+    government_registry = _load_governments()
+    law_engine = GovernmentLawEngine(registry=government_registry, logger=logger, seed=seed)
+    generator = WorldGenerator(
+        seed=seed,
+        system_count=5,
+        government_ids=government_registry.government_ids(),
+    )
     sector = generator.generate()
 
     start_system_id = sector.system_ids()[0]
@@ -51,6 +59,7 @@ def main() -> None:
         player_state=player_state,
         logger=logger,
         economy_engine=economy_engine,
+        law_engine=law_engine,
     )
 
     logger.log(
@@ -58,11 +67,15 @@ def main() -> None:
         action="init",
         state_change=f"seed={seed} start_location={start_system_id}",
     )
+    _log_governments(sector, government_registry, logger, time_engine.current_turn)
+    _log_system_stat_blocks(sector, government_registry, logger, time_engine.current_turn)
 
     print("Initial prices:")
     _print_prices(sector, economy_engine)
     print("Population:")
     _print_population(sector, economy_engine)
+    print("Governments:")
+    _print_governments(sector, government_registry)
 
     system_ids = sector.system_ids()
     if len(system_ids) > 1:
@@ -91,6 +104,69 @@ def _print_population(sector: Sector, economy_engine: EconomyEngine) -> None:
                 f"consumption={data['consumption']:.2f} "
                 f"capacity={data['capacity']:.2f}"
             )
+
+
+def _print_governments(sector: Sector, registry: GovernmentRegistry) -> None:
+    for system in sector.systems:
+        government_id = system.attributes.get("government_id")
+        government = registry.get_government(government_id)
+        print(
+            f"{system.system_id} {system.name} "
+            f"government_id={government.id} government_name={government.name}"
+        )
+
+
+def _log_governments(
+    sector: Sector,
+    registry: GovernmentRegistry,
+    logger: Logger,
+    turn: int,
+) -> None:
+    for system in sector.systems:
+        government_id = system.attributes.get("government_id")
+        government = registry.get_government(government_id)
+        logger.log(
+            turn=turn,
+            action="government_assign",
+            state_change=(
+                f"system_id={system.system_id} "
+                f"government_id={government.id} government_name={government.name}"
+            ),
+        )
+
+
+def _log_system_stat_blocks(
+    sector: Sector,
+    registry: GovernmentRegistry,
+    logger: Logger,
+    turn: int,
+) -> None:
+    logger.log(
+        turn=turn,
+        action="diagnostic",
+        state_change="[DIAGNOSTIC] System Stat Blocks",
+    )
+    for system in sector.systems:
+        government_id = system.attributes.get("government_id")
+        government = registry.get_government(government_id)
+        population_level = system.attributes.get("population_level", 3)
+        price_parts = [f"{good.good_id}={good.base_price}" for good in GOODS]
+        logger.log(
+            turn=turn,
+            action="diagnostic",
+            state_change=(
+                f"System {system.system_id} {system.name} | "
+                f"Government {government.name} ({government.id}) | "
+                f"Population {population_level} | "
+                f"BasePrices {' '.join(price_parts)} | "
+                "Notes"
+            ),
+        )
+
+
+def _load_governments() -> GovernmentRegistry:
+    governments_path = Path(__file__).resolve().parents[1] / "data" / "governments.json"
+    return GovernmentRegistry.from_file(governments_path)
 
 
 def _print_prices(sector: Sector, economy_engine: EconomyEngine) -> None:
