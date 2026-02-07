@@ -1,12 +1,12 @@
 import sys
 from pathlib import Path
 
-from economy_data import CATEGORIES
-from economy_engine import EconomyEngine
 from data_catalog import DataCatalog, load_data_catalog
-from government_registry import GovernmentRegistry
+from economy_engine import EconomyEngine
 from government_law_engine import GovernmentLawEngine
+from government_registry import GovernmentRegistry
 from logger import Logger
+from market_pricing import price_transaction
 from player_state import PlayerState
 from time_engine import TimeEngine
 from turn_loop import BuyAction, MoveAction, SellAction, TurnLoop
@@ -42,7 +42,6 @@ def main() -> None:
 
     seed = parse_seed(sys.argv)
     catalog = load_data_catalog()
-    _log_data_catalog(catalog, logger, seed=seed)
     government_registry = _load_governments()
     law_engine = GovernmentLawEngine(registry=government_registry, logger=logger, seed=seed)
     generator = WorldGenerator(
@@ -65,6 +64,9 @@ def main() -> None:
         logger=logger,
         economy_engine=economy_engine,
         law_engine=law_engine,
+        catalog=catalog,
+        government_registry=government_registry,
+        world_seed=seed,
     )
 
     logger.log(
@@ -72,79 +74,76 @@ def main() -> None:
         action="init",
         state_change=f"seed={seed} start_location={start_system_id}",
     )
-    _log_system_stat_blocks(sector, government_registry, logger, time_engine.current_turn)
 
-    print("System Stat Blocks:")
-    _print_system_stat_blocks(sector, government_registry)
+    _log_system_stat_blocks(
+        sector=sector,
+        catalog=catalog,
+        economy_engine=economy_engine,
+        registry=government_registry,
+        logger=logger,
+        world_seed=seed,
+        turn=time_engine.current_turn,
+        label="initial",
+    )
 
+    _run_five_turn_demo(sector, turn_loop)
+
+    _log_system_stat_blocks(
+        sector=sector,
+        catalog=catalog,
+        economy_engine=economy_engine,
+        registry=government_registry,
+        logger=logger,
+        world_seed=seed,
+        turn=time_engine.current_turn,
+        label="final",
+    )
+
+
+def _run_five_turn_demo(sector: Sector, turn_loop: TurnLoop) -> None:
     system_ids = sector.system_ids()
-    if len(system_ids) > 1:
-        turn_loop.execute_move(MoveAction(target_system_id=system_ids[1]))
-    turn_loop.execute_buy(BuyAction(category_id="FOOD"))
-    turn_loop.execute_buy(BuyAction(category_id="MEDICINE"))
-    turn_loop.execute_sell(SellAction(category_id="FOOD"))
+    if len(system_ids) < 2:
+        return
+    buy_sku = _first_market_sku(sector, role="produced")
+    sell_sku = _first_market_sku(sector, role="consumed") or buy_sku
+
+    turn_loop.execute_move(MoveAction(target_system_id=system_ids[1]))
+    if buy_sku:
+        turn_loop.execute_buy(BuyAction(sku=buy_sku))
+    turn_loop.execute_move(MoveAction(target_system_id=system_ids[0]))
+    if sell_sku:
+        turn_loop.execute_sell(SellAction(sku=sell_sku))
     if len(system_ids) > 2:
         turn_loop.execute_move(MoveAction(target_system_id=system_ids[2]))
-        turn_loop.execute_sell(SellAction(category_id="MEDICINE"))
-
-    print("Prices after actions:")
-    _print_prices(sector, economy_engine)
 
 
-def _print_system_stat_blocks(sector: Sector, registry: GovernmentRegistry) -> None:
+def _first_market_sku(sector: Sector, role: str) -> str | None:
     for system in sector.systems:
-        government_id = system.attributes.get("government_id")
-        government = registry.get_government(government_id)
-        population_level = system.attributes.get("population_level", 3)
-        primary_economy = system.attributes.get("primary_economy")
-        secondary_economies = system.attributes.get("secondary_economies", [])
         market = system.attributes.get("market")
-        print(f"{system.system_id} {system.name}")
-        print(f"  government={government.name} ({government.id})")
-        print(f"  population={population_level}")
-        print(f"  economy primary={primary_economy} secondary={secondary_economies}")
         if market is None:
-            print("  market=none")
             continue
-        for category_id, market_category in market.categories.items():
-            produced = ", ".join(good.sku for good in market_category.produced)
-            consumed = ", ".join(good.sku for good in market_category.consumed)
-            neutral = ", ".join(good.sku for good in market_category.neutral)
-            print(
-                f"  market {category_id} "
-                f"produced=[{produced}] consumed=[{consumed}] neutral=[{neutral}]"
-            )
-
-
-def _log_governments(
-    sector: Sector,
-    registry: GovernmentRegistry,
-    logger: Logger,
-    turn: int,
-) -> None:
-    for system in sector.systems:
-        government_id = system.attributes.get("government_id")
-        government = registry.get_government(government_id)
-        logger.log(
-            turn=turn,
-            action="government_assign",
-            state_change=(
-                f"system_id={system.system_id} "
-                f"government_id={government.id} government_name={government.name}"
-            ),
-        )
+        for category in market.categories.values():
+            goods = getattr(category, role, ())
+            if goods:
+                return goods[0].sku
+    return None
 
 
 def _log_system_stat_blocks(
+    *,
     sector: Sector,
+    catalog: DataCatalog,
+    economy_engine: EconomyEngine,
     registry: GovernmentRegistry,
     logger: Logger,
+    world_seed: int,
     turn: int,
+    label: str,
 ) -> None:
     logger.log(
         turn=turn,
-        action="diagnostic",
-        state_change="[DIAGNOSTIC] System Stat Blocks",
+        action="stat_block",
+        state_change=f"[STAT_BLOCK] {label} systems",
     )
     for system in sector.systems:
         government_id = system.attributes.get("government_id")
@@ -156,7 +155,7 @@ def _log_system_stat_blocks(
         economy_block = f"primary={primary_economy} secondary={secondary_economies}"
         logger.log(
             turn=turn,
-            action="diagnostic",
+            action="stat_block",
             state_change=(
                 f"System {system.system_id} {system.name} | "
                 f"Government {government.name} ({government.id}) | "
@@ -167,43 +166,42 @@ def _log_system_stat_blocks(
         if market is None:
             logger.log(
                 turn=turn,
-                action="diagnostic",
+                action="stat_block",
                 state_change=f"system_id={system.system_id} market=none",
             )
             continue
-        for category_id, market_category in market.categories.items():
-            produced = [good.sku for good in market_category.produced]
-            consumed = [good.sku for good in market_category.consumed]
-            neutral = [good.sku for good in market_category.neutral]
-            logger.log(
-                turn=turn,
-                action="diagnostic",
-                state_change=(
-                    f"system_id={system.system_id} market_category={category_id} "
-                    f"produced={produced} consumed={consumed} neutral={neutral}"
-                ),
-            )
-
-
-def _log_data_catalog(catalog: DataCatalog, logger: Logger, seed: int) -> None:
-    logger.log(
-        turn=0,
-        action="diagnostic",
-        state_change=(
-            f"[DIAGNOSTIC] Data Catalog seed={seed} "
-            f"tags={len(catalog.tags)} goods={len(catalog.goods)} "
-            f"economies={len(catalog.economies)}"
-        ),
-    )
-    goods_by_category = catalog.goods_by_category()
-    for category_id, goods in goods_by_category.items():
-        if not goods:
-            continue
-        logger.log(
-            turn=0,
-            action="diagnostic",
-            state_change=f"[DIAGNOSTIC] Goods {category_id} count={len(goods)}",
-        )
+        for category_id, category in market.categories.items():
+            for good in category.produced + category.consumed + category.neutral:
+                scarcity = _safe_scarcity(economy_engine, system.system_id, category_id)
+                buy = price_transaction(
+                    catalog=catalog,
+                    market=market,
+                    government=government,
+                    sku=good.sku,
+                    action="buy",
+                    world_seed=world_seed,
+                    system_id=system.system_id,
+                    scarcity_modifier=scarcity,
+                )
+                sell = price_transaction(
+                    catalog=catalog,
+                    market=market,
+                    government=government,
+                    sku=good.sku,
+                    action="sell",
+                    world_seed=world_seed,
+                    system_id=system.system_id,
+                    scarcity_modifier=scarcity,
+                )
+                logger.log(
+                    turn=turn,
+                    action="stat_block",
+                    state_change=(
+                        f"system_id={system.system_id} sku={good.sku} "
+                        f"category={category_id} buy={buy.final_price:.2f} "
+                        f"sell={sell.final_price:.2f}"
+                    ),
+                )
 
 
 def _load_governments() -> GovernmentRegistry:
@@ -211,13 +209,11 @@ def _load_governments() -> GovernmentRegistry:
     return GovernmentRegistry.from_file(governments_path)
 
 
-def _print_prices(sector: Sector, economy_engine: EconomyEngine) -> None:
-    for system in sector.systems:
-        parts = []
-        for category in CATEGORIES:
-            price = economy_engine.price(system.system_id, category.category_id)
-            parts.append(f"{category.category_id}={price:.2f}")
-        print(f"{system.system_id} {system.name} " + " ".join(parts))
+def _safe_scarcity(economy_engine: EconomyEngine, system_id: str, category_id: str) -> float:
+    try:
+        return economy_engine.scarcity_modifier(system_id, category_id)
+    except KeyError:
+        return 1.0
 
 
 if __name__ == "__main__":

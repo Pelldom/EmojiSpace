@@ -45,6 +45,12 @@ class DataCatalog:
             grouped.setdefault(good.category, []).append(good)
         return grouped
 
+    def good_by_sku(self, sku: str) -> Good:
+        for good in self.goods:
+            if good.sku == sku:
+                return good
+        raise KeyError(f"Unknown SKU: {sku}")
+
 
 def load_data_catalog() -> DataCatalog:
     root = Path(__file__).resolve().parents[1]

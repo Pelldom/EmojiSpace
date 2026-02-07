@@ -13,16 +13,16 @@ class PlayerState:
         self._location_system_id = system_id
         return previous
 
-    def buy(self, good_id: str) -> None:
-        self._holdings[good_id] = self._holdings.get(good_id, 0) + 1
+    def buy(self, sku: str) -> None:
+        self._holdings[sku] = self._holdings.get(sku, 0) + 1
 
-    def can_sell(self, good_id: str) -> bool:
-        return self._holdings.get(good_id, 0) > 0
+    def can_sell(self, sku: str) -> bool:
+        return self._holdings.get(sku, 0) > 0
 
-    def sell(self, good_id: str) -> bool:
-        if not self.can_sell(good_id):
+    def sell(self, sku: str) -> bool:
+        if not self.can_sell(sku):
             return False
-        self._holdings[good_id] = self._holdings.get(good_id, 0) - 1
+        self._holdings[sku] = self._holdings.get(sku, 0) - 1
         return True
 
     def holdings_snapshot(self) -> dict[str, int]:
@@ -34,13 +34,13 @@ class PlayerState:
     def adjust_reputation(self, delta: int) -> None:
         self._reputation += delta
 
-    def confiscate(self, good_id: str, amount: int | None = None) -> int:
-        if good_id not in self._holdings or self._holdings[good_id] <= 0:
+    def confiscate(self, sku: str, amount: int | None = None) -> int:
+        if sku not in self._holdings or self._holdings[sku] <= 0:
             return 0
         if amount is None:
-            confiscated = self._holdings[good_id]
-            self._holdings[good_id] = 0
+            confiscated = self._holdings[sku]
+            self._holdings[sku] = 0
             return confiscated
-        confiscated = min(self._holdings[good_id], amount)
-        self._holdings[good_id] -= confiscated
+        confiscated = min(self._holdings[sku], amount)
+        self._holdings[sku] -= confiscated
         return confiscated

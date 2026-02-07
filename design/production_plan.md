@@ -1,339 +1,312 @@
-EmojiSpace — Production Plan (Design Authority)
-Purpose of this document
+#  EmojiSpace — Production Plan (Design Authority)
 
-This production plan defines:
+**Status:** Authoritative / Binding  
+**Purpose:** Control scope, sequencing, and system boundaries for EmojiSpace development
 
-The order of construction
+This document defines:
+- Build order
+- Phase boundaries
+- System responsibilities
+- Explicit stop / rethink criteria
 
-The systems dependency chain
+No system may be implemented outside its assigned phase.
+Any deviation requires updating this document first.
 
-Clear benchmarks and quality gates
+---
 
-Explicit stop / rethink criteria
+## Guiding Production Principles (Unchanged)
 
-Version targets tied to milestones
-
-The goal is to prevent premature complexity, uncontrolled scope growth, and hard-to-debug emergent failures.
-
-Guiding Production Principles
-
-Simulation before presentation
+### Simulation before presentation
 No UI polish until the simulation is provably interesting in logs.
 
-One new system at a time
-Never introduce two interacting systems in the same milestone.
+### One new system at a time
+Never introduce two tightly interacting systems in the same milestone.
 
-Debuggable first, fun second
-If behavior cannot be explained, it is a failure regardless of “coolness”.
+### Debuggable first, fun second
+If behavior cannot be explained post-hoc, it is a failure.
 
-Design-approved expansion only
-Codex may not invent systems. All expansion must originate here.
+### Design-approved expansion only
+Codex may not invent systems or logic.
+All expansion must originate here.
 
-Phase Overview
-Phase	Target Version	Focus
-Phase 0	0.1.x	Skeleton & scaffolding
-Phase 1	0.2.x	Economy core
-Phase 2	0.3.x	Government & legality
-Phase 3	0.4.x	NPC persistence
-Phase 4	0.5.x	Situations & propagation
-Phase 5	0.6.x	Emergent narrative
-Phase 6	0.7–0.9.x	Stabilization & balance
-Phase 0 — Skeleton & Scaffolding
+---
 
-Target: 0.1.x
+## Phase Overview (Updated)
 
-Objective
+| Phase | Target Version | Focus |
+|------|----------------|-------|
+| Phase 0 | 0.1.x | Skeleton & scaffolding |
+| Phase 1 | 0.2.x | Economy core |
+| Phase 1.5 | 0.2.x | Population & market variety |
+| Phase 2 | 0.3.x | Government & legality |
+| **Phase 2.6** | **0.3.x** | **Market pricing & tag interpretation** |
+| **Phase 2.7** | **0.3.x** | **Law enforcement & consequence resolution** |
+| Phase 3 | 0.4.x | NPC persistence |
+| Phase 4 | 0.5.x | Situations & propagation |
+| Phase 5 | 0.6.x | Emergent narrative |
+| Phase 6 | 0.7–0.9.x | Stabilization & balance |
 
+---
+
+## Phase 0 — Skeleton & Scaffolding
+
+**Target:** 0.1.x
+
+### Objective
 Prove the project can:
+- Generate a sector
+- Advance time
+- Execute player turns
+- Log outcomes deterministically
 
-Generate a sector
+### Required Systems
+- World generator (systems + planets)
+- Turn loop
+- Player entity
+- Movement
+- Logging framework
+- VERSION tracking
 
-Advance time
+### Explicit Exclusions
+- Economy logic
+- NPCs
+- Governments
+- Situations
+- UI beyond logs
+
+### Benchmark to Advance
+- 100+ turns execute without crash
+- Logs clearly show state transitions
+
+---
+
+## Phase 1 — Economy Core
+
+**Target:** 0.2.x
+
+### Objective
+Introduce a living economy based on supply, demand, and scarcity.
+
+### Required Systems
+- Goods catalog
+- Category system
+- Economy definitions
+- Market creation (static)
+- Player trading loop (buy / sell)
 
-Execute a player turn
+### Explicit Exclusions
+- Governments
+- Legality
+- Pricing interpretation
+- NPC traders
+- Situations
 
-Log outcomes deterministically
+### Benchmark to Advance
+- Prices respond to scarcity
+- Player actions influence markets
+- Changes are explainable
+
+---
+
+## Phase 1.5 — Population & Market Variety
+
+**Target:** 0.2.x
+
+### Objective
+Control market breadth without implying wealth or advancement.
 
-Required Systems
+### Required Systems
+- Population levels (1–5)
+- Goods-per-category caps
+- Neutral category resolution
 
-Sector generator (systems + planets, minimal attributes)
+### Explicit Exclusions
+- Pricing logic
+- Governments
+- Risk or legality
 
-Turn loop
+### Benchmark to Advance
+- Population affects variety only
+- No population-based price scaling
 
-Player entity
+---
 
-Movement between systems
+## Phase 2 — Government & Legality
 
-Logging framework
+**Target:** 0.3.x
 
-/VERSION integration
+### Objective
+Make place matter via law, ideology, and enforcement.
 
-Explicit Exclusions
+### Required Systems
+- Government archetypes
+- Legality matrix
+- Restricted vs illegal states
+- Ideological modifiers
 
-No economy logic
+### Explicit Exclusions
+- Pricing interpretation
+- Enforcement outcomes
+- NPC memory
+- Situations
 
-No NPC memory
+### Benchmark to Advance
+- Same action yields different legality by system
+- Outcomes are predictable but not avoidable
 
-No governments
+---
 
-No situations
+## Phase 2.6 — Market Pricing & Tag Interpretation
 
-No UI beyond text/log output
+**Target:** 0.3.x
 
-Benchmark to Advance
+### Objective
+Define how prices are calculated and how governments interpret tags.
 
-A complete run can execute 100+ turns without crashing
+### Required Systems
+- Market pricing contract
+- SKU-based buying
+- Category-based selling
+- Substitute discount logic
+- Deterministic pricing
+- Tag interpretation (price bias, risk signaling)
+- Government × tag interpretation
+- Category pressure multipliers (coarse, deterministic)
+- Salvage floor enforcement
 
-Logs clearly show:
+### Explicit Exclusions
+- Enforcement consequences
+- Situational demand spikes
+- Cultural valuation
+- NPC behavior
 
-player location
+### Benchmark to Advance
+- All prices are explainable from logs
+- No double counting of effects
+- Cursor can implement without inference
 
-time progression
+---
 
-state changes
+## Phase 2.7 — Law Enforcement & Consequence Resolution
 
-Kill Criteria
+**Target:** 0.3.x
 
-If state becomes inconsistent or opaque ? redesign before proceeding
+### Objective
+Resolve the consequences of risky or illegal actions.
 
-Phase 1 — Economy Core
+### Required Systems
+- Enforcement trigger logic
+- Risk tier consumption
+- Consequence resolution (fines, confiscation, arrest, reputation)
+- Use of government enforcement and penalty fields
 
-Target: 0.2.x
+### Explicit Exclusions
+- Price recalculation
+- Market composition changes
+- Situations
+- Narrative arcs
 
-Objective
+### Benchmark to Advance
+- Risk leads to meaningful outcomes
+- Enforcement respects government traits
+- Pricing and law remain decoupled
 
-Introduce a living economy that reacts to scarcity and player action.
+---
 
-Required Systems
+## Phase 3 — NPC Persistence
 
-Goods catalog
+**Target:** 0.4.x
 
-Supply and demand model
+### Objective
+Populate the sector with persistent, memory-bearing NPCs.
 
-Price calculation
+### Required Systems
+- NPC generation
+- Roles & professions
+- Memory flags
+- Relationship states
+- NPC movement
 
-Resource profiles per planet/system
+### Explicit Exclusions
+- Situational role spawning
+- Narrative arcs
 
-Player trading loop (buy/sell/transport)
+### Benchmark to Advance
+- NPCs react based on history
+- NPC loss has downstream effects
 
-Explicit Exclusions
+---
 
-No NPC traders yet
+## Phase 4 — Situations & Propagation
 
-No governments or legality
+**Target:** 0.5.x
 
-No dynamic situations
-
-Benchmark to Advance
-
-Player actions visibly alter prices
-
-Scarcity propagates to nearby systems
-
-Economic changes are explainable post-hoc
-
-Kill Criteria
-
-Prices fluctuate without identifiable cause
-
-Economy collapses or trivializes profit
-
-Phase 2 — Government & Legality
-
-Target: 0.3.x
-
-Objective
-
-Make place matter through law and policy.
-
-Required Systems
-
-Government archetypes
-
-Legality matrix (goods + actions)
-
-Enforcement outcomes
-
-Reputation effects tied to legality
-
-Explicit Exclusions
-
-No NPC memory yet
-
-No situations like war/plague
-
-Benchmark to Advance
-
-Same action yields different outcomes on different planets
-
-Law enforcement consequences are predictable but not always avoidable
-
-Kill Criteria
-
-Governments feel cosmetic
-
-Legality has no meaningful impact on play
-
-Phase 3 — NPC Persistence
-
-Target: 0.4.x
-
-Objective
-
-Populate the sector with people who remember.
-
-Required Systems
-
-NPC generation
-
-Roles/professions
-
-Persistent identity
-
-Memory flags
-
-Relationship states (friend/neutral/enemy)
-
-NPC movement and basic activity
-
-Explicit Exclusions
-
-No storyline system yet
-
-No situation-driven role spawning
-
-Benchmark to Advance
-
-NPCs react differently based on past player behavior
-
-NPC death/removal has downstream effects
-
-Kill Criteria
-
-NPCs feel interchangeable
-
-Memory does not meaningfully affect outcomes
-
-Phase 4 — Situations & Propagation
-
-Target: 0.5.x
-
-Objective
-
+### Objective
 Make the sector self-destabilizing.
 
-Required Systems
+### Required Systems
+- Situations (war, plague, unrest)
+- Situation triggers
+- Time-based resolution
+- Economic, legal, and NPC effects
 
-Situation types (war, plague, unrest, etc.)
+### Explicit Exclusions
+- Authored storylines
+- Unique items
 
-Situation triggers
+### Benchmark to Advance
+- Situations emerge organically
+- Ignoring them has consequences
 
-Time-based resolution
+---
 
-Propagation logic
+## Phase 5 — Emergent Narrative
 
-Economic + NPC effects
+**Target:** 0.6.x
 
-Explicit Exclusions
+### Objective
+Allow stories to coalesce naturally from systems.
 
-No unique items yet
+### Required Systems
+- Narrative triggers
+- Long-arc tracking
+- Optional player engagement
 
-No narrative framing beyond state changes
+### Benchmark to Advance
+- Distinct stories can be described after a run
+- Player absence matters
 
-Benchmark to Advance
+---
 
-Situations emerge without player input
+## Phase 6 — Stabilization & Balance
 
-Ignoring a situation produces consequences
+**Target:** 0.7–0.9.x
 
-Player intervention can alter, but not fully control, outcomes
+### Objective
+Turn a complex simulation into a playable game.
 
-Kill Criteria
+### Focus Areas
+- Balance tuning
+- Information surfacing
+- Failure fairness
+- Performance
+- Save compatibility
 
-Situations stall permanently
+### Benchmark for 1.0 Consideration
+- Multiple viable playstyles
+- No dominant strategy
+- Bugs are reproducible
+- Design intent matches behavior
 
-Cascades become chaotic and unreadable
+---
 
-Phase 5 — Emergent Narrative
+## Authority Statement
 
-Target: 0.6.x
+This document is **authoritative**.
 
-Objective
+Any feature, system, or behavior:
+- Must belong to a defined phase
+- Must respect phase boundaries
+- Must update this document if altered
 
-Allow stories to coalesce naturally.
-
-Required Systems
-
-Story triggers (NPCs, locations, items, situations)
-
-Long-arc state tracking
-
-Optional player engagement
-
-Resolution without player involvement
-
-Explicit Exclusions
-
-No authored campaigns
-
-No branching dialogue trees
-
-Benchmark to Advance
-
-Distinct “stories” can be described after a run
-
-Player absence is as meaningful as presence
-
-Kill Criteria
-
-Stories feel scripted
-
-Player feels railroaded
-
-Phase 6 — Stabilization & Balance
-
-Target: 0.7.x ? 0.9.x
-
-Objective
-
-Turn a complex simulation into a playable system.
-
-Focus Areas
-
-Balance tuning
-
-Failure-state fairness
-
-Information surfacing
-
-Performance
-
-Save compatibility
-
-Benchmark for 1.0 Consideration
-
-Multiple viable playstyles
-
-No dominant strategy
-
-Bugs are reproducible via version number
-
-Design intent matches actual behavior
-
-Version Discipline (Enforced)
-
-Every phase transition increments MINOR
-
-Every simulation behavior change increments SIM
-
-No phase skipping
-
-No backfilling features from later phases
-
-Authority & Change Control
-
-This plan may only be modified here
-
-Codex implements only what is approved
-
-Any deviation requires explicit PM sign-off
+Failure to do so is a design failure.

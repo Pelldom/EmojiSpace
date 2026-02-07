@@ -155,6 +155,7 @@ class MarketCreator:
             sku=sku,
             name=name,
             category=good.category,
+            base_price=good.base_price,
             tags=tuple(tags),
         )
 

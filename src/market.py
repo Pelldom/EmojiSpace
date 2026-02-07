@@ -7,6 +7,7 @@ class MarketGood:
     sku: str
     name: str
     category: str
+    base_price: int
     tags: Tuple[str, ...]
 
 

@@ -55,6 +55,10 @@ class EconomyEngine:
     def price(self, system_id: str, category_id: str) -> float:
         return self._prices[system_id][category_id]
 
+    def scarcity_modifier(self, system_id: str, category_id: str) -> float:
+        availability = self._availability[system_id][category_id]
+        return AVAILABILITY_MODIFIERS[availability]
+
     def all_prices(self) -> Dict[str, Dict[str, float]]:
         return self._prices
 
