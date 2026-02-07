@@ -9,6 +9,11 @@ from government_law_engine import (
     PlayerInspectionResponse,
 )
 from government_registry import GovernmentRegistry
+from law_enforcement import (
+    CargoSnapshot,
+    TriggerType,
+    enforcement_checkpoint,
+)
 from market_pricing import PricingResult, price_transaction
 from logger import Logger
 from player_state import PlayerState
@@ -58,6 +63,7 @@ class TurnLoop:
         if self._sector.get_system(action.target_system_id) is None:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(action.target_system_id, turn)
             self._logger.log(
                 turn=turn,
                 action="move",
@@ -68,6 +74,8 @@ class TurnLoop:
         previous = self._player_state.move_to(action.target_system_id)
         turn = self._time_engine.advance()
         self._economy.advance_turn(turn=turn)
+        self._apply_heat_decay(action.target_system_id, turn)
+        self._border_checkpoint(action.target_system_id, turn)
         self._inspect_transport(action.target_system_id, turn)
         self._logger.log(
             turn=turn,
@@ -81,10 +89,21 @@ class TurnLoop:
         if market_good is None:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
             self._logger.log(
                 turn=turn,
                 action="buy",
                 state_change=f"failed sku_not_in_market system_id={system_id} sku={action.sku}",
+            )
+            return
+        if self._customs_checkpoint(system_id, turn) is False:
+            turn = self._time_engine.advance()
+            self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
+            self._logger.log(
+                turn=turn,
+                action="market_access_denied",
+                state_change=f"system_id={system_id} sku={action.sku}",
             )
             return
         category_id = market_good.category
@@ -99,6 +118,7 @@ class TurnLoop:
                 cause="player_buy",
             ),
         )
+        self._apply_heat_decay(system_id, turn)
         pricing = self._price_quote(system_id, action.sku, "buy", turn)
         self._inspect_trade(system_id, action.sku, "buy", turn)
         self._logger.log(
@@ -114,6 +134,7 @@ class TurnLoop:
         if not self._player_state.sell(action.sku):
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
             self._logger.log(
                 turn=turn,
                 action="sell",
@@ -124,6 +145,7 @@ class TurnLoop:
         if category_id is None:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
             self._logger.log(
                 turn=turn,
                 action="sell",
@@ -133,10 +155,21 @@ class TurnLoop:
         if not self._category_present(system_id, category_id):
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
             self._logger.log(
                 turn=turn,
                 action="sell",
                 state_change=f"failed category_not_present system_id={system_id} sku={action.sku} category_id={category_id}",
+            )
+            return
+        if self._customs_checkpoint(system_id, turn) is False:
+            turn = self._time_engine.advance()
+            self._economy.advance_turn(turn=turn)
+            self._apply_heat_decay(system_id, turn)
+            self._logger.log(
+                turn=turn,
+                action="market_access_denied",
+                state_change=f"system_id={system_id} sku={action.sku}",
             )
             return
         turn = self._time_engine.advance()
@@ -149,6 +182,7 @@ class TurnLoop:
                 cause="player_sell",
             ),
         )
+        self._apply_heat_decay(system_id, turn)
         pricing = self._price_quote(system_id, action.sku, "sell", turn)
         self._inspect_trade(system_id, action.sku, "sell", turn)
         self._logger.log(
@@ -188,9 +222,10 @@ class TurnLoop:
             response=response,
             turn=turn,
         )
+        confiscated = 0
         if outcome.confiscated < 0:
             confiscated = self._player_state.confiscate(sku, None)
-        else:
+        elif outcome.confiscated > 0:
             confiscated = self._player_state.confiscate(sku, outcome.confiscated)
         if confiscated:
             self._logger.log(
@@ -215,6 +250,122 @@ class TurnLoop:
                 continue
             self._inspect_trade(system_id, sku, "transport", turn)
 
+    def _border_checkpoint(self, system_id: str, turn: int) -> None:
+        system = self._sector.get_system(system_id)
+        if system is None:
+            return
+        market = system.attributes.get("market")
+        if market is None:
+            return
+        government_id = system.attributes.get("government_id")
+        government = self._government_registry.get_government(government_id)
+        illegal_present, policies = self._cargo_policy(system_id, check_restricted=False, turn=turn)
+        if not illegal_present:
+            return
+        event = enforcement_checkpoint(
+            system_id=system_id,
+            trigger_type=TriggerType.BORDER,
+            government=government,
+            policy_results=policies,
+            player=self._player_state,
+            world_seed=self._world_seed,
+            turn=turn,
+            cargo_snapshot=CargoSnapshot(
+                illegal_present=illegal_present,
+                restricted_unlicensed_present=False,
+            ),
+            logger=self._logger,
+        )
+        if event is not None and event.arrested:
+            return
+
+    def _customs_checkpoint(self, system_id: str, turn: int) -> bool | None:
+        system = self._sector.get_system(system_id)
+        if system is None:
+            return None
+        market = system.attributes.get("market")
+        if market is None:
+            return None
+        government_id = system.attributes.get("government_id")
+        government = self._government_registry.get_government(government_id)
+        illegal_present, policies = self._cargo_policy(system_id, check_restricted=True, turn=turn)
+        restricted_unlicensed = self._restricted_unlicensed_present(system_id, policies)
+        if not illegal_present and not restricted_unlicensed:
+            return True
+        outcome = enforcement_checkpoint(
+            system_id=system_id,
+            trigger_type=TriggerType.CUSTOMS,
+            government=government,
+            policy_results=policies,
+            player=self._player_state,
+            world_seed=self._world_seed,
+            turn=turn,
+            cargo_snapshot=CargoSnapshot(
+                illegal_present=illegal_present,
+                restricted_unlicensed_present=restricted_unlicensed,
+            ),
+            logger=self._logger,
+        )
+        if outcome is not None and outcome.market_access_denied:
+            return False
+        if outcome is not None and outcome.arrested:
+            return False
+        return True
+
+    def _cargo_policy(
+        self,
+        system_id: str,
+        check_restricted: bool,
+        turn: int,
+    ) -> tuple[bool, list[tuple[str, object]]]:
+        government_id = self._sector.get_system(system_id).attributes.get("government_id")
+        illegal_present = False
+        policies: list[tuple[str, object]] = []
+        holdings = self._player_state.holdings_snapshot()
+        for sku, count in holdings.items():
+            if count <= 0:
+                continue
+            tags = self._sku_tags(system_id, sku)
+            policy = self._law_engine.evaluate_policy(
+                government_id=government_id,
+                commodity=Commodity(commodity_id=sku, tags=set(tags)),
+                action="enforcement",
+                turn=turn,
+            )
+            policies.append((sku, policy))
+            if policy.legality_state.value == "ILLEGAL":
+                illegal_present = True
+        return illegal_present, policies
+
+    def _restricted_unlicensed_present(self, system_id: str, policies: list[tuple[str, object]]) -> bool:
+        for sku, policy in policies:
+            if policy.legality_state.value != "RESTRICTED":
+                continue
+            if self._player_state.has_license(system_id, sku):
+                continue
+            category_id = self._sku_category(sku)
+            if category_id is not None and self._player_state.has_license(system_id, category_id):
+                continue
+                return True
+        return False
+
+    def _apply_heat_decay(self, current_system_id: str, turn: int) -> None:
+        for system in self._sector.systems:
+            heat_before = self._player_state.get_heat(system.system_id)
+            if heat_before <= 0:
+                continue
+            decay = 10 if system.system_id == current_system_id else 20
+            heat_after = max(0, heat_before - decay)
+            self._player_state.set_heat(system.system_id, heat_after)
+            self._logger.log(
+                turn=turn,
+                action="heat_decay",
+                state_change=(
+                    f"system_id={system.system_id} heat_before={heat_before} "
+                    f"heat_after={heat_after} decay={decay}"
+                ),
+            )
+
     def _price_quote(self, system_id: str, sku: str, action: str, turn: int) -> PricingResult | None:
         system = self._sector.get_system(system_id)
         if system is None:
@@ -228,10 +379,18 @@ class TurnLoop:
         if category_id is None:
             return
         scarcity = self._economy.scarcity_modifier(system_id, category_id)
+        tags = self._sku_tags(system_id, sku)
+        policy = self._law_engine.evaluate_policy(
+            government_id=government_id,
+            commodity=Commodity(commodity_id=sku, tags=set(tags)),
+            action=action,
+            turn=turn,
+        )
         return price_transaction(
             catalog=self._catalog,
             market=market,
             government=government,
+            policy=policy,
             sku=sku,
             action=action,
             world_seed=self._world_seed,
