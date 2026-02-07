@@ -1,0 +1,193 @@
+{
+  "meta": {
+    "status": "authoritative",
+    "phase": "2.7",
+    "notes": [
+      "Consequences are selected using dominant violation only",
+      "Severity is resolved before consulting this table",
+      "Contract rules override data eligibility where conflicts exist",
+      "Reputation deltas are applied after enforcement resolution"
+    ]
+  },
+
+  "reputation_deltas": {
+    "negligible": 0,
+    "minor": -2,
+    "moderate": -5,
+    "major": -10,
+    "extreme": -20
+  },
+
+  "violations": {
+    "avoid_border_inspection": {
+      "MODERATE": {
+        "reputation": "moderate",
+        "fine": { "base": 200 },
+        "confiscation": { "percent": 0 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": true }
+      },
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 500 },
+        "confiscation": { "percent": 50 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      }
+    },
+
+    "attack_border_inspection": {
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 1000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 1 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      },
+      "EXTREME": {
+        "reputation": "extreme",
+        "fine": { "base": 5000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 2 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      }
+    },
+
+    "avoid_customs": {
+      "MODERATE": {
+        "reputation": "moderate",
+        "fine": { "base": 300 },
+        "confiscation": { "percent": 0 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": true }
+      },
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 800 },
+        "confiscation": { "percent": 50 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      }
+    },
+
+    "attack_customs": {
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 1500 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 1 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      },
+      "EXTREME": {
+        "reputation": "extreme",
+        "fine": { "base": 6000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 2 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      }
+    },
+
+    "illegal_goods_possession": {
+      "MODERATE": {
+        "reputation": "moderate",
+        "fine": { "base": 500 },
+        "confiscation": { "percent": 100 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": false }
+      },
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 1500 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 1 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": false }
+      },
+      "EXTREME": {
+        "reputation": "extreme",
+        "fine": { "base": 5000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 2 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": false }
+      }
+    },
+
+    "restricted_goods_unlicensed": {
+      "MINOR": {
+        "reputation": "minor",
+        "fine": { "base": 100 },
+        "confiscation": { "percent": 0 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": false }
+      },
+      "MODERATE": {
+        "reputation": "moderate",
+        "fine": { "base": 300 },
+        "confiscation": { "percent": 50 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": false }
+      }
+    },
+
+    "stolen_goods_possession": {
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 2000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 1 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": false }
+      },
+      "EXTREME": {
+        "reputation": "extreme",
+        "fine": { "base": 6000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 2 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": false }
+      }
+    },
+
+    "counterfeit_goods_possession": {
+      "MODERATE": {
+        "reputation": "moderate",
+        "fine": { "base": 800 },
+        "confiscation": { "percent": 100 },
+        "detention": { "enabled": false },
+        "arrest": { "enabled": false },
+        "warrant": { "eligible": false }
+      },
+      "MAJOR": {
+        "reputation": "major",
+        "fine": { "base": 2500 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 1 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": false }
+      }
+    },
+
+    "piracy": {
+      "EXTREME": {
+        "reputation": "extreme",
+        "fine": { "base": 10000 },
+        "confiscation": { "percent": 100 },
+        "detention": { "tier": 2 },
+        "arrest": { "enabled": true },
+        "warrant": { "eligible": true }
+      }
+    }
+  }
+}
