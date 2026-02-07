@@ -65,6 +65,7 @@ class EnforcementOutcome:
     arrested: bool
     dead: bool
     market_access_denied: bool
+    ship_lost: bool
     warrant_issued: bool
     fines_added: int
     rep_delta: int
@@ -218,6 +219,7 @@ def resolve_option(
     arrested = False
     dead = False
     market_access_denied = False
+    ship_lost = False
     warrant_issued = False
     fines_added = 0
     rep_delta = 0
@@ -261,6 +263,7 @@ def resolve_option(
             arrested=arrested,
             dead=dead,
             market_access_denied=market_access_denied,
+            ship_lost=ship_lost,
             base_rep_delta=rep_delta,
             base_heat_delta=heat_delta,
             consequences_applied=consequences_applied,
@@ -332,6 +335,7 @@ def resolve_option(
         arrested=arrested,
         dead=dead,
         market_access_denied=market_access_denied,
+        ship_lost=ship_lost,
         base_rep_delta=rep_delta,
         base_heat_delta=heat_delta,
         consequences_applied=consequences_applied,
@@ -427,6 +431,22 @@ def enforcement_checkpoint(
             percent=outcome.confiscation_percent,
         )
         outcome = replace(outcome, confiscated_amount=confiscated_amount)
+    if outcome.detention_tier == 1:
+        _confiscate_all(player)
+        player.remove_ship()
+        outcome = replace(outcome, ship_lost=True)
+        logger.log(
+            turn=turn,
+            action="detention_tier1",
+            state_change=f"system_id={system_id} ship_lost=True cargo_confiscated=all",
+        )
+    if outcome.detention_tier == 2:
+        outcome = replace(outcome, dead=True, arrested=True)
+        logger.log(
+            turn=turn,
+            action="detention_tier2",
+            state_change=f"system_id={system_id} game_over=True",
+        )
 
     _apply_outcome(player, system_id, outcome)
     logger.log(
@@ -443,6 +463,7 @@ def enforcement_checkpoint(
             f"warrant_issued={outcome.warrant_issued} fines_outstanding={event.player_snapshot.fines} "
             f"fines_added={outcome.fines_added} confiscation_percent={outcome.confiscation_percent} "
             f"confiscated_amount={outcome.confiscated_amount} detention_tier={outcome.detention_tier} "
+            f"ship_lost={outcome.ship_lost} game_over={outcome.dead} "
             f"bribery_chance={outcome.bribery_chance} "
             f"bribery_roll={outcome.bribery_roll} bribery_result={outcome.bribery_result} "
             f"rep_before={event.player_snapshot.reputation} rep_after={player.get_reputation(system_id)} "
@@ -560,6 +581,7 @@ def _finalize_outcome(
     arrested: bool,
     dead: bool,
     market_access_denied: bool,
+    ship_lost: bool,
     base_rep_delta: int,
     base_heat_delta: int,
     consequences_applied: List[str],
@@ -611,14 +633,20 @@ def _finalize_outcome(
         detention_tier = None
         arrested = False
     if bribery_success:
-        rep_delta = 0
+        rep_delta = -1
         fines_added = 0
         confiscation_percent = 0
         detention_tier = None
         arrested = False
-    # TODO(Phase 2.7): Bribery suppression vs existing fines override conflict requires contract clarification.
-    # Existing fines are added after other consequences.
-    fines_added += fines_outstanding
+    if detention_tier == 1:
+        confiscation_percent = 100
+        arrested = False
+    if detention_tier == 2:
+        dead = True
+        arrested = True
+    # Existing fines are added only when bribery does not suppress consequences.
+    if not bribery_success:
+        fines_added += fines_outstanding
     # Warrants are issued only on escape and only if eligible.
     warrant_issued = escaped and warrant_eligible
     return EnforcementOutcome(
@@ -626,6 +654,7 @@ def _finalize_outcome(
         arrested=arrested,
         dead=dead,
         market_access_denied=market_access_denied,
+        ship_lost=ship_lost,
         warrant_issued=warrant_issued,
         fines_added=fines_added,
         rep_delta=rep_delta,
@@ -675,3 +704,11 @@ def _apply_confiscation(
             continue
         total += player.confiscate(sku, take)
     return total
+
+
+def _confiscate_all(player: PlayerState) -> None:
+    holdings = player.holdings_snapshot()
+    for sku, count in holdings.items():
+        if count <= 0:
+            continue
+        player.confiscate(sku, None)

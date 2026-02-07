@@ -122,7 +122,7 @@ def test_bribery_chance_bounds() -> None:
 
 def test_warrant_forces_arrest_on_inspection() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
-    government = registry.get_government("anarchic")
+    government = registry.get_government("fascist")
     player = PlayerState(start_system_id="SYS-TEST")
     player.set_reputation("SYS-TEST", 1)
     player.set_heat("SYS-TEST", 100)
@@ -386,6 +386,66 @@ def test_no_consequence_block_no_action() -> None:
     )
     assert outcome is not None
     assert "no_consequences_defined" in outcome.consequences_applied
+
+
+def test_detention_tier1_confiscates_and_removes_ship_preserves_credits() -> None:
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    government = registry.get_government("fascist")
+    player = PlayerState(start_system_id="SYS-TEST")
+    player.buy("contraband")
+    player.set_credits(500)
+    player.set_reputation("SYS-TEST", 81)
+    player.set_heat("SYS-TEST", 100)
+    policy = GovernmentPolicyResult(
+        legality_state=LegalityStatus.ILLEGAL,
+        risk_tier=RiskTier.MEDIUM,
+        consumed_tags=[],
+    )
+    outcome = enforcement_checkpoint(
+        system_id="SYS-TEST",
+        trigger_type=TriggerType.CUSTOMS,
+        government=government,
+        policy_results=[("contraband", policy)],
+        player=player,
+        world_seed=4,
+        turn=4,
+        cargo_snapshot=_cargo(True, False),
+        logger=NullLogger(),
+        option=PlayerOption.ATTACK,
+    )
+    assert outcome is not None
+    assert outcome.detention_tier == 1
+    assert player.has_ship() is False
+    assert player.holdings_snapshot().get("contraband", 0) == 0
+    assert player.credits() == 500
+
+
+def test_detention_tier2_game_over() -> None:
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    government = registry.get_government("fascist")
+    player = PlayerState(start_system_id="SYS-TEST")
+    player.set_reputation("SYS-TEST", 1)
+    player.set_heat("SYS-TEST", 100)
+    policy = GovernmentPolicyResult(
+        legality_state=LegalityStatus.ILLEGAL,
+        risk_tier=RiskTier.SEVERE,
+        consumed_tags=["piracy"],
+    )
+    outcome = enforcement_checkpoint(
+        system_id="SYS-TEST",
+        trigger_type=TriggerType.CUSTOMS,
+        government=government,
+        policy_results=[("piracy_payload", policy)],
+        player=player,
+        world_seed=5,
+        turn=5,
+        cargo_snapshot=_cargo(True, False),
+        logger=NullLogger(),
+        option=PlayerOption.ATTACK,
+    )
+    assert outcome is not None
+    assert outcome.detention_tier == 2
+    assert outcome.dead is True
 
 
 class CollectLogger:

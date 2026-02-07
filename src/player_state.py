@@ -3,6 +3,8 @@ class PlayerState:
         self._location_system_id = start_system_id
         self._holdings: dict[str, int] = {}
         self._reputation: int = 0
+        self._credits: int = 0
+        self._has_ship: bool = True
         self._reputation_by_system: dict[str, int] = {}
         self._heat_by_system: dict[str, int] = {}
         self._licenses_by_system: dict[str, dict[str, bool]] = {}
@@ -32,6 +34,18 @@ class PlayerState:
 
     def holdings_snapshot(self) -> dict[str, int]:
         return dict(self._holdings)
+
+    def credits(self) -> int:
+        return self._credits
+
+    def set_credits(self, value: int) -> None:
+        self._credits = max(0, value)
+
+    def has_ship(self) -> bool:
+        return self._has_ship
+
+    def remove_ship(self) -> None:
+        self._has_ship = False
 
     def confiscate(self, sku: str, amount: int | None) -> int:
         if sku not in self._holdings or self._holdings[sku] <= 0:
