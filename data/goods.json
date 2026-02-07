@@ -1,0 +1,425 @@
+{
+  "version": "1.0",
+  "description": "Authoritative goods catalog for EmojiSpace. Goods are immutable after creation. Optional possible_tag is resolved at world generation or production time.",
+  "goods": [
+
+    {
+      "sku": "basic_rations",
+      "name": "Basic Rations",
+      "category": "FOOD",
+      "base_price": 100,
+      "tags": ["essential", "agricultural"]
+    },
+    {
+      "sku": "fresh_produce",
+      "name": "Fresh Produce",
+      "category": "FOOD",
+      "base_price": 120,
+      "tags": ["agricultural"],
+      "possible_tag": "luxury"
+    },
+    {
+      "sku": "protein_blocks",
+      "name": "Protein Blocks",
+      "category": "FOOD",
+      "base_price": 140,
+      "tags": ["agricultural", "synthetic"]
+    },
+    {
+      "sku": "nutrient_paste",
+      "name": "Nutrient Paste",
+      "category": "FOOD",
+      "base_price": 110,
+      "tags": ["essential", "synthetic"],
+      "possible_tag": "luxury"
+    },
+    {
+      "sku": "spice_wine",
+      "name": "Spice Wine",
+      "category": "FOOD",
+      "base_price": 160,
+      "tags": ["agricultural"],
+      "possible_tag": "luxury"
+    },
+    {
+      "sku": "heritage_cuisine",
+      "name": "Heritage Cuisine",
+      "category": "FOOD",
+      "base_price": 180,
+      "tags": ["agricultural", "cultural"],
+      "possible_tag": "luxury"
+    },
+
+    {
+      "sku": "iron_ore",
+      "name": "Iron Ore",
+      "category": "ORE",
+      "base_price": 120,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "copper_ore",
+      "name": "Copper Ore",
+      "category": "ORE",
+      "base_price": 130,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "nickel_ore",
+      "name": "Nickel Ore",
+      "category": "ORE",
+      "base_price": 140,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "rare_earth_ore",
+      "name": "Rare Earth Ore",
+      "category": "ORE",
+      "base_price": 180,
+      "tags": ["industrial", "hazardous"]
+    },
+    {
+      "sku": "radioactive_ore",
+      "name": "Radioactive Ore",
+      "category": "ORE",
+      "base_price": 220,
+      "tags": ["industrial", "hazardous"]
+    },
+
+    {
+      "sku": "steel_ingots",
+      "name": "Steel Ingots",
+      "category": "METAL",
+      "base_price": 160,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "aluminum_alloy",
+      "name": "Aluminum Alloy",
+      "category": "METAL",
+      "base_price": 170,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "titanium_bars",
+      "name": "Titanium Bars",
+      "category": "METAL",
+      "base_price": 210,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "precision_alloys",
+      "name": "Precision Alloys",
+      "category": "METAL",
+      "base_price": 240,
+      "tags": ["industrial", "technological"]
+    },
+    {
+      "sku": "decorative_metals",
+      "name": "Decorative Metals",
+      "category": "METAL",
+      "base_price": 220,
+      "tags": ["luxury"]
+    },
+
+    {
+      "sku": "basic_medkits",
+      "name": "Basic Medkits",
+      "category": "MEDICINE",
+      "base_price": 180,
+      "tags": ["medical", "essential"]
+    },
+    {
+      "sku": "advanced_pharmaceuticals",
+      "name": "Advanced Pharmaceuticals",
+      "category": "MEDICINE",
+      "base_price": 220,
+      "tags": ["medical"]
+    },
+    {
+      "sku": "field_stimulants",
+      "name": "Field Stimulants",
+      "category": "MEDICINE",
+      "base_price": 240,
+      "tags": ["medical", "hazardous"]
+    },
+    {
+      "sku": "gene_therapy_kits",
+      "name": "Gene Therapy Kits",
+      "category": "MEDICINE",
+      "base_price": 320,
+      "tags": ["medical", "biological"],
+      "possible_tag": "stolen"
+    },
+    {
+      "sku": "medical_nanites",
+      "name": "Medical Nanites",
+      "category": "MEDICINE",
+      "base_price": 360,
+      "tags": ["medical", "technological"],
+      "possible_tag": "cybernetic"
+    },
+    {
+      "sku": "designer_drugs",
+      "name": "Designer Drugs",
+      "category": "MEDICINE",
+      "base_price": 300,
+      "tags": ["medical"],
+      "possible_tag": "luxury"
+    },
+
+    {
+      "sku": "mechanical_parts",
+      "name": "Mechanical Parts",
+      "category": "PARTS",
+      "base_price": 160,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "electronic_components",
+      "name": "Electronic Components",
+      "category": "PARTS",
+      "base_price": 180,
+      "tags": ["technological"]
+    },
+    {
+      "sku": "cybernetic_implants",
+      "name": "Cybernetic Implants",
+      "category": "PARTS",
+      "base_price": 260,
+      "tags": ["cybernetic", "medical"]
+    },
+    {
+      "sku": "servitor_units",
+      "name": "Servitor Units",
+      "category": "PARTS",
+      "base_price": 220,
+      "tags": ["technological"],
+      "possible_tag": "weaponized"
+    },
+    {
+      "sku": "autonomous_robots",
+      "name": "Autonomous Robots",
+      "category": "PARTS",
+      "base_price": 300,
+      "tags": ["technological", "sentient_adjacent"],
+      "possible_tag": "weaponized"
+    },
+    {
+      "sku": "synthetic_intelligences",
+      "name": "Synthetic Intelligences",
+      "category": "PARTS",
+      "base_price": 420,
+      "tags": ["technological", "sentient_adjacent", "synthetic"],
+      "possible_tag": "weaponized"
+    },
+
+    {
+      "sku": "standard_fuel",
+      "name": "Standard Fuel",
+      "category": "ENERGY",
+      "base_price": 150,
+      "tags": ["energy"]
+    },
+    {
+      "sku": "high_density_fuel",
+      "name": "High-Density Fuel",
+      "category": "ENERGY",
+      "base_price": 200,
+      "tags": ["energy", "hazardous"]
+    },
+    {
+      "sku": "power_cells",
+      "name": "Power Cells",
+      "category": "ENERGY",
+      "base_price": 180,
+      "tags": ["energy"]
+    },
+    {
+      "sku": "fusion_cores",
+      "name": "Fusion Cores",
+      "category": "ENERGY",
+      "base_price": 340,
+      "tags": ["energy", "technological"]
+    },
+    {
+      "sku": "experimental_reactors",
+      "name": "Experimental Reactors",
+      "category": "ENERGY",
+      "base_price": 420,
+      "tags": ["energy", "technological"],
+      "possible_tag": "hazardous"
+    },
+
+    {
+      "sku": "navigation_charts",
+      "name": "Navigation Charts",
+      "category": "DATA",
+      "base_price": 140,
+      "tags": ["data"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "encrypted_records",
+      "name": "Encrypted Records",
+      "category": "DATA",
+      "base_price": 200,
+      "tags": ["data"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "media_packages",
+      "name": "Media Packages",
+      "category": "DATA",
+      "base_price": 160,
+      "tags": ["data", "cultural"],
+      "possible_tag": "propaganda"
+    },
+    {
+      "sku": "propaganda_feeds",
+      "name": "Propaganda Feeds",
+      "category": "DATA",
+      "base_price": 180,
+      "tags": ["data", "propaganda"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "ai_training_sets",
+      "name": "AI Training Sets",
+      "category": "DATA",
+      "base_price": 300,
+      "tags": ["data", "sentient_adjacent"],
+      "possible_tag": "stolen"
+    },
+
+    {
+      "sku": "small_arms",
+      "name": "Small Arms",
+      "category": "WEAPONS",
+      "base_price": 220,
+      "tags": ["weaponized"]
+    },
+    {
+      "sku": "heavy_weapons",
+      "name": "Heavy Weapons",
+      "category": "WEAPONS",
+      "base_price": 320,
+      "tags": ["weaponized"]
+    },
+    {
+      "sku": "ship_weapons",
+      "name": "Ship Weapons",
+      "category": "WEAPONS",
+      "base_price": 400,
+      "tags": ["weaponized"]
+    },
+    {
+      "sku": "experimental_weapons",
+      "name": "Experimental Weapons",
+      "category": "WEAPONS",
+      "base_price": 520,
+      "tags": ["weaponized", "hazardous"],
+      "possible_tag": "stolen"
+    },
+    {
+      "sku": "biological_weapons",
+      "name": "Biological Weapons",
+      "category": "WEAPONS",
+      "base_price": 600,
+      "tags": ["weaponized", "biological", "hazardous"]
+    },
+
+    {
+      "sku": "fine_art",
+      "name": "Fine Art",
+      "category": "LUXURY",
+      "base_price": 260,
+      "tags": ["luxury", "cultural"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "designer_goods",
+      "name": "Designer Goods",
+      "category": "LUXURY",
+      "base_price": 300,
+      "tags": ["luxury"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "consumer_goods",
+      "name": "Consumer Goods",
+      "category": "LUXURY",
+      "base_price": 200,
+      "tags": ["luxury"],
+      "possible_tag": "counterfeit"
+    },
+    {
+      "sku": "prestige_technology",
+      "name": "Prestige Technology",
+      "category": "LUXURY",
+      "base_price": 420,
+      "tags": ["luxury", "technological"],
+      "possible_tag": "counterfeit"
+    },
+
+    {
+      "sku": "industrial_chemicals",
+      "name": "Industrial Chemicals",
+      "category": "CHEMICALS",
+      "base_price": 150,
+      "tags": ["synthetic"]
+    },
+    {
+      "sku": "medical_compounds",
+      "name": "Medical Compounds",
+      "category": "CHEMICALS",
+      "base_price": 180,
+      "tags": ["medical", "synthetic"]
+    },
+    {
+      "sku": "toxic_agents",
+      "name": "Toxic Agents",
+      "category": "CHEMICALS",
+      "base_price": 260,
+      "tags": ["hazardous"]
+    },
+    {
+      "sku": "experimental_serums",
+      "name": "Experimental Serums",
+      "category": "CHEMICALS",
+      "base_price": 300,
+      "tags": ["biological", "hazardous"],
+      "possible_tag": "stolen"
+    },
+
+    {
+      "sku": "industrial_machinery",
+      "name": "Industrial Machinery",
+      "category": "MACHINERY",
+      "base_price": 260,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "mining_equipment",
+      "name": "Mining Equipment",
+      "category": "MACHINERY",
+      "base_price": 280,
+      "tags": ["industrial"]
+    },
+    {
+      "sku": "automated_factories",
+      "name": "Automated Factories",
+      "category": "MACHINERY",
+      "base_price": 360,
+      "tags": ["industrial", "technological"],
+      "possible_tag": "weaponized"
+    },
+    {
+      "sku": "military_hardware",
+      "name": "Military Hardware",
+      "category": "MACHINERY",
+      "base_price": 420,
+      "tags": ["weaponized"]
+    }
+  ]
+}

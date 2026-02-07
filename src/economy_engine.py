@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from economy_data import GOODS, RESOURCE_PROFILES
+from economy_data import CATEGORIES, RESOURCE_PROFILES
 from logger import Logger
 from world_generator import Sector
 
@@ -19,7 +19,7 @@ AVAILABILITY_MODIFIERS: Dict[str, float] = {
 @dataclass(frozen=True)
 class TradeAction:
     system_id: str
-    good_id: str
+    category_id: str
     delta: int  # +1 for sell, -1 for buy
     cause: str  # player_buy or player_sell
 
@@ -40,47 +40,43 @@ class EconomyEngine:
             self._prices[system.system_id] = {}
             self._last_cause[system.system_id] = {}
             self._pressure[system.system_id] = {}
-            for good in GOODS:
-                self._availability[system.system_id][good.good_id] = "STABLE"
-                self._prices[system.system_id][good.good_id] = self._price_for(
+            for category in CATEGORIES:
+                self._availability[system.system_id][category.category_id] = "STABLE"
+                self._prices[system.system_id][category.category_id] = self._price_for(
                     availability="STABLE",
-                    good_id=good.good_id,
+                    category_id=category.category_id,
                 )
-                self._last_cause[system.system_id][good.good_id] = "production"
-                self._pressure[system.system_id][good.good_id] = 0
+                self._last_cause[system.system_id][category.category_id] = "production"
+                self._pressure[system.system_id][category.category_id] = 0
 
-    def availability(self, system_id: str, good_id: str) -> str:
-        return self._availability[system_id][good_id]
+    def availability(self, system_id: str, category_id: str) -> str:
+        return self._availability[system_id][category_id]
 
-    def price(self, system_id: str, good_id: str) -> float:
-        return self._prices[system_id][good_id]
+    def price(self, system_id: str, category_id: str) -> float:
+        return self._prices[system_id][category_id]
 
     def all_prices(self) -> Dict[str, Dict[str, float]]:
         return self._prices
 
-    def population_summary(self, system_id: str) -> tuple[int, float, Dict[str, Dict[str, float]]]:
+    def category_summary(self, system_id: str) -> Dict[str, Dict[str, float]]:
         profile_id = self._profile_id(system_id)
         profile = RESOURCE_PROFILES[profile_id]
-        level = self._population_level(system_id)
-        scalar = self._population_scalar(level)
         values: Dict[str, Dict[str, float]] = {}
-        for good in GOODS:
-            production, consumption, capacity = self._scaled_values(
-                system_id=system_id,
-                production=profile.production[good.good_id],
-                consumption=profile.consumption[good.good_id],
-            )
-            values[good.good_id] = {
-                "production": production,
-                "consumption": consumption,
-                "capacity": capacity,
+        for category in CATEGORIES:
+            production = profile.production[category.category_id]
+            consumption = profile.consumption[category.category_id]
+            capacity = max(production, consumption)
+            values[category.category_id] = {
+                "production": float(production),
+                "consumption": float(consumption),
+                "capacity": float(capacity),
             }
-        return level, scalar, values
+        return values
 
     def advance_turn(self, turn: int, trade_action: Optional[TradeAction] = None) -> None:
         trade_delta: Dict[Tuple[str, str], TradeAction] = {}
         if trade_action is not None:
-            trade_delta[(trade_action.system_id, trade_action.good_id)] = trade_action
+            trade_delta[(trade_action.system_id, trade_action.category_id)] = trade_action
 
         old_availability = {
             system_id: dict(goods)
@@ -91,67 +87,65 @@ class EconomyEngine:
         for system in self._sector.systems:
             profile_id = system.attributes.get("profile_id")
             profile = RESOURCE_PROFILES[profile_id]
-            for good in GOODS:
-                key = (system.system_id, good.good_id)
+            for category in CATEGORIES:
+                key = (system.system_id, category.category_id)
                 trade = trade_delta.get(key)
-                production, consumption, capacity = self._scaled_values(
-                    system_id=system.system_id,
-                    production=profile.production[good.good_id],
-                    consumption=profile.consumption[good.good_id],
-                )
+                production = profile.production[category.category_id]
+                consumption = profile.consumption[category.category_id]
+                capacity = max(production, consumption)
                 pressure_change = production - consumption
                 if trade is not None:
                     pressure_change += trade.delta
 
-                self._pressure[system.system_id][good.good_id] += pressure_change
-                pressure = self._pressure[system.system_id][good.good_id]
+                self._pressure[system.system_id][category.category_id] += pressure_change
+                pressure = self._pressure[system.system_id][category.category_id]
                 threshold = capacity * 2
                 new_state = self._state_from_pressure(pressure, threshold)
-                if new_state != old_availability[system.system_id][good.good_id]:
+                if new_state != old_availability[system.system_id][category.category_id]:
                     if trade is not None:
                         cause = trade.cause
                     else:
                         cause = "net_positive" if pressure_change > 0 else "net_negative"
-                    self._availability[system.system_id][good.good_id] = new_state
-                    self._last_cause[system.system_id][good.good_id] = cause
+                    self._availability[system.system_id][category.category_id] = new_state
+                    self._last_cause[system.system_id][category.category_id] = cause
 
         for system in self._sector.systems:
-            for good in GOODS:
+            for category in CATEGORIES:
                 system_id = system.system_id
-                good_id = good.good_id
-                availability = self._availability[system_id][good_id]
-                if availability == old_availability[system_id][good_id]:
-                    self._prices[system_id][good_id] = old_prices[system_id][good_id]
+                category_id = category.category_id
+                availability = self._availability[system_id][category_id]
+                if availability == old_availability[system_id][category_id]:
+                    self._prices[system_id][category_id] = old_prices[system_id][category_id]
                     continue
-                new_price = self._price_for(availability=availability, good_id=good_id)
-                self._prices[system_id][good_id] = new_price
+                new_price = self._price_for(availability=availability, category_id=category_id)
+                self._prices[system_id][category_id] = new_price
 
         for system in self._sector.systems:
-            for good in GOODS:
+            for category in CATEGORIES:
                 system_id = system.system_id
-                good_id = good.good_id
-                old_state = old_availability[system_id][good_id]
-                new_state = self._availability[system_id][good_id]
-                old_price = old_prices[system_id][good_id]
-                new_price = self._prices[system_id][good_id]
+                category_id = category.category_id
+                old_state = old_availability[system_id][category_id]
+                new_state = self._availability[system_id][category_id]
+                old_price = old_prices[system_id][category_id]
+                new_price = self._prices[system_id][category_id]
                 if old_state == new_state and old_price == new_price:
                     continue
 
-                cause = self._last_cause[system_id][good_id]
+                cause = self._last_cause[system_id][category_id]
                 self._logger.log(
                     turn=turn,
                     action="economy_update",
                     state_change=(
-                        f"system_id={system_id} good_id={good_id} "
+                        f"system_id={system_id} category_id={category_id} "
                         f"availability {old_state}->{new_state} "
                         f"price {old_price:.2f}->{new_price:.2f} "
                         f"cause={cause}"
                     ),
                 )
 
-    def _price_for(self, availability: str, good_id: str) -> float:
+    def _price_for(self, availability: str, category_id: str) -> float:
         modifier = AVAILABILITY_MODIFIERS[availability]
-        base_price = next(g for g in GOODS if g.good_id == good_id).base_price
+        base_price = next(c for c in CATEGORIES if c.category_id == category_id).base_price
         return base_price * modifier
 
     @staticmethod
@@ -166,29 +160,6 @@ class EconomyEngine:
             return "ABUNDANT"
         return "STABLE"
 
-    def _scaled_values(
-        self,
-        system_id: str,
-        production: int,
-        consumption: int,
-    ) -> tuple[float, float, float]:
-        population_level = self._population_level(system_id)
-        scalar = self._population_scalar(population_level)
-        scaled_production = production * scalar
-        scaled_consumption = consumption * scalar
-        base_capacity = max(production, consumption)
-        scaled_capacity = base_capacity * scalar
-        return scaled_production, scaled_consumption, scaled_capacity
-
-    def _population_level(self, system_id: str) -> int:
-        system = self._sector.get_system(system_id)
-        if system is None:
-            raise ValueError(f"Unknown system_id: {system_id}")
-        level = system.attributes.get("population_level", 3)
-        if level not in (0, 1, 2, 3, 4, 5):
-            raise ValueError(f"Invalid population level: {level}")
-        return level
-
     def _profile_id(self, system_id: str) -> str:
         system = self._sector.get_system(system_id)
         if system is None:
@@ -197,18 +168,6 @@ class EconomyEngine:
         if profile_id not in RESOURCE_PROFILES:
             raise ValueError(f"Unknown profile_id: {profile_id}")
         return profile_id
-
-    @staticmethod
-    def _population_scalar(level: int) -> float:
-        table = {
-            0: 0.0,
-            1: 0.25,
-            2: 0.50,
-            3: 1.00,
-            4: 1.75,
-            5: 2.50,
-        }
-        return table[level]
 
     @staticmethod
     def _step_state(state: str, direction: int) -> str:

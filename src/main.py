@@ -1,8 +1,9 @@
 import sys
 from pathlib import Path
 
-from economy_data import GOODS
+from economy_data import CATEGORIES
 from economy_engine import EconomyEngine
+from data_catalog import DataCatalog, load_data_catalog
 from government_registry import GovernmentRegistry
 from government_law_engine import GovernmentLawEngine
 from logger import Logger
@@ -40,12 +41,16 @@ def main() -> None:
     print(version_contents)
 
     seed = parse_seed(sys.argv)
+    catalog = load_data_catalog()
+    _log_data_catalog(catalog, logger, seed=seed)
     government_registry = _load_governments()
     law_engine = GovernmentLawEngine(registry=government_registry, logger=logger, seed=seed)
     generator = WorldGenerator(
         seed=seed,
         system_count=5,
         government_ids=government_registry.government_ids(),
+        catalog=catalog,
+        logger=logger,
     )
     sector = generator.generate()
 
@@ -67,53 +72,48 @@ def main() -> None:
         action="init",
         state_change=f"seed={seed} start_location={start_system_id}",
     )
-    _log_governments(sector, government_registry, logger, time_engine.current_turn)
     _log_system_stat_blocks(sector, government_registry, logger, time_engine.current_turn)
 
-    print("Initial prices:")
-    _print_prices(sector, economy_engine)
-    print("Population:")
-    _print_population(sector, economy_engine)
-    print("Governments:")
-    _print_governments(sector, government_registry)
+    print("System Stat Blocks:")
+    _print_system_stat_blocks(sector, government_registry)
 
     system_ids = sector.system_ids()
     if len(system_ids) > 1:
         turn_loop.execute_move(MoveAction(target_system_id=system_ids[1]))
-    turn_loop.execute_buy(BuyAction(good_id="FOOD"))
-    turn_loop.execute_buy(BuyAction(good_id="MEDICINE"))
-    turn_loop.execute_sell(SellAction(good_id="FOOD"))
+    turn_loop.execute_buy(BuyAction(category_id="FOOD"))
+    turn_loop.execute_buy(BuyAction(category_id="MEDICINE"))
+    turn_loop.execute_sell(SellAction(category_id="FOOD"))
     if len(system_ids) > 2:
         turn_loop.execute_move(MoveAction(target_system_id=system_ids[2]))
-        turn_loop.execute_sell(SellAction(good_id="MEDICINE"))
+        turn_loop.execute_sell(SellAction(category_id="MEDICINE"))
 
     print("Prices after actions:")
     _print_prices(sector, economy_engine)
 
 
-def _print_population(sector: Sector, economy_engine: EconomyEngine) -> None:
-    for system in sector.systems:
-        level, scalar, values = economy_engine.population_summary(system.system_id)
-        print(f"{system.system_id} {system.name} population_level={level} scalar={scalar:.2f}")
-        for good in GOODS:
-            data = values[good.good_id]
-            print(
-                "  "
-                f"{good.good_id} "
-                f"production={data['production']:.2f} "
-                f"consumption={data['consumption']:.2f} "
-                f"capacity={data['capacity']:.2f}"
-            )
-
-
-def _print_governments(sector: Sector, registry: GovernmentRegistry) -> None:
+def _print_system_stat_blocks(sector: Sector, registry: GovernmentRegistry) -> None:
     for system in sector.systems:
         government_id = system.attributes.get("government_id")
         government = registry.get_government(government_id)
-        print(
-            f"{system.system_id} {system.name} "
-            f"government_id={government.id} government_name={government.name}"
-        )
+        population_level = system.attributes.get("population_level", 3)
+        primary_economy = system.attributes.get("primary_economy")
+        secondary_economies = system.attributes.get("secondary_economies", [])
+        market = system.attributes.get("market")
+        print(f"{system.system_id} {system.name}")
+        print(f"  government={government.name} ({government.id})")
+        print(f"  population={population_level}")
+        print(f"  economy primary={primary_economy} secondary={secondary_economies}")
+        if market is None:
+            print("  market=none")
+            continue
+        for category_id, market_category in market.categories.items():
+            produced = ", ".join(good.sku for good in market_category.produced)
+            consumed = ", ".join(good.sku for good in market_category.consumed)
+            neutral = ", ".join(good.sku for good in market_category.neutral)
+            print(
+                f"  market {category_id} "
+                f"produced=[{produced}] consumed=[{consumed}] neutral=[{neutral}]"
+            )
 
 
 def _log_governments(
@@ -150,7 +150,10 @@ def _log_system_stat_blocks(
         government_id = system.attributes.get("government_id")
         government = registry.get_government(government_id)
         population_level = system.attributes.get("population_level", 3)
-        price_parts = [f"{good.good_id}={good.base_price}" for good in GOODS]
+        primary_economy = system.attributes.get("primary_economy")
+        secondary_economies = system.attributes.get("secondary_economies", [])
+        market = system.attributes.get("market")
+        economy_block = f"primary={primary_economy} secondary={secondary_economies}"
         logger.log(
             turn=turn,
             action="diagnostic",
@@ -158,9 +161,48 @@ def _log_system_stat_blocks(
                 f"System {system.system_id} {system.name} | "
                 f"Government {government.name} ({government.id}) | "
                 f"Population {population_level} | "
-                f"BasePrices {' '.join(price_parts)} | "
-                "Notes"
+                f"Economy {economy_block}"
             ),
+        )
+        if market is None:
+            logger.log(
+                turn=turn,
+                action="diagnostic",
+                state_change=f"system_id={system.system_id} market=none",
+            )
+            continue
+        for category_id, market_category in market.categories.items():
+            produced = [good.sku for good in market_category.produced]
+            consumed = [good.sku for good in market_category.consumed]
+            neutral = [good.sku for good in market_category.neutral]
+            logger.log(
+                turn=turn,
+                action="diagnostic",
+                state_change=(
+                    f"system_id={system.system_id} market_category={category_id} "
+                    f"produced={produced} consumed={consumed} neutral={neutral}"
+                ),
+            )
+
+
+def _log_data_catalog(catalog: DataCatalog, logger: Logger, seed: int) -> None:
+    logger.log(
+        turn=0,
+        action="diagnostic",
+        state_change=(
+            f"[DIAGNOSTIC] Data Catalog seed={seed} "
+            f"tags={len(catalog.tags)} goods={len(catalog.goods)} "
+            f"economies={len(catalog.economies)}"
+        ),
+    )
+    goods_by_category = catalog.goods_by_category()
+    for category_id, goods in goods_by_category.items():
+        if not goods:
+            continue
+        logger.log(
+            turn=0,
+            action="diagnostic",
+            state_change=f"[DIAGNOSTIC] Goods {category_id} count={len(goods)}",
         )
 
 
@@ -172,9 +214,9 @@ def _load_governments() -> GovernmentRegistry:
 def _print_prices(sector: Sector, economy_engine: EconomyEngine) -> None:
     for system in sector.systems:
         parts = []
-        for good in GOODS:
-            price = economy_engine.price(system.system_id, good.good_id)
-            parts.append(f"{good.good_id}={price:.2f}")
+        for category in CATEGORIES:
+            price = economy_engine.price(system.system_id, category.category_id)
+            parts.append(f"{category.category_id}={price:.2f}")
         print(f"{system.system_id} {system.name} " + " ".join(parts))
 
 

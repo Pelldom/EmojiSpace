@@ -7,7 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
-from economy_data import GOODS, RESOURCE_PROFILES  # noqa: E402
+from economy_data import CATEGORIES, RESOURCE_PROFILES  # noqa: E402
+from data_catalog import load_data_catalog  # noqa: E402
 from world_generator import Sector, System, WorldGenerator  # noqa: E402
 
 
@@ -77,16 +78,16 @@ def report_population_scaling(sector: Sector) -> None:
 
         print(f"{system.system_id} {system.name}")
         print(f"  population_level={population_level} scalar={scalar:.2f}")
-        for good in GOODS:
-            base_production = profile.production[good.good_id]
-            base_consumption = profile.consumption[good.good_id]
+        for category in CATEGORIES:
+            base_production = profile.production[category.category_id]
+            base_consumption = profile.consumption[category.category_id]
             base_capacity = max(base_production, base_consumption)
             final_production = base_production * scalar
             final_consumption = base_consumption * scalar
             final_capacity = base_capacity * scalar
             print(
                 "  "
-                f"{good.good_id} "
+                f"{category.category_id} "
                 f"base(prod={base_production} cons={base_consumption} cap={base_capacity}) "
                 f"final(prod={final_production:.2f} cons={final_consumption:.2f} cap={final_capacity:.2f})"
             )
@@ -95,7 +96,8 @@ def report_population_scaling(sector: Sector) -> None:
 def main() -> None:
     seed = parse_seed(sys.argv)
     rng = random.Random(seed)
-    generator = WorldGenerator(seed=seed, system_count=5)
+    catalog = load_data_catalog()
+    generator = WorldGenerator(seed=seed, system_count=5, catalog=catalog)
     sector = generator.generate()
     test_sector = assign_population_levels(sector, rng)
     report_population_scaling(test_sector)

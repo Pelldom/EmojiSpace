@@ -3,6 +3,9 @@ from typing import List, Optional
 import random
 
 from economy_data import PROFILE_IDS
+from data_catalog import DataCatalog, load_data_catalog
+from logger import Logger
+from market_creation import MarketCreator
 
 
 @dataclass(frozen=True)
@@ -28,13 +31,23 @@ class Sector:
 
 
 class WorldGenerator:
-    def __init__(self, seed: int, system_count: int = 5, government_ids: List[str] | None = None) -> None:
+    def __init__(
+        self,
+        seed: int,
+        system_count: int = 5,
+        government_ids: List[str] | None = None,
+        catalog: DataCatalog | None = None,
+        logger: Logger | None = None,
+    ) -> None:
         self._seed = seed
         self._system_count = system_count
         self._government_ids = government_ids or []
+        self._catalog = catalog or load_data_catalog()
+        self._logger = logger
 
     def generate(self) -> Sector:
         rng = random.Random(self._seed)
+        market_creator = MarketCreator(self._catalog, rng, self._logger)
         base_names = [
             "Aster",
             "Beacon",
@@ -57,12 +70,23 @@ class WorldGenerator:
             system_id = f"SYS-{index + 1:03d}"
             name = base_names[index % len(base_names)]
             profile_id = profiles[index % len(profiles)]
+            # Population changes require explicit Situation Engine handling.
             population_level = self._weighted_population_level(rng)
             government_id = self._choose_government_id(rng)
+            economy_assignment = market_creator.assign_economies(population_level)
+            market = market_creator.create_market(
+                system_id=system_id,
+                population_level=population_level,
+                primary_economy=economy_assignment.primary,
+                secondary_economies=economy_assignment.secondary,
+            )
             attributes = {
                 "profile_id": profile_id,
                 "population_level": population_level,
                 "government_id": government_id,
+                "primary_economy": economy_assignment.primary,
+                "secondary_economies": list(economy_assignment.secondary),
+                "market": market,
             }
             systems.append(
                 System(

@@ -1,0 +1,78 @@
+{
+  "version": "1.1",
+  "description": "Frozen tag vocabulary for EmojiSpace. Each tag includes a canonical emoji used across UI, logs, and diagnostics.",
+  "tags": {
+    "essential": {
+      "emoji": "Ì†ºÌΩû",
+      "description": "Basic survival goods required for life and stability"
+    },
+    "industrial": {
+      "emoji": "Ì†ºÌø≠",
+      "description": "Raw materials and manufactured components"
+    },
+    "energy": {
+      "emoji": "‚ö°",
+      "description": "Power generation, storage, and fuel"
+    },
+    "medical": {
+      "emoji": "Ì†ΩÌ≤ä",
+      "description": "Health, treatment, and biological maintenance"
+    },
+    "agricultural": {
+      "emoji": "Ì†ºÌºæ",
+      "description": "Food production and biological cultivation"
+    },
+    "technological": {
+      "emoji": "Ì†ΩÌ≤æ",
+      "description": "Advanced tools, electronics, and computing"
+    },
+    "luxury": {
+      "emoji": "Ì†ΩÌ≤é",
+      "description": "Non-essential goods associated with wealth or status"
+    },
+    "cultural": {
+      "emoji": "Ì†ºÌæ≠",
+      "description": "Art, heritage, and identity-related goods"
+    },
+    "data": {
+      "emoji": "Ì†ΩÌ≥°",
+      "description": "Information, records, and digital assets"
+    },
+    "hazardous": {
+      "emoji": "‚ò£Ô∏è",
+      "description": "Dangerous goods posing risk to health or environment"
+    },
+    "weaponized": {
+      "emoji": "Ì†ΩÌ¥´",
+      "description": "Goods intended for combat or violence"
+    },
+    "cybernetic": {
+      "emoji": "Ì†æÌ∂æ",
+      "description": "Mechanical or electronic human augmentation"
+    },
+    "biological": {
+      "emoji": "Ì†æÌ∑¨",
+      "description": "Living, organic, or bioengineered materials"
+    },
+    "synthetic": {
+      "emoji": "Ì†æÌ∑™",
+      "description": "Artificially created or chemically engineered goods"
+    },
+    "sentient_adjacent": {
+      "emoji": "Ì†æÌ¥ñ",
+      "description": "Goods bordering on or involving artificial intelligence"
+    },
+    "propaganda": {
+      "emoji": "Ì†ΩÌ≥¢",
+      "description": "Ideological or influence-driven information goods"
+    },
+    "counterfeit": {
+      "emoji": "Ì†æÌ∫™",
+      "description": "Forged or falsified goods and documentation"
+    },
+    "stolen": {
+      "emoji": "Ì†ΩÌµ∂Ô∏è",
+      "description": "Illegitimately acquired goods"
+    }
+  }
+}

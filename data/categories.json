@@ -1,0 +1,50 @@
+{
+  "version": "1.1",
+  "description": "Frozen goods categories for EmojiSpace. Categories are broad economic groupings and do not affect legality directly.",
+  "categories": {
+    "FOOD": {
+      "emoji": "Ì†ºÌΩû",
+      "description": "Consumable goods required for sustenance"
+    },
+    "ORE": {
+      "emoji": "‚õèÔ∏è",
+      "description": "Raw and unrefined natural resources"
+    },
+    "METAL": {
+      "emoji": "Ì†æÌ∫®",
+      "description": "Refined ores, alloys, and processed metals"
+    },
+    "MEDICINE": {
+      "emoji": "Ì†ΩÌ≤ä",
+      "description": "Medical supplies and health-related goods"
+    },
+    "PARTS": {
+      "emoji": "Ì†ΩÌ¥©",
+      "description": "General-purpose components, including mechanical and cybernetic parts"
+    },
+    "ENERGY": {
+      "emoji": "‚ö°",
+      "description": "Fuel, power, and energy storage goods"
+    },
+    "DATA": {
+      "emoji": "Ì†ΩÌ≥°",
+      "description": "Information, records, and digital commodities"
+    },
+    "WEAPONS": {
+      "emoji": "Ì†ΩÌ¥´",
+      "description": "Goods designed for combat or violence"
+    },
+    "LUXURY": {
+      "emoji": "Ì†ΩÌ≤é",
+      "description": "High-value non-essential goods"
+    },
+    "CHEMICALS": {
+      "emoji": "Ì†æÌ∑™",
+      "description": "Chemical, synthetic, or hazardous substances"
+    },
+    "MACHINERY": {
+      "emoji": "Ì†ºÌø≠",
+      "description": "Heavy industrial and strategic equipment"
+    }
+  }
+}

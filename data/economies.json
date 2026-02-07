@@ -1,0 +1,117 @@
+{
+  "version": "0.4",
+  "status": "draft",
+  "description": "Economies define production, consumption, and neutral-category biases for system markets. Systems have one primary economy and may have multiple secondary economies. Economies add bias only; they do not imply population size, technology level, legality, or development.",
+  "economies": [
+
+    {
+      "id": "mining",
+      "name": "Mining",
+      "produces": ["ORE", "METAL"],
+      "consumes": ["FOOD", "MEDICINE", "PARTS", "ENERGY"],
+      "neutral_categories": ["PARTS", "MACHINERY"],
+      "possible_tag_bias": {},
+      "description": "Focused on extraction of raw and refined materials."
+    },
+
+    {
+      "id": "agricultural",
+      "name": "Agricultural",
+      "produces": ["FOOD", "CHEMICALS"],
+      "consumes": ["METAL", "PARTS", "ENERGY"],
+      "neutral_categories": ["LUXURY", "DATA"],
+      "possible_tag_bias": {
+        "luxury": 0.05
+      },
+      "description": "Biological production including foodstuffs and organic compounds."
+    },
+
+    {
+      "id": "industrial",
+      "name": "Industrial",
+      "produces": ["PARTS", "MACHINERY", "ENERGY"],
+      "consumes": ["ORE", "METAL"],
+      "neutral_categories": ["DATA", "MEDICINE"],
+      "possible_tag_bias": {},
+      "description": "Large-scale manufacturing, processing, and power generation."
+    },
+
+    {
+      "id": "tech",
+      "name": "Tech",
+      "produces": ["DATA", "PARTS"],
+      "consumes": ["ENERGY", "METAL"],
+      "neutral_categories": ["MEDICINE", "LUXURY"],
+      "possible_tag_bias": {},
+      "description": "Advanced technology development and information systems."
+    },
+
+    {
+      "id": "military",
+      "name": "Military",
+      "produces": ["WEAPONS", "MACHINERY"],
+      "consumes": ["ENERGY", "PARTS", "METAL"],
+      "neutral_categories": ["FOOD", "MEDICINE"],
+      "possible_tag_bias": {
+        "weaponized": 0.1
+      },
+      "description": "Defense, security, and force projection."
+    },
+
+    {
+      "id": "tourism",
+      "name": "Tourism",
+      "produces": ["LUXURY", "FOOD", "DATA"],
+      "consumes": ["FOOD", "ENERGY", "MEDICINE"],
+      "neutral_categories": ["LUXURY", "DATA", "MEDICINE"],
+      "possible_tag_bias": {
+        "luxury": 0.15
+      },
+      "description": "Visitor-focused economy emphasizing experiences, prestige, and culture."
+    },
+
+    {
+      "id": "cultural",
+      "name": "Cultural",
+      "produces": ["LUXURY", "DATA"],
+      "consumes": ["FOOD", "ENERGY"],
+      "neutral_categories": ["FOOD", "LUXURY", "DATA"],
+      "possible_tag_bias": {},
+      "description": "Artistic, heritage, and influence-driven economic activity."
+    },
+
+    {
+      "id": "trade",
+      "name": "Trade",
+      "produces": [],
+      "consumes": [],
+      "neutral_categories": [
+        "FOOD",
+        "METAL",
+        "PARTS",
+        "ENERGY",
+        "DATA",
+        "LUXURY",
+        "MEDICINE",
+        "CHEMICALS"
+      ],
+      "possible_tag_bias": {
+        "counterfeit": 0.05
+      },
+      "description": "Exchange-focused economy that broadens markets by increasing the range of neutral categories present."
+    },
+
+    {
+      "id": "research",
+      "name": "Research",
+      "produces": ["DATA", "MEDICINE", "ENERGY"],
+      "consumes": ["PARTS", "CHEMICALS"],
+      "neutral_categories": ["DATA", "CHEMICALS"],
+      "possible_tag_bias": {
+        "stolen": 0.1
+      },
+      "description": "Experimental and cutting-edge development, often power-intensive and component-hungry."
+    }
+
+  ]
+}
