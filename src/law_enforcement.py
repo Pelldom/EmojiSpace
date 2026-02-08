@@ -447,6 +447,7 @@ def enforcement_checkpoint(
             action="detention_tier2",
             state_change=f"system_id={system_id} game_over=True",
         )
+        player.end_run("tier2_arrest", logger=logger, turn=turn, system_id=system_id)
 
     _apply_outcome(player, system_id, outcome)
     logger.log(

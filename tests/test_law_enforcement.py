@@ -448,6 +448,19 @@ def test_detention_tier2_game_over() -> None:
     assert outcome.dead is True
 
 
+def test_victory_eligibility_toggle() -> None:
+    logger = CollectLogger()
+    player = PlayerState(start_system_id="SYS-TEST")
+    player.set_progression_track("notoriety", 50, logger=logger, turn=1, system_id="SYS-TEST")
+    player.set_progression_track("trust", 100, logger=logger, turn=2, system_id="SYS-TEST")
+    assert player.victory_eligible is True
+    assert player.victory_track == "trust"
+    player.set_progression_track("notoriety", 60, logger=logger, turn=3, system_id="SYS-TEST")
+    assert player.victory_eligible is False
+    assert any("victory_eligible" in entry for entry in logger.entries)
+    assert any("victory_eligibility_revoked" in entry for entry in logger.entries)
+
+
 class CollectLogger:
     def __init__(self) -> None:
         self.entries: list[str] = []
