@@ -417,7 +417,7 @@ def test_detention_tier1_confiscates_and_removes_ship_preserves_credits() -> Non
     assert outcome.detention_tier == 1
     assert player.has_ship() is False
     assert player.holdings_snapshot().get("contraband", 0) == 0
-    assert player.credits() == 500
+    assert player.credits == 500
 
 
 def test_detention_tier2_game_over() -> None:

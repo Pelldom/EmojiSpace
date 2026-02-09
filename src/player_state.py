@@ -1,6 +1,11 @@
 class PlayerState:
-    def __init__(self, start_system_id: str) -> None:
+    HISTORY_TIMELINE_MAX = 100
+
+    def __init__(self, start_system_id: str, player_id: str = "player") -> None:
+        self.player_id = player_id
         self._location_system_id = start_system_id
+        self.active_ship_id: str | None = None
+        self.owned_ship_ids: list[str] = []
         self._holdings: dict[str, int] = {}
         self._reputation: int = 0
         self._credits: int = 0
@@ -24,10 +29,24 @@ class PlayerState:
         self._licenses_by_system: dict[str, dict[str, bool]] = {}
         self._warrants_by_system: dict[str, bool] = {}
         self._fines_by_system: dict[str, int] = {}
+        self.reputation_by_system = self._reputation_by_system
+        self.heat_by_system = self._heat_by_system
+        self.warrants_by_system = self._warrants_by_system
+        self.mission_slots: int = 1
+        self.active_mission_ids: list[str] = []
+        self.history_timeline: list[dict[str, object]] = []
 
     @property
     def location_system_id(self) -> str:
         return self._location_system_id
+
+    @property
+    def current_system_id(self) -> str:
+        return self._location_system_id
+
+    @current_system_id.setter
+    def current_system_id(self, system_id: str) -> None:
+        self._location_system_id = system_id
 
     def move_to(self, system_id: str) -> str:
         previous = self._location_system_id
@@ -49,6 +68,7 @@ class PlayerState:
     def holdings_snapshot(self) -> dict[str, int]:
         return dict(self._holdings)
 
+    @property
     def credits(self) -> int:
         return self._credits
 
