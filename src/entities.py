@@ -46,32 +46,19 @@ def create_location_entity(
         affiliations=[],
         connections=[],
         interaction_types=[],
-        persistent_state={},
+        persistent_state=_location_metadata(location_type),
         memory_flags={},
     )
 
 
-def create_datanet_entity() -> Entity:
-    # TODO(Phase 3): Contract limits entity_type values; DataNet is modeled as object for now.
-    return Entity(
-        entity_id="datanet",
-        entity_type=EntityType.OBJECT,
-        name="DataNet",
-        emoji="DN",
-        system_id="",
-        location_id=None,
-        roles=[],
-        tags=["datanet", "location_type:datanet"],
-        affiliations=[],
-        connections=[],
-        interaction_types=[],
-        persistent_state={
-            "interaction_registry": {
-                "emergency_transport_to_nearest_shipdock": {
-                    "type": "placeholder",
-                    "notes": "metadata only; no execution logic",
-                }
+def _location_metadata(location_type: str) -> Dict[str, Any]:
+    if location_type != "datanet_terminal":
+        return {}
+    return {
+        "interaction_registry": {
+            "emergency_transport_to_nearest_shipdock": {
+                "type": "placeholder",
+                "notes": "metadata only; no execution logic",
             }
-        },
-        memory_flags={},
-    )
+        }
+    }
