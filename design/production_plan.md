@@ -1,4 +1,4 @@
-#  EmojiSpace — Production Plan (Design Authority)
+#  EmojiSpace ï¿½ Production Plan (Design Authority)
 
 **Status:** Authoritative / Binding  
 **Purpose:** Control scope, sequencing, and system boundaries for EmojiSpace development
@@ -35,20 +35,21 @@ All expansion must originate here.
 
 | Phase | Target Version | Focus |
 |------|----------------|-------|
-| Phase 0 | 0.1.x | Skeleton & scaffolding |
-| Phase 1 | 0.2.x | Economy core |
-| Phase 1.5 | 0.2.x | Population & market variety |
-| Phase 2 | 0.3.x | Government & legality |
-| **Phase 2.6** | **0.3.x** | **Market pricing & tag interpretation** |
-| **Phase 2.7** | **0.3.x** | **Law enforcement & consequence resolution** |
+| Phase 0 (COMPLETED) | 0.1.x | Skeleton & scaffolding |
+| Phase 1 (COMPLETED) | 0.2.x | Economy core |
+| Phase 1.5 (COMPLETED) | 0.2.x | Population & market variety |
+| Phase 2 (COMPLETED) | 0.3.x | Government & legality |
+| **Phase 2.6 (COMPLETED)** | **0.3.x** | **Market pricing & tag interpretation** |
+| **Phase 2.7 (COMPLETED)** | **0.3.x** | **Law enforcement & consequence resolution** |
+| Phase 2.8 | 0.3.x | End goals foundation |
 | Phase 3 | 0.4.x | NPC persistence |
 | Phase 4 | 0.5.x | Situations & propagation |
 | Phase 5 | 0.6.x | Emergent narrative |
-| Phase 6 | 0.7–0.9.x | Stabilization & balance |
+| Phase 6 | 0.7ï¿½0.9.x | Stabilization & balance |
 
 ---
 
-## Phase 0 — Skeleton & Scaffolding
+## Phase 0 ï¿½ Skeleton & Scaffolding (COMPLETED)
 
 **Target:** 0.1.x
 
@@ -80,7 +81,7 @@ Prove the project can:
 
 ---
 
-## Phase 1 — Economy Core
+## Phase 1 ï¿½ Economy Core (COMPLETED)
 
 **Target:** 0.2.x
 
@@ -108,7 +109,7 @@ Introduce a living economy based on supply, demand, and scarcity.
 
 ---
 
-## Phase 1.5 — Population & Market Variety
+## Phase 1.5 ï¿½ Population & Market Variety (COMPLETED)
 
 **Target:** 0.2.x
 
@@ -116,7 +117,7 @@ Introduce a living economy based on supply, demand, and scarcity.
 Control market breadth without implying wealth or advancement.
 
 ### Required Systems
-- Population levels (1–5)
+- Population levels (1ï¿½5)
 - Goods-per-category caps
 - Neutral category resolution
 
@@ -131,7 +132,7 @@ Control market breadth without implying wealth or advancement.
 
 ---
 
-## Phase 2 — Government & Legality
+## Phase 2 ï¿½ Government & Legality (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -156,7 +157,7 @@ Make place matter via law, ideology, and enforcement.
 
 ---
 
-## Phase 2.6 — Market Pricing & Tag Interpretation
+## Phase 2.6 ï¿½ Market Pricing & Tag Interpretation (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -170,7 +171,7 @@ Define how prices are calculated and how governments interpret tags.
 - Substitute discount logic
 - Deterministic pricing
 - Tag interpretation (price bias, risk signaling)
-- Government × tag interpretation
+- Government ï¿½ tag interpretation
 - Category pressure multipliers (coarse, deterministic)
 - Salvage floor enforcement
 
@@ -187,7 +188,7 @@ Define how prices are calculated and how governments interpret tags.
 
 ---
 
-## Phase 2.7 — Law Enforcement & Consequence Resolution
+## Phase 2.7 ï¿½ Law Enforcement & Consequence Resolution (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -213,7 +214,103 @@ Resolve the consequences of risky or illegal actions.
 
 ---
 
-## Phase 3 — NPC Persistence
+## Phase 2.8 ï¿½ End Goals Foundation
+
+**Target:** 0.3.x
+
+### Objective
+Establish the required end goals foundation systems that enable win/lose
+conditions and progression targets.
+
+### Required Systems
+- Player Entity (PE)
+- Ship Entity (SE)
+- Missions System
+- Goods Storage System (Warehousing)
+- Unused / Idle Ships System
+
+### Explicit Exclusions
+- NPC persistence
+- Situations
+- Emergent narrative
+- UI beyond logs
+
+### Benchmark to Advance
+- End goals foundation systems exist as state holders and orchestration points
+- Missions can target progression tracks and victory conditions
+- Storage and idle ship risk are representable in logs
+
+---
+
+## Required Supporting Systems (End Goals)
+
+The following systems are REQUIRED to support win/lose conditions,
+progression tracks, and victory missions. These are not optional flavor.
+
+### Player Entity (PE) (Required)
+Responsibilities:
+- Tracks player state required for progression and win conditions
+- Stores all six progression tracks: Trust, Notoriety, Entrepreneur, Criminal, Law, Outlaw
+- Tracks current ship assignment
+- Tracks credits and economic state
+- Tracks per-system reputation references (but does not own reputation logic)
+- Tracks arrest state and loss eligibility
+- Tracks titles or tags earned per progression threshold (player-facing only)
+
+Clarifications:
+- The PE does not resolve combat, economy, or reputation mechanics
+- The PE is a state holder consumed by other systems
+- The PE is required before missions, combat, economy, or UI systems can be built
+
+### Ship Entity (SE) (Required)
+Responsibilities:
+- Represents a single ship owned or used by the player
+- Tracks ship status (active, idle, destroyed, seized)
+- Tracks cargo capacity and stored goods
+- Tracks ship location
+- Tracks Threat Rating classification (used by combat and progression systems)
+
+Clarifications:
+- Players may own multiple ships
+- Only one ship is active at a time
+- Idle ships are persistent assets
+- Idle ships can store goods
+- Idle ships can be discovered, seized, or destroyed
+- Ship Entity does not define combat mechanics at this stage
+
+### Missions System (Required)
+Responsibilities:
+- Drive progression for Trust and Notoriety tracks
+- Serve as the primary mechanism for intentional progression and redemption
+- Provide Victory Missions that finalize a win
+- Support lawful, criminal, economic, and combat oriented missions
+- Be explicitly outcome based (success, failure, abandonment)
+
+Missions are a core progression and endgame system.
+
+### Goods Storage System (Warehousing) (Required)
+Responsibilities:
+- Allow goods to be stored at locations (stations, facilities)
+- Allow goods to be stored on unused or idle ships
+- Storage persists across turns
+- Stored goods are subject to legality, seizure, loss, and discovery
+- Required to support Entrepreneur and Criminal economic tracks
+
+This system is required even if full production or industry systems do not yet exist.
+
+### Unused / Idle Ships System (Required)
+Responsibilities:
+- Players may own more than one ship
+- Ships not currently piloted are considered idle
+- Idle ships can store goods
+- Idle ships can be seized, destroyed, or discovered
+- Idle ships may be used as part of economic and criminal progression
+
+Idle ships are assets with risk, not abstract inventory.
+
+---
+
+## Phase 3 ï¿½ NPC Persistence
 
 **Target:** 0.4.x
 
@@ -227,6 +324,14 @@ Populate the sector with persistent, memory-bearing NPCs.
 - Relationship states
 - NPC movement
 
+### Additional Required Systems (Phase 3 Prerequisites)
+The following systems must be in place before Phase 3 can complete:
+- Player Entity (PE)
+- Ship Entity (SE)
+- Missions System
+- Goods Storage System (Warehousing)
+- Unused / Idle Ships System
+
 ### Explicit Exclusions
 - Situational role spawning
 - Narrative arcs
@@ -235,9 +340,13 @@ Populate the sector with persistent, memory-bearing NPCs.
 - NPCs react based on history
 - NPC loss has downstream effects
 
+### Phase 3 Completion (Locked)
+Phase 3 scope is complete and locked.
+Entity, NPC, Mission, Ship, DataNet, and PE contracts are authoritative.
+
 ---
 
-## Phase 4 — Situations & Propagation
+## Phase 4 ï¿½ Situations & Propagation
 
 **Target:** 0.5.x
 
@@ -260,7 +369,7 @@ Make the sector self-destabilizing.
 
 ---
 
-## Phase 5 — Emergent Narrative
+## Phase 5 ï¿½ Emergent Narrative
 
 **Target:** 0.6.x
 
@@ -278,9 +387,9 @@ Allow stories to coalesce naturally from systems.
 
 ---
 
-## Phase 6 — Stabilization & Balance
+## Phase 6 ï¿½ Stabilization & Balance
 
-**Target:** 0.7–0.9.x
+**Target:** 0.7ï¿½0.9.x
 
 ### Objective
 Turn a complex simulation into a playable game.
