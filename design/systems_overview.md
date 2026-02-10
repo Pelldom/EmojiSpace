@@ -119,6 +119,8 @@ Time Engine
 Notes
 
 Governments modify outcomes but do not override core simulation rules.
+Government outputs a policy result that includes legality_state, risk_tier, and consumed_tags.
+Pricing consumes these outputs and skips interpretation of consumed tags.
 
 5. NPC Engine
 Responsibility
@@ -150,7 +152,35 @@ Notes
 
 NPCs persist for the duration of a run. Memory must meaningfully affect future behavior.
 
-6. Situation Engine
+6. Phase 3.2 - Prose and World Texture Layer
+Responsibility
+
+Provide read-only, non-authoritative presentation of the world through names,
+descriptions, dialogue, and reflective flavor text.
+
+Inputs
+
+World state
+Entity state
+Player history (read-only)
+
+Outputs
+
+Names and descriptions
+Dialogue and non-binding text
+World reflection
+
+Dependencies
+
+All systems (read-only)
+Time Engine
+
+Notes
+
+This layer is non-mutating and does not affect mechanics, outcomes, legality, risk, economy, or time.
+Removing it does not change gameplay results.
+
+7. Situation Engine
 Responsibility
 
 Create, advance, propagate, and resolve dynamic situations such as war, plague, or unrest.
@@ -180,7 +210,7 @@ Notes
 
 Situations must resolve over time even without player involvement.
 
-7. Narrative Trigger Engine
+8. Narrative Trigger Engine
 Responsibility
 
 Detect meaningful state patterns and surface optional story hooks and long-term arcs.
@@ -209,7 +239,7 @@ Notes
 
 Narrative systems observe and react. They never directly alter simulation state.
 
-8. Player State System
+9. Player State System
 Responsibility
 
 Track player location, assets, reputation, and history, and translate player intent into simulation actions.
@@ -234,7 +264,7 @@ Notes
 
 The player is a participant, not a controller. Player state must be serializable.
 
-9. Logging and Diagnostics System
+10. Logging and Diagnostics System
 Responsibility
 
 Record simulation state changes for debugging, replay, and analysis.

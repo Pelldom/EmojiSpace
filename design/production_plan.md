@@ -43,6 +43,7 @@ All expansion must originate here.
 | **Phase 2.7 (COMPLETED)** | **0.3.x** | **Law enforcement & consequence resolution** |
 | Phase 2.8 | 0.3.x | End goals foundation |
 | Phase 3 | 0.4.x | NPC persistence |
+| Phase 3.2 | 0.4.x | Prose and world texture layer |
 | Phase 4 | 0.5.x | Situations & propagation |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -343,6 +344,27 @@ The following systems must be in place before Phase 3 can complete:
 ### Phase 3 Completion (Locked)
 Phase 3 scope is complete and locked.
 Entity, NPC, Mission, Ship, DataNet, and PE contracts are authoritative.
+
+---
+
+## Phase 3.2 � Prose and World Texture Layer
+
+**Target:** 0.4.x
+
+### Objective
+Provide a presentation-only layer for names, descriptions, dialogue, and world reflection.
+
+### Required Systems
+- Prose and world texture layer (read-only, non-authoritative)
+
+### Explicit Exclusions
+- Any mutation of simulation state
+- Any effect on mechanics, outcomes, legality, risk, economy, or time
+
+### Clarifications
+- This layer is required for immersion, not simulation.
+- This layer is not a blocker for Situations, Events, or NPC persistence.
+- Phase 3.2 is LOCKED once prose_contract.md exists.
 
 ---
 
