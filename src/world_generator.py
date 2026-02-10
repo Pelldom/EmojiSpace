@@ -42,6 +42,8 @@ class System:
     population: int
     government_id: str
     destinations: List[Destination]
+    # Derived compatibility fields may exist inside attributes["market"/"primary_economy"/"secondary_economies"].
+    # These are not authoritative and should not be used by new logic.
     attributes: dict
     neighbors: List[str]
 
@@ -125,6 +127,8 @@ class WorldGenerator:
                 "population_level": population_level,
                 "government_id": government_id,
                 "destinations": destinations,
+                # Derived compatibility fields only. Not authoritative.
+                # TODO(Phase 3.x): Remove once all callers are destination-scoped.
                 "market": primary_market,
                 "primary_economy": primary_economy,
                 "secondary_economies": secondary_economies,
@@ -151,6 +155,10 @@ class WorldGenerator:
             systems[index] = System(
                 system_id=system.system_id,
                 name=system.name,
+                position=system.position,
+                population=system.population,
+                government_id=system.government_id,
+                destinations=system.destinations,
                 attributes=system.attributes,
                 neighbors=neighbors,
             )
