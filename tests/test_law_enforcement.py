@@ -153,18 +153,26 @@ def test_heat_decay_per_turn() -> None:
     dummy_market = Market(categories={}, primary_economy="trade", secondary_economies=())
     sector = Sector(
         systems=[
-            System(
-                system_id="SYS-A",
-                name="A",
-                attributes={"government_id": government_ids[0], "profile_id": "AGRICULTURAL", "market": dummy_market},
-                neighbors=[],
-            ),
-            System(
-                system_id="SYS-B",
-                name="B",
-                attributes={"government_id": government_ids[0], "profile_id": "AGRICULTURAL", "market": dummy_market},
-                neighbors=[],
-            ),
+        System(
+            system_id="SYS-A",
+            name="A",
+            position=(0, 0),
+            population=3,
+            government_id=government_ids[0],
+            destinations=[],
+            attributes={"government_id": government_ids[0], "profile_id": "AGRICULTURAL", "market": dummy_market},
+            neighbors=[],
+        ),
+        System(
+            system_id="SYS-B",
+            name="B",
+            position=(1, 0),
+            population=3,
+            government_id=government_ids[0],
+            destinations=[],
+            attributes={"government_id": government_ids[0], "profile_id": "AGRICULTURAL", "market": dummy_market},
+            neighbors=[],
+        ),
         ]
     )
     player = PlayerState(start_system_id="SYS-A")
@@ -192,18 +200,26 @@ def test_restricted_checked_only_at_customs() -> None:
     dummy_market = Market(categories={}, primary_economy="trade", secondary_economies=())
     sector = Sector(
         systems=[
-            System(
-                system_id="SYS-A",
-                name="A",
-                attributes={"government_id": gov.id, "profile_id": "AGRICULTURAL", "market": dummy_market},
-                neighbors=[],
-            ),
-            System(
-                system_id="SYS-B",
-                name="B",
-                attributes={"government_id": gov.id, "profile_id": "AGRICULTURAL", "market": dummy_market},
-                neighbors=[],
-            ),
+        System(
+            system_id="SYS-A",
+            name="A",
+            position=(0, 0),
+            population=3,
+            government_id=gov.id,
+            destinations=[],
+            attributes={"government_id": gov.id, "profile_id": "AGRICULTURAL", "market": dummy_market},
+            neighbors=[],
+        ),
+        System(
+            system_id="SYS-B",
+            name="B",
+            position=(1, 0),
+            population=3,
+            government_id=gov.id,
+            destinations=[],
+            attributes={"government_id": gov.id, "profile_id": "AGRICULTURAL", "market": dummy_market},
+            neighbors=[],
+        ),
         ]
     )
     logger = CollectLogger()

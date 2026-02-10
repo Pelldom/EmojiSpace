@@ -51,14 +51,15 @@ class MarketCreator:
 
     def create_market(
         self,
-        system_id: str,
+        destination_id: str,
         population_level: int,
         primary_economy: str,
         secondary_economies: Sequence[str],
     ) -> Market:
         economies = self._economies_for(primary_economy, secondary_economies)
         self._log(
-            f"system_id={system_id} economies primary={primary_economy} secondary={list(secondary_economies)}"
+            f"destination_id={destination_id} economies primary={primary_economy} "
+            f"secondary={list(secondary_economies)}"
         )
 
         produced = self._aggregate_categories(economies, "produces")
@@ -72,7 +73,7 @@ class MarketCreator:
             )
             if neutral_roll is not None:
                 self._log(
-                    f"system_id={system_id} category={category_id} neutral_roll={neutral_roll:.2f} "
+                    f"destination_id={destination_id} category={category_id} neutral_roll={neutral_roll:.2f} "
                     f"chance={self._neutral_chance(population_level):.2f} "
                     f"result={'yes' if neutral_allowed else 'no'}"
                 )
@@ -94,14 +95,14 @@ class MarketCreator:
                 neutral=tuple(neutral_goods),
             )
             self._log(
-                f"system_id={system_id} category={category_id} "
+                f"destination_id={destination_id} category={category_id} "
                 f"produced={[g.sku for g in produced_goods]} "
                 f"consumed={[g.sku for g in consumed_goods]} "
                 f"neutral={[g.sku for g in neutral_goods]}"
             )
 
         categories = self._enforce_minimum_roles(
-            system_id=system_id,
+            destination_id=destination_id,
             categories=categories,
             economies=economies,
         )
@@ -179,7 +180,7 @@ class MarketCreator:
 
     def _enforce_minimum_roles(
         self,
-        system_id: str,
+        destination_id: str,
         categories: Dict[str, MarketCategory],
         economies: Sequence[Economy],
     ) -> Dict[str, MarketCategory]:
@@ -191,7 +192,7 @@ class MarketCreator:
 
         if produced_total == 0:
             self._apply_fallback(
-                system_id=system_id,
+                destination_id=destination_id,
                 categories=categories,
                 candidate_categories=produced_categories,
                 role="produced",
@@ -199,7 +200,7 @@ class MarketCreator:
 
         if consumed_total == 0:
             self._apply_fallback(
-                system_id=system_id,
+                destination_id=destination_id,
                 categories=categories,
                 candidate_categories=consumed_categories,
                 role="consumed",
@@ -209,7 +210,7 @@ class MarketCreator:
 
     def _apply_fallback(
         self,
-        system_id: str,
+        destination_id: str,
         categories: Dict[str, MarketCategory],
         candidate_categories: set[str],
         role: str,
@@ -221,7 +222,9 @@ class MarketCreator:
         goods_by_category = self._catalog.goods_by_category()
         base_goods = goods_by_category.get(category_id, [])
         if not base_goods:
-            self._log(f"system_id={system_id} fallback_{role}=skipped no_goods category={category_id}")
+            self._log(
+                f"destination_id={destination_id} fallback_{role}=skipped no_goods category={category_id}"
+            )
             return
         existing = categories.get(category_id)
         used_skus = set()
@@ -232,7 +235,8 @@ class MarketCreator:
         candidates = [good for good in base_goods if good.sku not in used_skus]
         if not candidates:
             self._log(
-                f"system_id={system_id} fallback_{role}=skipped no_available_skus category={category_id}"
+                f"destination_id={destination_id} fallback_{role}=skipped "
+                f"no_available_skus category={category_id}"
             )
             return
         chosen = self._rng.choice(candidates)
@@ -254,7 +258,8 @@ class MarketCreator:
             )
         categories[category_id] = updated
         self._log(
-            f"system_id={system_id} fallback_{role}=applied category={category_id} sku={market_good.sku}"
+            f"destination_id={destination_id} fallback_{role}=applied "
+            f"category={category_id} sku={market_good.sku}"
         )
 
     def _possible_tag_chance(self, possible_tag: str, economies: Sequence[Economy]) -> float:
