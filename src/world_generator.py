@@ -127,7 +127,8 @@ class WorldGenerator:
                 "population_level": population_level,
                 "government_id": government_id,
                 "destinations": destinations,
-                # Derived compatibility fields only. Not authoritative.
+                # Deprecated compatibility shim. Do not use for new logic.
+                # Derived fields only. Not authoritative.
                 # TODO(Phase 3.x): Remove once all callers are destination-scoped.
                 "market": primary_market,
                 "primary_economy": primary_economy,
@@ -289,12 +290,14 @@ def _assign_locations_and_markets(
     placed_locations: Dict[str, set[str]] = {destination.destination_id: set() for destination in destinations}
 
     for destination in destinations:
+        if destination.population <= 0:
+            continue
         _add_location_if_missing(
             destination,
             placed_locations,
             location_type="datanet",
             enabled=True,
-            notes="universal destination access",
+            notes="population-gated destination access",
         )
 
     for location_type, rules in availability_rules.items():
