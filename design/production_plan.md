@@ -41,9 +41,10 @@ All expansion must originate here.
 | Phase 2 (COMPLETED) | 0.3.x | Government & legality |
 | **Phase 2.6 (COMPLETED)** | **0.3.x** | **Market pricing & tag interpretation** |
 | **Phase 2.7 (COMPLETED)** | **0.3.x** | **Law enforcement & consequence resolution** |
-| Phase 2.8 | 0.3.x | End goals foundation |
-| Phase 3 | 0.4.x | NPC persistence |
-| Phase 3.2 | 0.4.x | Prose and world texture layer |
+| **Phase 2.8 (COMPLETED)** | **0.3.x** | **End goals foundation** |
+| **Phase 3 (COMPLETED)** | **0.4.x** | **NPC persistence** |
+| Phase 3.1 (COMPLETED) | 0.4.x | Time Engine |
+| **Phase 3.2 (COMPLETED)** | **0.4.x** | **Prose and world texture layer** |
 | Phase 4 | 0.5.x | Situations & propagation |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -215,7 +216,7 @@ Resolve the consequences of risky or illegal actions.
 
 ---
 
-## Phase 2.8 � End Goals Foundation
+## Phase 2.8 End Goals Foundation (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -224,11 +225,11 @@ Establish the required end goals foundation systems that enable win/lose
 conditions and progression targets.
 
 ### Required Systems
-- Player Entity (PE)
-- Ship Entity (SE)
-- Missions System
-- Goods Storage System (Warehousing)
-- Unused / Idle Ships System
+- Player Entity (PE) - **IMPLEMENTED**
+- Ship Entity (SE) - **IMPLEMENTED**
+- Missions System - **IMPLEMENTED**
+- Goods Storage System (Warehousing) - **IMPLEMENTED**
+- Unused / Idle Ships System - **IMPLEMENTED**
 
 ### Explicit Exclusions
 - NPC persistence
@@ -240,6 +241,9 @@ conditions and progression targets.
 - End goals foundation systems exist as state holders and orchestration points
 - Missions can target progression tracks and victory conditions
 - Storage and idle ship risk are representable in logs
+
+### Completion Status
+End goals foundation is now functional and test-covered. End game evaluation system implemented (read-only, deterministic). Victory missions defined via `/data/victory_missions.json`. Failure penalties and tracker drops explicitly supported. Victory missions are Tier 5, multi-source, and slot-aware.
 
 ---
 
@@ -311,7 +315,7 @@ Idle ships are assets with risk, not abstract inventory.
 
 ---
 
-## Phase 3 � NPC Persistence
+## Phase 3 NPC Persistence (COMPLETED)
 
 **Target:** 0.4.x
 
@@ -345,9 +349,32 @@ The following systems must be in place before Phase 3 can complete:
 Phase 3 scope is complete and locked.
 Entity, NPC, Mission, Ship, DataNet, and PE contracts are authoritative.
 
+### Completion Status
+NPC Entity, Registry, Placement, and deterministic guarantees implemented. NPCs persist across turns with memory and relationship states.
+
 ---
 
-## Phase 3.2 � Prose and World Texture Layer
+## Phase 3.1 � Time Engine (COMPLETED)
+
+**Target:** 0.4.x
+
+### Objective
+Establish the authoritative time system with explicit turn progression and daily tick order.
+
+### Required Systems
+- Time Engine (contract-defined, deterministic)
+
+### Explicit Exclusions
+- Any autonomous time advancement
+- Any calendar-based logic
+
+### Benchmark to Advance
+- Time advances only via explicit player actions
+- Daily tick order is deterministic and logged
+
+---
+
+## Phase 3.2 Prose and World Texture Layer (COMPLETED)
 
 **Target:** 0.4.x
 
@@ -365,6 +392,9 @@ Provide a presentation-only layer for names, descriptions, dialogue, and world r
 - This layer is required for immersion, not simulation.
 - This layer is not a blocker for Situations, Events, or NPC persistence.
 - Phase 3.2 is LOCKED once prose_contract.md exists.
+
+### Completion Status
+DataNet feed, prose generator, and victory mission prose support implemented. Prose layer provides read-only presentation for names, descriptions, dialogue, and world reflection.
 
 ---
 
