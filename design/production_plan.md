@@ -45,7 +45,7 @@ All expansion must originate here.
 | **Phase 3 (COMPLETED)** | **0.4.x** | **NPC persistence** |
 | Phase 3.1 (COMPLETED) | 0.4.x | Time Engine |
 | **Phase 3.2 (COMPLETED)** | **0.4.x** | **Prose and world texture layer** |
-| Phase 4 | 0.5.x | Situations & propagation |
+| **Phase 4 (COMPLETED)** | **0.5.0** | **Travel and Encounter Scaffolding** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
 
@@ -398,26 +398,20 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 
 ---
 
-## Phase 4 � Situations & Propagation
+## Phase 4 - Travel and Encounter Scaffolding (COMPLETED)
 
-**Target:** 0.5.x
+**Status:** COMPLETE  
+**Version Achieved:** 0.5.0
 
-### Objective
-Make the sector self-destabilizing.
-
-### Required Systems
-- Situations (war, plague, unrest)
-- Situation triggers
-- Time-based resolution
-- Economic, legal, and NPC effects
-
-### Explicit Exclusions
-- Authored storylines
-- Unique items
-
-### Benchmark to Advance
-- Situations emerge organically
-- Ignoring them has consequences
+### Completed Components
+- Travel encounter loop (population cap and diminishing probability)
+- Enforcement-based authority scaling
+- Deterministic encounter generation
+- Interaction dispatch layer
+- Reaction engine with TR and reputation integration
+- Reward materialization system
+- Pursuit resolver (speed, cloak, interdiction, pilot skill)
+- Unified deterministic integration test
 
 ---
 
