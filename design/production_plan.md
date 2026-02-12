@@ -46,6 +46,7 @@ All expansion must originate here.
 | Phase 3.1 (COMPLETED) | 0.4.x | Time Engine |
 | **Phase 3.2 (COMPLETED)** | **0.4.x** | **Prose and world texture layer** |
 | **Phase 4 (COMPLETED)** | **0.5.0** | **Travel and Encounter Scaffolding** |
+| **Phase 4.2 (COMPLETED)** | **0.6.0** | **Ship and Module Data Layer** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -413,6 +414,24 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Reward materialization system
 - Pursuit resolver (speed, cloak, interdiction, pilot skill)
 - Unified deterministic integration test
+
+---
+
+## Phase 4.2 - Ship and Module Data Layer (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.0
+
+### Completion Summary
+- Unified ship and module schema contract created.
+- Bias values moved into hull JSON structure.
+- Cargo (physical and data) explicitly defined per hull.
+- Base pricing added for hulls and modules.
+- Secondary distribution formally defined.
+- Salvage mutation rules (unstable injection) defined.
+- Inactive ship module stripping rule defined.
+- NPC parity rule reinforced at schema level.
+- No behavior implemented yet (structure only).
 
 ---
 
