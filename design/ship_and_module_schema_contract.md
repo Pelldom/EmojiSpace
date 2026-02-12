@@ -2,7 +2,7 @@
 
 Status: LOCKED
 Phase: 4.2 - Ship and Module Data Layer
-Target Version: 0.6.0
+Target Version: 0.6.1
 File: /design/ship_and_module_schema_contract.md
 
 ----------------------------------------------------------------
@@ -80,14 +80,14 @@ Therefore, hull and module objects MUST NOT include:
 Hull catalog:
 
 {
-  "version": "0.6.0",
+  "version": "0.6.1",
   "hulls": [ HullObject, ... ]
 }
 
 Module catalog:
 
 {
-  "version": "0.6.0",
+  "version": "0.6.1",
   "modules": [ ModuleObject, ... ]
 }
 
@@ -179,6 +179,7 @@ ModuleObject:
 {
   "module_id": "string",
   "name": "string",
+  "display_names": [ "string", ... ],
 
   "slot_type": "weapon|defense|utility",
   "primary_tag": "combat:*|ship:*",
@@ -209,6 +210,17 @@ ModuleObject:
 
   "description": "string (optional)"
 }
+
+6.X display_names (Required)
+
+Rules:
+- Must contain at least one entry.
+- Entries must be ASCII strings only.
+- Cosmetic only.
+- Must not influence numeric_bonus, pricing, rarity, salvage, TR, legality, encounter weighting, or engine determinism.
+- Deterministic selection deferred to Phase 4.4.
+- Must exist inside each ModuleObject.
+- No external naming catalogs allowed.
 
 6.1 Primary Tag Authority
 
@@ -396,11 +408,18 @@ Requires:
 - Explicit contract revision
 - Matching data file version bump
 
+12.1 Version 0.6.1 note
+
+- Added required "display_names" field to ModuleObject.
+- Change is cosmetic-only.
+- No impact on numeric_bonus, pricing, rarity, salvage, TR, legality, or deterministic behavior.
+- Deterministic selection deferred to Phase 4.4.
+
 ----------------------------------------------------------------
 13. Contract Authority
 ----------------------------------------------------------------
 
-This document is authoritative as of Version 0.6.0.
+This document is authoritative as of Version 0.6.1.
 
 All systems consuming ship and module data MUST conform.
 Any deviation requires explicit contract update.
