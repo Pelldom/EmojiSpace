@@ -46,6 +46,7 @@ All expansion must originate here.
 | Phase 3.1 (COMPLETED) | 0.4.x | Time Engine |
 | **Phase 3.2 (COMPLETED)** | **0.4.x** | **Prose and world texture layer** |
 | **Phase 4 (COMPLETED)** | **0.5.0** | **Travel and Encounter Scaffolding** |
+| **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
 
@@ -412,6 +413,21 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Reward materialization system
 - Pursuit resolver (speed, cloak, interdiction, pilot skill)
 - Unified deterministic integration test
+
+---
+
+## Phase 4.x - Combat Resolver (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.0
+
+### Completed Components
+- Standalone combat resolver module with deterministic RNG and round logs
+- TR derivation (RCP -> TR) implemented for both player and NPC loadouts
+- Combat repair, degradation, RED override, scan placeholder, surrender, and destruction outcomes
+- Escape integration adapter invoking pursuit resolver path
+- Deterministic CLI combat simulation harness with canned scenario loadouts
+- Unit tests for determinism, TR mapping, repair usage, degradation thresholds, and escape integration
 
 ---
 

@@ -288,6 +288,33 @@ Notes
 
 Logging is mandatory. All major state changes must be explainable after the fact.
 
+11. Combat Resolver (Phase 4.x)
+Responsibility
+
+Resolve deterministic, simultaneous round-based combat using contract-locked bands, damage, degradation, repair, surrender, and escape.
+
+Inputs
+
+Ship loadouts (player and NPC parity)
+Combat actions selected per round
+World seed and combat id salt
+
+Outputs
+
+Combat outcome (destroyed, escape, surrender, max_rounds)
+Round logs including RNG-derived values
+Final combat states for both ships
+
+Dependencies
+
+Ship module and crew tags
+Pursuit Resolver (escape attempt integration)
+Logging and diagnostics
+
+Notes
+
+Combat scan success currently uses a deterministic placeholder in the resolver and is intended to be replaced by interaction-layer scan resolution.
+
 Forbidden dependency rules (hard constraints)
 
 Narrative systems may not directly modify simulation state.
