@@ -52,6 +52,7 @@ All expansion must originate here.
 | **Phase 4.6 (COMPLETED)** | **0.6.4** | **Combat integration with deterministic assembler** |
 | **Phase 4.7 (COMPLETED)** | **0.6.5** | **Deterministic shipdock inventory generator** |
 | **Phase 4.8 (COMPLETED)** | **0.7.0** | **Fuel system integration and refuel interaction** |
+| **Phase 4.9 (COMPLETED)** | **0.7.1** | **Shipdock interaction extensions** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -511,6 +512,20 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 
 ---
 
+## Phase 4.9 - Shipdock Interaction Extensions (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.7.1
+
+### Completed Components
+- Added Shipdock-gated interaction actions: buy/sell hull, buy/sell module, and repair ship.
+- Enforced physical presence checks for ships at destination before shipdock actions execute.
+- Added deterministic buy/sell pricing paths with modifier hook for sale operations.
+- Added assembler-validated module purchase flow with rejection on slot constraint failures.
+- Added repair cost flow based on hull damage, subsystem degradation, and population modifier.
+
+---
+
 ## Phase 4.x - Combat Resolver (COMPLETED)
 
 **Status:** COMPLETE  
@@ -523,6 +538,16 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Escape integration adapter invoking pursuit resolver path
 - Deterministic CLI combat simulation harness with canned scenario loadouts
 - Unit tests for determinism, TR mapping, repair usage, degradation thresholds, and escape integration
+
+---
+
+### Phase 4.9 – Shipdock Interaction Extensions (0.7.1)
+
+- Added buy/sell hull logic
+- Added buy/sell module logic
+- Added repair system with multi-factor cost
+- Enforced physical location constraints
+- Added price modifier hook placeholder
 
 ---
 
