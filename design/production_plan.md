@@ -54,6 +54,7 @@ All expansion must originate here.
 | **Phase 4.8 (COMPLETED)** | **0.7.0** | **Fuel system integration and refuel interaction** |
 | **Phase 4.9 (COMPLETED)** | **0.7.1** | **Shipdock interaction extensions** |
 | **Phase 4.9.1 (COMPLETED)** | **0.7.2** | **Secondary tag resale multipliers** |
+| **Phase 4.11 (COMPLETED)** | **0.8.0** | **NPC ship generation and salvage** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -562,10 +563,23 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Added price modifier hook placeholder
 
 ---
+# production_plan.md (add this section)
+
+## Phase 4.11 - NPC Ship Generation and Salvage (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.8.0
+
+### Completed Components
+- Added deterministic NPC ship generation using isolated RNG streams and assembler-backed ship state.
+- Added deterministic salvage resolver with weighted salvage count, rarity/secondary weighting, and unstable injection constraints.
+- Integrated combat destruction outcomes with `salvage_modules` payload output.
+- Preserved reward profile schema and reward materialization boundaries.
+- Added focused tests for generation determinism, salvage rules, and combat salvage integration.
 
 ## Phase 5 � Emergent Narrative
 
-**Target:** 0.6.x
+**Target:** 0.9.x
 
 ### Objective
 Allow stories to coalesce naturally from systems.
@@ -583,7 +597,7 @@ Allow stories to coalesce naturally from systems.
 
 ## Phase 6 � Stabilization & Balance
 
-**Target:** 0.7�0.9.x
+**Target:** 0.9.x
 
 ### Objective
 Turn a complex simulation into a playable game.

@@ -8,10 +8,12 @@ from typing import Any, Callable, Literal, Optional
 try:
     from data_loader import load_hulls, load_modules
     from pursuit_resolver import resolve_pursuit
+    from salvage_resolver import resolve_salvage_modules
     from ship_assembler import assemble_ship
 except ModuleNotFoundError:
     from src.data_loader import load_hulls, load_modules
     from src.pursuit_resolver import resolve_pursuit
+    from src.salvage_resolver import resolve_salvage_modules
     from src.ship_assembler import assemble_ship
 
 ActionName = Literal[
@@ -94,6 +96,7 @@ class CombatResult:
     rcp_enemy: int
     destruction_event: Optional[dict] = None
     surrendered_by: Optional[SideName] = None
+    salvage_modules: list[dict[str, Any]] = field(default_factory=list)
 
 
 class CombatRng:
@@ -647,6 +650,7 @@ def resolve_combat(
     player_action_selector: Optional[Callable[..., ActionName]] = None,
     enemy_action_selector: Optional[Callable[..., ActionName]] = None,
     max_rounds: int = 20,
+    system_id: str = "",
 ) -> CombatResult:
     player_selector = player_action_selector or _default_selector
     enemy_selector = enemy_action_selector or _default_selector
@@ -729,6 +733,7 @@ def resolve_combat(
                 rcp_player=rcp_player,
                 rcp_enemy=rcp_enemy,
                 surrendered_by="player",
+                salvage_modules=[],
             )
         if enemy_action == "Surrender":
             round_log["outcome"] = {"outcome": "surrender", "surrendered_by": "enemy"}
@@ -745,6 +750,7 @@ def resolve_combat(
                 rcp_player=rcp_player,
                 rcp_enemy=rcp_enemy,
                 surrendered_by="enemy",
+                salvage_modules=[],
             )
 
         if player_action == "Repair Systems":
@@ -828,6 +834,7 @@ def resolve_combat(
                     tr_enemy=tr_enemy,
                     rcp_player=rcp_player,
                     rcp_enemy=rcp_enemy,
+                    salvage_modules=[],
                 )
         if enemy_action == "Attempt Escape":
             escape = _escape_attempt(
@@ -854,6 +861,7 @@ def resolve_combat(
                     tr_enemy=tr_enemy,
                     rcp_player=rcp_player,
                     rcp_enemy=rcp_enemy,
+                    salvage_modules=[],
                 )
 
         player_attack = _resolve_attack(
@@ -901,7 +909,27 @@ def resolve_combat(
                 "enemy_destroyed": enemy_destroyed,
                 "requires_external_insurance_resolution": player_destroyed,
             }
+            salvage_modules: list[dict[str, Any]] = []
+            if player_destroyed:
+                salvage_modules.extend(
+                    resolve_salvage_modules(
+                        world_seed=world_seed,
+                        system_id=system_id,
+                        encounter_id=f"{combat_id}_player_destroyed",
+                        destroyed_ship=player_ship,
+                    )
+                )
+            if enemy_destroyed:
+                salvage_modules.extend(
+                    resolve_salvage_modules(
+                        world_seed=world_seed,
+                        system_id=system_id,
+                        encounter_id=f"{combat_id}_enemy_destroyed",
+                        destroyed_ship=enemy_ship,
+                    )
+                )
             round_log["destruction"] = destruction
+            round_log["salvage_modules"] = list(salvage_modules)
             round_log["outcome"] = {"outcome": "destroyed"}
             log.append(round_log)
             return CombatResult(
@@ -916,6 +944,7 @@ def resolve_combat(
                 rcp_player=rcp_player,
                 rcp_enemy=rcp_enemy,
                 destruction_event=destruction,
+                salvage_modules=salvage_modules,
             )
         log.append(round_log)
 
@@ -930,4 +959,5 @@ def resolve_combat(
         tr_enemy=tr_enemy,
         rcp_player=rcp_player,
         rcp_enemy=rcp_enemy,
+        salvage_modules=[],
     )
