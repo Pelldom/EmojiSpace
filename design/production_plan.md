@@ -49,6 +49,7 @@ All expansion must originate here.
 | **Phase 4.2 (COMPLETED)** | **0.6.0** | **Ship and Module Data Layer** |
 | **Phase 4.4 (COMPLETED)** | **0.6.2** | **Data Validation and Integration** |
 | **Phase 4.5 (COMPLETED)** | **0.6.3** | **Deterministic Ship Assembler (scope C)** |
+| **Phase 4.6 (COMPLETED)** | **0.6.4** | **Combat integration with deterministic assembler** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -463,6 +464,19 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Subsystem degradation capacity computation and RED override integration.
 - Deterministic ship utility effect outputs for ship utility tags.
 - Automated unit tests for assembler behavior and contract-constrained edge cases.
+
+---
+
+## Phase 4.6 - Combat Integration with Assembler (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.4
+
+### Completed Components
+- Combat resolution refactored to consume assembler effective bands as authority.
+- Duplicate combat-side band/capacity/RED math removed from runtime resolution path.
+- Degradation updates retained in combat with RED state derived from assembler outputs.
+- Integration tests added to validate deterministic behavior and assembler coupling.
 
 ---
 
