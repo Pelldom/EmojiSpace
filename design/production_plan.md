@@ -47,6 +47,7 @@ All expansion must originate here.
 | **Phase 3.2 (COMPLETED)** | **0.4.x** | **Prose and world texture layer** |
 | **Phase 4 (COMPLETED)** | **0.5.0** | **Travel and Encounter Scaffolding** |
 | **Phase 4.2 (COMPLETED)** | **0.6.0** | **Ship and Module Data Layer** |
+| **Phase 4.4 (COMPLETED)** | **0.6.2** | **Data Validation and Integration** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -432,6 +433,20 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Inactive ship module stripping rule defined.
 - NPC parity rule reinforced at schema level.
 - No behavior implemented yet (structure only).
+
+---
+
+## Phase 4.4 - Data Validation and Integration (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.2
+
+### Completed Components
+- Added load-time hull and module schema validation with explicit erroring.
+- Added automated tests for hull and module data validation coverage.
+- Enforced required field presence and type constraints for hull and module catalogs.
+- Enforced module slot_type and primary_tag alignment constraints at data load.
+- Enforced numeric_bonus cap and tier-based crew_capacity band validation.
 
 ---
 
