@@ -50,6 +50,7 @@ All expansion must originate here.
 | **Phase 4.4 (COMPLETED)** | **0.6.2** | **Data Validation and Integration** |
 | **Phase 4.5 (COMPLETED)** | **0.6.3** | **Deterministic Ship Assembler (scope C)** |
 | **Phase 4.6 (COMPLETED)** | **0.6.4** | **Combat integration with deterministic assembler** |
+| **Phase 4.7 (COMPLETED)** | **0.6.5** | **Deterministic shipdock inventory generator** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -477,6 +478,20 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Duplicate combat-side band/capacity/RED math removed from runtime resolution path.
 - Degradation updates retained in combat with RED state derived from assembler outputs.
 - Integration tests added to validate deterministic behavior and assembler coupling.
+
+---
+
+## Phase 4.7 - Deterministic Shipdock Inventory Generator (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.5
+
+### Completed Components
+- Deterministic shipdock module and hull inventory generation by world_seed/system_id/population.
+- Population-based stock chance gates and inventory breadth limits enforced.
+- Weighted, without-replacement module and hull selection implemented.
+- Rare module caps enforced by population with deterministic replacement behavior.
+- Purchase bans and defensive filtering applied for prohibited inventory entries.
 
 ---
 
