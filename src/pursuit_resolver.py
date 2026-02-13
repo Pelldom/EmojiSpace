@@ -12,6 +12,9 @@ class PursuitResult:
         pursued_speed,
         speed_delta,
         pilot_delta,
+        tr_delta,
+        engine_delta,
+        outcome,
         threshold,
         roll,
         escaped,
@@ -22,6 +25,9 @@ class PursuitResult:
         self.pursued_speed = pursued_speed
         self.speed_delta = speed_delta
         self.pilot_delta = pilot_delta
+        self.tr_delta = tr_delta
+        self.engine_delta = engine_delta
+        self.outcome = outcome
         self.threshold = threshold
         self.roll = roll
         self.escaped = escaped
@@ -42,6 +48,20 @@ def _validated_ship_fields(ship, role_name):
     return speed, pilot_skill
 
 
+def _clamp_band(value, default=1):
+    if value is None:
+        return int(default)
+    if not isinstance(value, int):
+        raise ValueError("Band values must be integers.")
+    return max(1, min(5, value))
+
+
+def _derive_bands(ship, speed):
+    engine_band = _clamp_band(ship.get("engine_band"), default=max(1, min(5, speed)))
+    tr_band = _clamp_band(ship.get("tr_band"), default=engine_band)
+    return tr_band, engine_band
+
+
 def resolve_pursuit(
     encounter_id,
     world_seed,
@@ -54,19 +74,25 @@ def resolve_pursuit(
     pursuer_cloak = pursuer_ship.get("cloaking_device", False)
     pursued_cloak = pursued_ship.get("cloaking_device", False)
     pursuer_interdiction = pursuer_ship.get("interdiction_device", False)
+    pursuer_tr_band, pursuer_engine_band = _derive_bands(pursuer_ship, pursuer_speed)
+    pursued_tr_band, pursued_engine_band = _derive_bands(pursued_ship, pursued_speed)
 
     speed_delta = pursued_speed - pursuer_speed
-    if speed_delta >= 2:
+    engine_delta = pursued_engine_band - pursuer_engine_band
+    if engine_delta >= 2:
         threshold = 0.7
-    elif speed_delta == 1:
+    elif engine_delta == 1:
         threshold = 0.6
-    elif speed_delta == 0:
+    elif engine_delta == 0:
         threshold = 0.5
-    elif speed_delta == -1:
+    elif engine_delta == -1:
         threshold = 0.4
     else:
         threshold = 0.3
     base_threshold_before_modifiers = threshold
+
+    tr_delta = pursued_tr_band - pursuer_tr_band
+    threshold += 0.05 * tr_delta
 
     cloak_applied = bool(pursued_cloak)
     if cloak_applied:
@@ -87,15 +113,24 @@ def resolve_pursuit(
     seed_string = f"{world_seed}{encounter_id}_pursuit"
     roll = deterministic_float(seed_string)
     escaped = roll < threshold
+    outcome = "escape_success" if escaped else "escape_fail"
 
     log = {
         "seed": seed_string,
         "speed_delta": speed_delta,
+        "engine_delta": engine_delta,
+        "tr_delta": tr_delta,
         "pilot_delta": pilot_delta,
+        "pursuer_tr_band": pursuer_tr_band,
+        "pursued_tr_band": pursued_tr_band,
+        "pursuer_engine_band": pursuer_engine_band,
+        "pursued_engine_band": pursued_engine_band,
         "cloak_applied": cloak_applied,
         "interdiction_applied": interdiction_applied,
         "base_threshold_before_modifiers": base_threshold_before_modifiers,
         "final_threshold": threshold,
+        "probability_distribution": {"escape_success": threshold, "escape_fail": 1.0 - threshold},
+        "outcome": outcome,
         "pursuer_cloak_present": bool(pursuer_cloak),
     }
 
@@ -105,6 +140,9 @@ def resolve_pursuit(
         pursued_speed=pursued_speed,
         speed_delta=speed_delta,
         pilot_delta=pilot_delta,
+        tr_delta=tr_delta,
+        engine_delta=engine_delta,
+        outcome=outcome,
         threshold=threshold,
         roll=roll,
         escaped=escaped,

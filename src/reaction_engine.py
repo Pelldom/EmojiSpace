@@ -26,6 +26,26 @@ OUTCOME_KEYS = [
     "accept_and_attack",
 ]
 
+CONTRACT_REACTION_OUTCOMES = {
+    "accept",
+    "accept_and_attack",
+    "refuse_stand",
+    "refuse_flee",
+    "refuse_attack",
+}
+
+REACTION_EVALUATION_ACTIONS = {"intimidate", "bribe", "surrender"}
+
+
+def _map_to_contract_outcome(outcome: str) -> str:
+    if outcome in CONTRACT_REACTION_OUTCOMES:
+        return outcome
+    if outcome == "attack":
+        return "refuse_attack"
+    if outcome == "pursue":
+        return "refuse_flee"
+    return "refuse_stand"
+
 
 def _band_from_score(score):
     if score is None:
@@ -175,6 +195,8 @@ def get_npc_outcome(
     selected_outcome = deterministic_weighted_choice(outcomes, weights, seed_string)
     if selected_outcome is None:
         selected_outcome = "ignore"
+    if player_action in REACTION_EVALUATION_ACTIONS:
+        selected_outcome = _map_to_contract_outcome(selected_outcome)
 
     return (
         selected_outcome,

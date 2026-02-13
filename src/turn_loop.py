@@ -5,8 +5,6 @@ from economy_engine import EconomyEngine, TradeAction
 from government_law_engine import (
     Commodity,
     GovernmentLawEngine,
-    InspectionContext,
-    PlayerInspectionResponse,
 )
 from government_registry import GovernmentRegistry
 from law_enforcement import (
@@ -77,7 +75,6 @@ class TurnLoop:
         self._economy.advance_turn(turn=turn)
         self._apply_heat_decay(action.target_system_id, turn)
         self._border_checkpoint(action.target_system_id, turn)
-        self._inspect_transport(action.target_system_id, turn)
         self._logger.log(
             turn=turn,
             action="move",
@@ -125,7 +122,6 @@ class TurnLoop:
         )
         self._apply_heat_decay(system_id, turn)
         pricing = self._price_quote(system_id, action.sku, "buy", turn)
-        self._inspect_trade(system_id, action.sku, "buy", turn)
         self._logger.log(
             turn=turn,
             action="buy",
@@ -193,7 +189,6 @@ class TurnLoop:
         )
         self._apply_heat_decay(system_id, turn)
         pricing = self._price_quote(system_id, action.sku, "sell", turn)
-        self._inspect_trade(system_id, action.sku, "sell", turn)
         self._logger.log(
             turn=turn,
             action="sell",
@@ -201,71 +196,6 @@ class TurnLoop:
         )
         if pricing is not None:
             self._log_pricing_transaction(system_id, action.sku, "sell", pricing)
-
-    def _inspect_trade(self, system_id: str, sku: str, action: str, turn: int) -> None:
-        system = self._sector.get_system(system_id)
-        if system is None:
-            return
-        government_id = system.attributes.get("government_id")
-        population_level = system.attributes.get("population_level", 3)
-        tags = self._sku_tags(system_id, sku)
-        commodity = Commodity(commodity_id=sku, tags=set(tags))
-        triggered = self._law_engine.inspection_check(
-            system_id=system_id,
-            population_level=population_level,
-            government_id=government_id,
-            commodity=commodity,
-            action=action,
-            turn=turn,
-        )
-        if not triggered:
-            return
-        response = PlayerInspectionResponse.SUBMIT
-        context = InspectionContext.MARKET if action in ("buy", "sell") else InspectionContext.TRANSPORT
-        outcome = self._law_engine.resolve_enforcement(
-            system_id=system_id,
-            government_id=government_id,
-            commodity=commodity,
-            action=action,
-            context=context,
-            response=response,
-            turn=turn,
-        )
-        confiscated = 0
-        if outcome.confiscated < 0:
-            current = self._player_state.cargo_by_ship.get("active", {}).get(sku, 0)
-            self._player_state.cargo_by_ship.setdefault("active", {})
-            self._player_state.cargo_by_ship["active"][sku] = 0
-            confiscated = current
-        elif outcome.confiscated > 0:
-            current = self._player_state.cargo_by_ship.get("active", {}).get(sku, 0)
-            take = min(current, outcome.confiscated)
-            self._player_state.cargo_by_ship.setdefault("active", {})
-            self._player_state.cargo_by_ship["active"][sku] = max(0, current - take)
-            confiscated = take
-        if confiscated:
-            self._logger.log(
-                turn=turn,
-                action="confiscation",
-                state_change=(
-                    f"system_id={system_id} sku={sku} amount={confiscated}"
-                ),
-            )
-        if outcome.reputation_delta != 0:
-            current_rep = self._player_state.reputation_by_system.get(system_id, 50)
-            self._player_state.reputation_by_system[system_id] = current_rep + outcome.reputation_delta
-            self._logger.log(
-                turn=turn,
-                action="reputation_change",
-                state_change=f"delta={outcome.reputation_delta} total={self._player_state.reputation_by_system[system_id]}",
-            )
-
-    def _inspect_transport(self, system_id: str, turn: int) -> None:
-        holdings = dict(self._player_state.cargo_by_ship.get("active", {}))
-        for sku, count in holdings.items():
-            if count <= 0:
-                continue
-            self._inspect_trade(system_id, sku, "transport", turn)
 
     def _border_checkpoint(self, system_id: str, turn: int) -> None:
         system = self._sector.get_system(system_id)

@@ -55,6 +55,7 @@ All expansion must originate here.
 | **Phase 4.9 (COMPLETED)** | **0.7.1** | **Shipdock interaction extensions** |
 | **Phase 4.9.1 (COMPLETED)** | **0.7.2** | **Secondary tag resale multipliers** |
 | **Phase 4.11 (COMPLETED)** | **0.8.0** | **NPC ship generation and salvage** |
+| **Phase 4.12 (NEW)** | **0.8.1** | **Simulation stabilization and orchestration (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -576,6 +577,24 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Integrated combat destruction outcomes with `salvage_modules` payload output.
 - Preserved reward profile schema and reward materialization boundaries.
 - Added focused tests for generation determinism, salvage rules, and combat salvage integration.
+
+## Phase 4.12 - Simulation Stabilization and Orchestration (NEW)
+
+**Status:** PLANNED
+**Target Version:** 0.8.1
+
+### Scope
+- Boundary cleanup across existing Phase 2.7-4.11 systems.
+- Single-authority consolidation for duplicated runtime logic paths.
+- Minimal playable CLI wiring across already-implemented simulation systems.
+
+### Explicit Exclusions
+- No new mechanics.
+- No UI system implementation.
+- No narrative system implementation.
+
+### Objective
+- Stabilize integration behavior and deterministic orchestration without expanding mechanics.
 
 ## Phase 5 � Emergent Narrative
 

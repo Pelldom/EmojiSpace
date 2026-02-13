@@ -164,3 +164,41 @@ def test_combat_outcome_includes_salvage_modules(monkeypatch) -> None:
     assert result.outcome == "destroyed"
     assert isinstance(result.salvage_modules, list)
     assert result.salvage_modules
+
+
+def test_combat_salvage_only_triggers_for_enemy_destroyed(monkeypatch) -> None:
+    player_ship = {
+        "hull_id": "civ_t1_midge",
+        "module_instances": [{"module_id": "weapon_energy_mk1", "secondary_tags": []}],
+        "degradation_state": {"weapon": 0, "defense": 0, "engine": 0},
+    }
+    enemy_ship = {
+        "hull_id": "civ_t1_midge",
+        "module_instances": [{"module_id": "weapon_energy_mk1", "secondary_tags": []}],
+        "degradation_state": {"weapon": 0, "defense": 0, "engine": 0},
+    }
+    calls: list[str] = []
+
+    def _tracked_salvage(world_seed, system_id, encounter_id, destroyed_ship):
+        calls.append(encounter_id)
+        return [{"module_id": "weapon_energy_mk1", "secondary_tags": []}]
+
+    def _enemy_kills_player(attacker, defender, attack_band, defense_band, defender_action, rng, round_number, event_log):
+        if attacker == "enemy":
+            return {"attacker": "enemy", "defender": "player", "band_delta": 10, "damage_roll": 10, "mitigation_roll": 0, "damage": 10}
+        return {"attacker": "player", "defender": "enemy", "band_delta": 0, "damage_roll": 0, "mitigation_roll": 0, "damage": 0}
+
+    monkeypatch.setattr(resolver, "resolve_salvage_modules", _tracked_salvage)
+    monkeypatch.setattr(resolver, "_resolve_attack", _enemy_kills_player)
+    result = resolver.resolve_combat(
+        world_seed=99,
+        combat_id="COMBAT-PLAYER-DESTROYED",
+        system_id="SYS-002",
+        player_ship_state=player_ship,
+        enemy_ship_state=enemy_ship,
+        max_rounds=1,
+    )
+    assert result.outcome == "destroyed"
+    assert result.winner == "enemy"
+    assert result.salvage_modules == []
+    assert calls == []

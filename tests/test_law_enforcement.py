@@ -18,8 +18,10 @@ from law_enforcement import (  # noqa: E402
 )
 from player_state import PlayerState  # noqa: E402
 from market import Market  # noqa: E402
+from market import MarketCategory, MarketGood  # noqa: E402
 from world_generator import Sector, System  # noqa: E402
 from turn_loop import TurnLoop, MoveAction  # noqa: E402
+from turn_loop import BuyAction  # noqa: E402
 from economy_engine import EconomyEngine  # noqa: E402
 from government_law_engine import GovernmentLawEngine  # noqa: E402
 from data_catalog import load_data_catalog  # noqa: E402
@@ -471,6 +473,119 @@ def test_victory_eligibility_toggle() -> None:
     assert player.progression_tracks["trust"] == 100
     player.progression_tracks["notoriety"] = 60
     assert player.progression_tracks["notoriety"] == 60
+
+
+def test_enforcement_consequences_match_border_and_customs_for_illegal_submit() -> None:
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    government = registry.get_government("fascist")
+    policy = GovernmentPolicyResult(
+        legality_state=LegalityStatus.ILLEGAL,
+        risk_tier=RiskTier.SEVERE,
+        consumed_tags=[],
+    )
+
+    border_player = PlayerState(current_system_id="SYS-TEST")
+    customs_player = PlayerState(current_system_id="SYS-TEST")
+    for player in (border_player, customs_player):
+        # Force max inspection chance so both checkpoints evaluate consequences.
+        player.reputation_by_system["SYS-TEST"] = 1
+        player.heat_by_system["SYS-TEST"] = 100
+
+    border = enforcement_checkpoint(
+        system_id="SYS-TEST",
+        trigger_type=TriggerType.BORDER,
+        government=government,
+        policy_results=[("sku", policy)],
+        player=border_player,
+        world_seed=77,
+        turn=1,
+        cargo_snapshot=_cargo(True, False),
+        logger=NullLogger(),
+        option=PlayerOption.SUBMIT,
+    )
+    customs = enforcement_checkpoint(
+        system_id="SYS-TEST",
+        trigger_type=TriggerType.CUSTOMS,
+        government=government,
+        policy_results=[("sku", policy)],
+        player=customs_player,
+        world_seed=77,
+        turn=1,
+        cargo_snapshot=_cargo(True, False),
+        logger=NullLogger(),
+        option=PlayerOption.SUBMIT,
+    )
+    assert border is not None
+    assert customs is not None
+    assert border.fines_added == customs.fines_added
+    assert border.severity_final == customs.severity_final
+    assert border.rep_delta == customs.rep_delta
+    assert border.arrested == customs.arrested
+
+
+def test_turn_loop_does_not_use_government_law_engine_consequence_mutation_path() -> None:
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    government_id = registry.government_ids()[0]
+    catalog = load_data_catalog()
+    seed_good = catalog.goods[0]
+    market_good = MarketGood(
+        sku=seed_good.sku,
+        name=seed_good.name,
+        category=seed_good.category,
+        base_price=seed_good.base_price,
+        tags=tuple(seed_good.tags),
+    )
+    market = Market(
+        categories={
+            seed_good.category: MarketCategory(
+                produced=(market_good,),
+                consumed=tuple(),
+                neutral=tuple(),
+            )
+        },
+        primary_economy="trade",
+        secondary_economies=tuple(),
+    )
+    sector = Sector(
+        systems=[
+            System(
+                system_id="SYS-A",
+                name="A",
+                position=(0, 0),
+                population=3,
+                government_id=government_id,
+                destinations=[],
+                attributes={
+                    "government_id": government_id,
+                    "profile_id": "AGRICULTURAL",
+                    "population_level": 3,
+                    "market": market,
+                },
+                neighbors=[],
+            )
+        ]
+    )
+    player = PlayerState(current_system_id="SYS-A")
+    player.credits = 10000
+    law_engine = GovernmentLawEngine(registry=registry, logger=NullLogger(), seed=123)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("TurnLoop must not call GovernmentLawEngine.resolve_enforcement().")
+
+    law_engine.resolve_enforcement = _fail_if_called  # type: ignore[method-assign]
+    loop = TurnLoop(
+        time_engine=TimeEngine(),
+        sector=sector,
+        player_state=player,
+        logger=NullLogger(),
+        economy_engine=EconomyEngine(sector=sector, logger=NullLogger()),
+        law_engine=law_engine,
+        catalog=catalog,
+        government_registry=registry,
+        world_seed=123,
+    )
+    loop.execute_buy(BuyAction(sku=seed_good.sku))
+    assert player.cargo_by_ship.get("active", {}).get(seed_good.sku, 0) == 1
 
 
 class CollectLogger:

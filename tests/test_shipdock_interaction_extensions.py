@@ -13,6 +13,7 @@ from interaction_layer import (  # noqa: E402
     execute_sell_hull,
     execute_sell_module,
 )
+import interaction_resolvers  # noqa: E402
 from player_state import PlayerState  # noqa: E402
 from ship_entity import ShipEntity  # noqa: E402
 
@@ -194,3 +195,20 @@ def test_sell_module_secondary_resale_multipliers() -> None:
     )
     assert sold_stacked["ok"] is True
     assert sold_stacked["final_price"] == 2100  # 1400 * 0.5 * 1.5 * 2.0
+
+
+def test_interaction_layer_remains_dispatch_thin_boundary() -> None:
+    content = (SRC_ROOT / "interaction_layer.py").read_text(encoding="utf-8", errors="replace")
+    assert "from ship_entity import" not in content
+    assert "from player_state import" not in content
+    assert "from ship_assembler import" not in content
+    assert "import interaction_resolvers as _interaction_resolvers" in content
+
+
+def test_refuel_resolver_is_deterministic_for_same_inputs() -> None:
+    ship_a = ShipEntity(ship_id="S-A", model_id="civ_t1_midge", fuel_capacity=12, current_fuel=5)
+    ship_b = ShipEntity(ship_id="S-B", model_id="civ_t1_midge", fuel_capacity=12, current_fuel=5)
+
+    refuel_a = interaction_resolvers.execute_refuel(ship=ship_a, player_credits=200, requested_units=4)
+    refuel_b = interaction_resolvers.execute_refuel(ship=ship_b, player_credits=200, requested_units=4)
+    assert refuel_a == refuel_b

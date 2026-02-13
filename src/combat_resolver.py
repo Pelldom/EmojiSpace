@@ -910,15 +910,6 @@ def resolve_combat(
                 "requires_external_insurance_resolution": player_destroyed,
             }
             salvage_modules: list[dict[str, Any]] = []
-            if player_destroyed:
-                salvage_modules.extend(
-                    resolve_salvage_modules(
-                        world_seed=world_seed,
-                        system_id=system_id,
-                        encounter_id=f"{combat_id}_player_destroyed",
-                        destroyed_ship=player_ship,
-                    )
-                )
             if enemy_destroyed:
                 salvage_modules.extend(
                     resolve_salvage_modules(

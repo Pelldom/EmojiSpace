@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 from mission_entity import MissionEntity, MissionOutcome, MissionState
 from player_state import PlayerState
+from reward_applicator import apply_mission_rewards
 
 
 @dataclass
@@ -40,7 +41,13 @@ class MissionManager:
         _remove_from_list(player.active_missions, mission_id)
         if mission_id not in player.completed_missions:
             player.completed_missions.append(mission_id)
-        _apply_rewards(mission, player, logger=logger, turn=turn)
+        apply_mission_rewards(
+            mission_id=mission.mission_id,
+            rewards=mission.rewards,
+            player=player,
+            logger=logger,
+            turn=turn,
+        )
         _log_manager(logger, turn, "complete", mission_id)
 
     def fail(self, mission_id: str, player: PlayerState, reason: str | None = None, logger=None, turn: int = 0) -> None:
@@ -83,20 +90,6 @@ class MissionManager:
             manager.missions[mission_id] = mission
         manager.offered = list(payload.get("offered", []))
         return manager
-
-
-def _apply_rewards(mission: MissionEntity, player: PlayerState, logger=None, turn: int = 0) -> None:
-    for reward in mission.rewards:
-        field_name = reward.get("field")
-        delta = reward.get("delta")
-        if not field_name or not isinstance(delta, int):
-            continue
-        if not hasattr(player, field_name):
-            continue
-        current = getattr(player, field_name)
-        if isinstance(current, int):
-            setattr(player, field_name, current + delta)
-            _log_manager(logger, turn, "reward_applied", mission.mission_id, f"{field_name}={current + delta}")
 
 
 def _remove_from_list(items: List[str], value: str) -> None:
