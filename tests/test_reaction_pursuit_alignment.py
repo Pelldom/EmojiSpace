@@ -43,6 +43,36 @@ def test_reaction_outcome_vocabulary_aligns_to_contract_for_reaction_actions() -
     assert outcome == "refuse_attack"
 
 
+def test_reaction_zero_weight_fallback_uses_contract_vocab_not_ignore() -> None:
+    class _ZeroWeightSpec:
+        def __init__(self):
+            self.encounter_id = "ENC-REACTION-ZERO"
+            self.posture = "hostile"
+            self.subtype_id = "raider"
+            self.threat_rating_tr = 3
+            self.allows_betrayal = True
+            self.npc_response_profile = {"on_bribe": {"accept": 0, "attack": 0}}
+
+    outcome, log = get_npc_outcome(
+        spec=_ZeroWeightSpec(),
+        player_action="bribe",
+        world_seed="WORLD",
+        ignore_count=0,
+        reputation_score=50,
+        notoriety_score=50,
+    )
+    assert log["reason"] == "zero_total_weight"
+    assert outcome != "ignore"
+    assert outcome in {
+        "accept",
+        "accept_and_attack",
+        "refuse_stand",
+        "refuse_flee",
+        "refuse_attack",
+    }
+    assert outcome == "refuse_stand"
+
+
 def test_pursuit_uses_contract_factors_and_is_deterministic() -> None:
     pursuer = {
         "speed": 4,

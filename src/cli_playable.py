@@ -22,6 +22,7 @@ from market import Market
 from npc_ship_generator import generate_npc_ship
 from player_state import PlayerState
 from pursuit_resolver import resolve_pursuit
+from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
 from ship_assembler import assemble_ship
 from ship_entity import ShipEntity
@@ -74,21 +75,6 @@ def _emit(events: list[dict], payload: dict) -> None:
     print(json.dumps(payload, sort_keys=True))
 
 
-def _apply_reward(player: PlayerState, reward) -> dict:
-    applied = {"credits": 0, "cargo": None, "quantity": 0}
-    if reward is None:
-        return applied
-    if isinstance(reward.credits, int):
-        player.credits += reward.credits
-        applied["credits"] = reward.credits
-    if reward.sku_id and isinstance(reward.quantity, int) and reward.quantity > 0:
-        player.cargo_by_ship.setdefault("active", {})
-        player.cargo_by_ship["active"][reward.sku_id] = player.cargo_by_ship["active"].get(reward.sku_id, 0) + reward.quantity
-        applied["cargo"] = reward.sku_id
-        applied["quantity"] = reward.quantity
-    return applied
-
-
 def run_playable(seed: int = 12345, turns: int = 5, scripted_actions: list[str] | None = None, interactive: bool = False) -> list[dict]:
     catalog = load_data_catalog()
     registry = GovernmentRegistry.from_file(Path(__file__).resolve().parents[1] / "data" / "governments.json")
@@ -105,7 +91,6 @@ def run_playable(seed: int = 12345, turns: int = 5, scripted_actions: list[str] 
 
     player = PlayerState(current_system_id=start_system.system_id, credits=5000)
     player.current_destination_id = getattr(start_destination, "destination_id", None)
-    player.cargo_by_ship.setdefault("active", {})
     assembled = assemble_ship("civ_t1_midge", [], {"weapon": 0, "defense": 0, "engine": 0})
     ship = ShipEntity(
         ship_id="PLAYER-SHIP-001",
@@ -266,7 +251,7 @@ def run_playable(seed: int = 12345, turns: int = 5, scripted_actions: list[str] 
             _emit(events, {"event": "pursuit", "turn": index + 1, "outcome": pursuit.outcome, "escaped": pursuit.escaped})
 
         reward = materialize_reward(encounter, [_market_payload(new_system.attributes.get("market"))], str(seed))
-        applied = _apply_reward(player, reward)
+        applied = apply_materialized_reward(player=player, reward_payload=reward, context="cli_playable")
         _emit(events, {"event": "reward", "turn": index + 1, "reward_profile_id": encounter.reward_profile_id, "applied": applied})
         print(f"Turn {index + 1}: system={player.current_system_id} action=travel fuel={ship.current_fuel} credits={player.credits}")
 

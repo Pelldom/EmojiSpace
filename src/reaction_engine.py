@@ -47,6 +47,12 @@ def _map_to_contract_outcome(outcome: str) -> str:
     return "refuse_stand"
 
 
+def _fallback_outcome(player_action: str) -> str:
+    if player_action in REACTION_EVALUATION_ACTIONS:
+        return "refuse_stand"
+    return "ignore"
+
+
 def _band_from_score(score):
     if score is None:
         return 3
@@ -69,7 +75,7 @@ def get_npc_outcome(
 ):
     block_name = ACTION_TO_BLOCK.get(player_action)
     if block_name is None:
-        return ("ignore", {"reason": "no_response_block"})
+        return (_fallback_outcome(player_action), {"reason": "no_response_block"})
 
     law_band = _band_from_score(law_score) if law_score is not None else None
     outlaw_band = _band_from_score(outlaw_score) if outlaw_score is not None else None
@@ -101,7 +107,7 @@ def get_npc_outcome(
             weights.append(weight)
 
     if sum(weights) == 0:
-        return ("ignore", {"reason": "zero_total_weight"})
+        return (_fallback_outcome(player_action), {"reason": "zero_total_weight"})
 
     baseline_weights = list(weights)
     ignore_escalation_applied = False
@@ -189,12 +195,12 @@ def get_npc_outcome(
     total_after_modifiers = sum(weights)
     zero_after_modifiers = total_after_modifiers == 0
     if zero_after_modifiers:
-        return ("ignore", {"reason": "zero_total_after_modifiers"})
+        return (_fallback_outcome(player_action), {"reason": "zero_total_after_modifiers"})
 
     seed_string = f"{world_seed}{spec.encounter_id}{player_action}{ignore_count}"
     selected_outcome = deterministic_weighted_choice(outcomes, weights, seed_string)
     if selected_outcome is None:
-        selected_outcome = "ignore"
+        selected_outcome = _fallback_outcome(player_action)
     if player_action in REACTION_EVALUATION_ACTIONS:
         selected_outcome = _map_to_contract_outcome(selected_outcome)
 

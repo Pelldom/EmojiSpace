@@ -5,6 +5,23 @@ from typing import Any
 from player_state import PlayerState
 
 
+def apply_materialized_reward(*, player: PlayerState, reward_payload, context: str | None = None) -> dict[str, Any]:
+    applied = {"credits": 0, "cargo": None, "quantity": 0, "context": context}
+    if reward_payload is None:
+        return applied
+    if isinstance(getattr(reward_payload, "credits", None), int):
+        player.credits += int(reward_payload.credits)
+        applied["credits"] = int(reward_payload.credits)
+    sku_id = getattr(reward_payload, "sku_id", None)
+    quantity = getattr(reward_payload, "quantity", None)
+    if isinstance(sku_id, str) and isinstance(quantity, int) and quantity > 0:
+        player.cargo_by_ship.setdefault("active", {})
+        player.cargo_by_ship["active"][sku_id] = player.cargo_by_ship["active"].get(sku_id, 0) + quantity
+        applied["cargo"] = sku_id
+        applied["quantity"] = quantity
+    return applied
+
+
 def apply_mission_rewards(
     *,
     mission_id: str,
