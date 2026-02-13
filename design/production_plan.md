@@ -1,4 +1,4 @@
-#  EmojiSpace � Production Plan (Design Authority)
+#  EmojiSpace - Production Plan (Design Authority)
 
 **Status:** Authoritative / Binding  
 **Purpose:** Control scope, sequencing, and system boundaries for EmojiSpace development
@@ -55,14 +55,14 @@ All expansion must originate here.
 | **Phase 4.9 (COMPLETED)** | **0.7.1** | **Shipdock interaction extensions** |
 | **Phase 4.9.1 (COMPLETED)** | **0.7.2** | **Secondary tag resale multipliers** |
 | **Phase 4.11 (COMPLETED)** | **0.8.0** | **NPC ship generation and salvage** |
-| **Phase 4.12 (NEW)** | **0.8.1** | **Simulation stabilization and orchestration (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
+| **Phase 4.11.1 (COMPLETED)** | **0.8.1** | **Stabilization and orchestration patch (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
-| Phase 5 | 0.6.x | Emergent narrative |
-| Phase 6 | 0.7�0.9.x | Stabilization & balance |
+| Phase 5 | 0.9.x | Emergent narrative |
+| Phase 6 | 0.9.x | Stabilization & balance |
 
 ---
 
-## Phase 0 � Skeleton & Scaffolding (COMPLETED)
+## Phase 0 - Skeleton & Scaffolding (COMPLETED)
 
 **Target:** 0.1.x
 
@@ -94,7 +94,7 @@ Prove the project can:
 
 ---
 
-## Phase 1 � Economy Core (COMPLETED)
+## Phase 1 - Economy Core (COMPLETED)
 
 **Target:** 0.2.x
 
@@ -122,7 +122,7 @@ Introduce a living economy based on supply, demand, and scarcity.
 
 ---
 
-## Phase 1.5 � Population & Market Variety (COMPLETED)
+## Phase 1.5 - Population & Market Variety (COMPLETED)
 
 **Target:** 0.2.x
 
@@ -130,7 +130,7 @@ Introduce a living economy based on supply, demand, and scarcity.
 Control market breadth without implying wealth or advancement.
 
 ### Required Systems
-- Population levels (1�5)
+- Population levels (1-5)
 - Goods-per-category caps
 - Neutral category resolution
 
@@ -145,7 +145,7 @@ Control market breadth without implying wealth or advancement.
 
 ---
 
-## Phase 2 � Government & Legality (COMPLETED)
+## Phase 2 - Government & Legality (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -170,7 +170,7 @@ Make place matter via law, ideology, and enforcement.
 
 ---
 
-## Phase 2.6 � Market Pricing & Tag Interpretation (COMPLETED)
+## Phase 2.6 - Market Pricing & Tag Interpretation (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -184,7 +184,7 @@ Define how prices are calculated and how governments interpret tags.
 - Substitute discount logic
 - Deterministic pricing
 - Tag interpretation (price bias, risk signaling)
-- Government � tag interpretation
+- Government - tag interpretation
 - Category pressure multipliers (coarse, deterministic)
 - Salvage floor enforcement
 
@@ -201,7 +201,7 @@ Define how prices are calculated and how governments interpret tags.
 
 ---
 
-## Phase 2.7 � Law Enforcement & Consequence Resolution (COMPLETED)
+## Phase 2.7 - Law Enforcement & Consequence Resolution (COMPLETED)
 
 **Target:** 0.3.x
 
@@ -365,7 +365,7 @@ NPC Entity, Registry, Placement, and deterministic guarantees implemented. NPCs 
 
 ---
 
-## Phase 3.1 � Time Engine (COMPLETED)
+## Phase 3.1 - Time Engine (COMPLETED)
 
 **Target:** 0.4.x
 
@@ -555,7 +555,7 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 
 ---
 
-### Phase 4.9 – Shipdock Interaction Extensions (0.7.1)
+### Phase 4.9 - Shipdock Interaction Extensions (0.7.1)
 
 - Added buy/sell hull logic
 - Added buy/sell module logic
@@ -578,25 +578,19 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Preserved reward profile schema and reward materialization boundaries.
 - Added focused tests for generation determinism, salvage rules, and combat salvage integration.
 
-## Phase 4.12 - Simulation Stabilization and Orchestration (NEW)
+## Phase 4.11.1 - Stabilization and Orchestration Patch (COMPLETED)
 
-**Status:** PLANNED
-**Target Version:** 0.8.1
+**Status:** COMPLETE
+**Version Achieved:** 0.8.1
 
-### Scope
+Patch phase under 4.11. No new mechanics; boundary cleanup + orchestration wiring only.
+
+### Completed Components
 - Boundary cleanup across existing Phase 2.7-4.11 systems.
 - Single-authority consolidation for duplicated runtime logic paths.
 - Minimal playable CLI wiring across already-implemented simulation systems.
 
-### Explicit Exclusions
-- No new mechanics.
-- No UI system implementation.
-- No narrative system implementation.
-
-### Objective
-- Stabilize integration behavior and deterministic orchestration without expanding mechanics.
-
-## Phase 5 � Emergent Narrative
+## Phase 5 - Emergent Narrative
 
 **Target:** 0.9.x
 
@@ -614,7 +608,7 @@ Allow stories to coalesce naturally from systems.
 
 ---
 
-## Phase 6 � Stabilization & Balance
+## Phase 6 - Stabilization & Balance
 
 **Target:** 0.9.x
 
