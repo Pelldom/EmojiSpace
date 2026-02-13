@@ -48,6 +48,7 @@ All expansion must originate here.
 | **Phase 4 (COMPLETED)** | **0.5.0** | **Travel and Encounter Scaffolding** |
 | **Phase 4.2 (COMPLETED)** | **0.6.0** | **Ship and Module Data Layer** |
 | **Phase 4.4 (COMPLETED)** | **0.6.2** | **Data Validation and Integration** |
+| **Phase 4.5 (COMPLETED)** | **0.6.3** | **Deterministic Ship Assembler (scope C)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -447,6 +448,21 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Enforced required field presence and type constraints for hull and module catalogs.
 - Enforced module slot_type and primary_tag alignment constraints at data load.
 - Enforced numeric_bonus cap and tier-based crew_capacity band validation.
+
+---
+
+## Phase 4.5 - Deterministic Ship Assembler (scope C) (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.6.3
+
+### Completed Components
+- Deterministic slot distribution and assignment implementation for hull + module instances.
+- Compact slot math and untyped slot allocation rules enforced.
+- Deterministic module bonus aggregation with secondary modifiers.
+- Subsystem degradation capacity computation and RED override integration.
+- Deterministic ship utility effect outputs for ship utility tags.
+- Automated unit tests for assembler behavior and contract-constrained edge cases.
 
 ---
 
