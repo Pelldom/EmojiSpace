@@ -1,0 +1,1345 @@
+{
+  "version": "0.6.1",
+  "hulls": [
+    {
+      "hull_id": "civ_t1_midge",
+      "name": "Midge",
+      "tier": 1,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 0,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 3
+      },
+      "crew_capacity": 0,
+      "base_price_credits": 1650,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A minimal civilian flyer suited to early routes.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "civ_t1_gnat",
+      "name": "Gnat",
+      "tier": 1,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 1,
+        "hull": -1
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 4
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 1720,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A tuned civilian flyer with upgraded instruments and lighter structure.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "civ_t2_fly",
+      "name": "Fly",
+      "tier": 2,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 0,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 10,
+        "data_base": 4
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 8200,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A dependable civilian flyer with modest expansion space.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "civ_t2_fruitfly",
+      "name": "Fruitfly",
+      "tier": 2,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 1,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 12,
+        "data_base": 3
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 9100,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A civilian refit favoring durability and physical stowage over speed.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "civ_t3_mosquito",
+      "name": "Mosquito",
+      "tier": 3,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 12,
+        "data_base": 6
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 42000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A fast civilian flyer with improved data handling.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "civ_t3_crane_fly",
+      "name": "Crane Fly",
+      "tier": 3,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 1,
+        "engine": 0,
+        "hull": -1
+      },
+      "cargo": {
+        "physical_base": 13,
+        "data_base": 5
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 47000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A civilian refit with reinforced systems and reduced structural mass.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "civ_t4_firefly",
+      "name": "Firefly",
+      "tier": 4,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 1,
+        "engine": 1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 14,
+        "data_base": 8
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 165000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A high-end civilian flyer balancing endurance and mobility.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "civ_t4_lightning_bug",
+      "name": "Lightning Bug",
+      "tier": 4,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 2,
+        "engine": 0,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 15,
+        "data_base": 7
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 184000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A civilian refit prioritizing survivability and crew comfort.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "civ_t5_cicada",
+      "name": "Cicada",
+      "tier": 5,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 2,
+        "engine": 1,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 16,
+        "data_base": 10
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 320000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A top-tier civilian flyer with strong endurance and utility.",
+      "fuel_capacity_base": 30
+    },
+    {
+      "hull_id": "civ_t5_katydid",
+      "name": "Katydid",
+      "tier": 5,
+      "frame": "CIV",
+      "traits": [
+        "ship:trait_civilian"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 1,
+        "engine": 2,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 15,
+        "data_base": 11
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 352000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A celebrated civilian refit tuned for long-range performance.",
+      "fuel_capacity_base": 30
+    },
+    {
+      "hull_id": "frg_t1_ant",
+      "name": "Ant",
+      "tier": 1,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 0,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 14,
+        "data_base": 2
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 1900,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A worker freighter built for steady physical throughput.",
+      "fuel_capacity_base": 11
+    },
+    {
+      "hull_id": "frg_t1_carpenter_ant",
+      "name": "Carpenter Ant",
+      "tier": 1,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 0,
+        "engine": 0,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 16,
+        "data_base": 1
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 2000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A reinforced freighter refit trading speed for expanded physical bays.",
+      "fuel_capacity_base": 11
+    },
+    {
+      "hull_id": "frg_t2_cricket",
+      "name": "Cricket",
+      "tier": 2,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 0,
+        "engine": -1,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 20,
+        "data_base": 3
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 10200,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A midline freighter with reliable holds and rugged structure.",
+      "fuel_capacity_base": 17
+    },
+    {
+      "hull_id": "frg_t2_mole_cricket",
+      "name": "Mole Cricket",
+      "tier": 2,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 1,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 22,
+        "data_base": 2
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 11200,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A freighter refit with heavier plating and simplified data systems.",
+      "fuel_capacity_base": 17
+    },
+    {
+      "hull_id": "frg_t3_beetle",
+      "name": "Beetle",
+      "tier": 3,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 0,
+        "engine": -1,
+        "hull": 3
+      },
+      "cargo": {
+        "physical_base": 26,
+        "data_base": 4
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 52000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A heavy freighter platform optimized for bulk physical cargo.",
+      "fuel_capacity_base": 22
+    },
+    {
+      "hull_id": "frg_t3_stag_beetle",
+      "name": "Stag Beetle",
+      "tier": 3,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 1,
+        "engine": -2,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 30,
+        "data_base": 3
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 58000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A reinforced freighter refit that sacrifices transit speed for capacity.",
+      "fuel_capacity_base": 22
+    },
+    {
+      "hull_id": "frg_t4_grasshopper",
+      "name": "Grasshopper",
+      "tier": 4,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 1,
+        "engine": -1,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 34,
+        "data_base": 6
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 190000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A high-capacity freighter with improved structural tolerances.",
+      "fuel_capacity_base": 28
+    },
+    {
+      "hull_id": "frg_t4_locust",
+      "name": "Locust",
+      "tier": 4,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -2,
+        "defense": 1,
+        "engine": 0,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 32,
+        "data_base": 8
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 210000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A refit favoring faster routing and expanded data manifests over armament.",
+      "fuel_capacity_base": 28
+    },
+    {
+      "hull_id": "frg_t5_scarab",
+      "name": "Scarab",
+      "tier": 5,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 2,
+        "engine": -1,
+        "hull": 5
+      },
+      "cargo": {
+        "physical_base": 40,
+        "data_base": 8
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 360000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A maximum-throughput industrial freighter built for extreme loads.",
+      "fuel_capacity_base": 33
+    },
+    {
+      "hull_id": "frg_t5_rhino_beetle",
+      "name": "Rhino Beetle",
+      "tier": 5,
+      "frame": "FRG",
+      "traits": [
+        "ship:trait_freighter"
+      ],
+      "bias": {
+        "weapon": -1,
+        "defense": 3,
+        "engine": -2,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 44,
+        "data_base": 7
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 402000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A legendary freighter refit that pushes physical hold volume to the limit.",
+      "fuel_capacity_base": 33
+    },
+    {
+      "hull_id": "mil_t1_wasp",
+      "name": "Wasp",
+      "tier": 1,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 0,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 5,
+        "data_base": 2
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 2100,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A compact patrol craft built for early enforcement and escort duty.",
+      "fuel_capacity_base": 9
+    },
+    {
+      "hull_id": "mil_t1_paper_wasp",
+      "name": "Paper Wasp",
+      "tier": 1,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": -1,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 4,
+        "data_base": 3
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 2250,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A refit with higher strike output and lighter shielding.",
+      "fuel_capacity_base": 9
+    },
+    {
+      "hull_id": "mil_t2_hornet",
+      "name": "Hornet",
+      "tier": 2,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": 0,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 6,
+        "data_base": 3
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 13000,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "An upgunned patrol hull with sustained engagement profile.",
+      "fuel_capacity_base": 14
+    },
+    {
+      "hull_id": "mil_t2_murder_hornet",
+      "name": "Murder Hornet",
+      "tier": 2,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 3,
+        "defense": -1,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 5,
+        "data_base": 4
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 14200,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A feared refit emphasizing offensive bands at the expense of defenses.",
+      "fuel_capacity_base": 14
+    },
+    {
+      "hull_id": "mil_t3_mantis",
+      "name": "Mantis",
+      "tier": 3,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 3,
+        "defense": 1,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 4
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 68000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A dedicated combat hull with balanced offense and defense.",
+      "fuel_capacity_base": 18
+    },
+    {
+      "hull_id": "mil_t3_orchid_mantis",
+      "name": "Orchid Mantis",
+      "tier": 3,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 3,
+        "defense": 0,
+        "engine": 0,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 3
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 74800,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A refined refit trading defense emphasis for mobility and logistics.",
+      "fuel_capacity_base": 18
+    },
+    {
+      "hull_id": "mil_t4_scorpion",
+      "name": "Scorpion",
+      "tier": 4,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 4,
+        "defense": 2,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 5
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 240000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A heavy combat hull designed to control hostile space.",
+      "fuel_capacity_base": 23
+    },
+    {
+      "hull_id": "mil_t4_emperor_scorpion",
+      "name": "Emperor Scorpion",
+      "tier": 4,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 5,
+        "defense": 1,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 6
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 266000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A prestige refit favoring strike dominance with reduced defensive bias.",
+      "fuel_capacity_base": 23
+    },
+    {
+      "hull_id": "mil_t5_dragonfly",
+      "name": "Dragonfly",
+      "tier": 5,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 5,
+        "defense": 3,
+        "engine": -1,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 9,
+        "data_base": 6
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 420000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "A capital-grade combat hull for sustained engagements.",
+      "fuel_capacity_base": 27
+    },
+    {
+      "hull_id": "mil_t5_hawker",
+      "name": "Hawker",
+      "tier": 5,
+      "frame": "MIL",
+      "traits": [
+        "ship:trait_military"
+      ],
+      "bias": {
+        "weapon": 5,
+        "defense": 2,
+        "engine": 0,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 10,
+        "data_base": 5
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 470000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [],
+      "description": "An elite refit tuned for pursuit and decisive positioning.",
+      "fuel_capacity_base": 27
+    },
+    {
+      "hull_id": "xa_t1_nova",
+      "name": "Nova",
+      "tier": 1,
+      "frame": "XA",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 6,
+        "data_base": 7
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 4200,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Experimental utility hull tuned for engines and instruments.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "xa_t2_comet",
+      "name": "Comet",
+      "tier": 2,
+      "frame": "XA",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 2,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 10
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 21000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Fast experimental platform with expanded data capacity.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "xa_t3_nebula",
+      "name": "Nebula",
+      "tier": 3,
+      "frame": "XA",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 1,
+        "engine": 3,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 14
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 120000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "High-end experimental platform with exceptional mobility and data.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "xa_t4_pulsar",
+      "name": "Pulsar",
+      "tier": 4,
+      "frame": "XA",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 1,
+        "engine": 4,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 10,
+        "data_base": 18
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 320000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Elite experimental platform with extreme engine performance.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "xa_t5_quasar",
+      "name": "Quasar",
+      "tier": 5,
+      "frame": "XA",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": 2,
+        "engine": 5,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 12,
+        "data_base": 22
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 520000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Apex experimental utility hull with exceptional multi-role potential.",
+      "fuel_capacity_base": 30
+    },
+    {
+      "hull_id": "xb_t1_flare",
+      "name": "Flare",
+      "tier": 1,
+      "frame": "XB",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": 0,
+        "engine": -1,
+        "hull": -1
+      },
+      "cargo": {
+        "physical_base": 4,
+        "data_base": 2
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 4600,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype striker frame optimized for weapon output.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "xb_t2_eclipse",
+      "name": "Eclipse",
+      "tier": 2,
+      "frame": "XB",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 3,
+        "defense": 0,
+        "engine": -1,
+        "hull": -1
+      },
+      "cargo": {
+        "physical_base": 5,
+        "data_base": 2
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 26000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype assault hull tuned for overwhelming first strikes.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "xb_t3_magnetar",
+      "name": "Magnetar",
+      "tier": 3,
+      "frame": "XB",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 4,
+        "defense": 0,
+        "engine": -1,
+        "hull": -1
+      },
+      "cargo": {
+        "physical_base": 6,
+        "data_base": 3
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 145000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Weapon-dominant prototype known for brutal output bands.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "xb_t4_supernova",
+      "name": "Supernova",
+      "tier": 4,
+      "frame": "XB",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 5,
+        "defense": 1,
+        "engine": -1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 4
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 360000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype assault hull with catastrophic weapon potential.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "xb_t5_cataclysm",
+      "name": "Cataclysm",
+      "tier": 5,
+      "frame": "XB",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 6,
+        "defense": 2,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 5
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 600000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Apex prototype assault hull built for decisive annihilation.",
+      "fuel_capacity_base": 30
+    },
+    {
+      "hull_id": "xc_t1_aegis",
+      "name": "Aegis",
+      "tier": 1,
+      "frame": "XC",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 2,
+        "engine": -1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 5,
+        "data_base": 3
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 4400,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype defense frame built to endure early engagements.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "xc_t2_bastion",
+      "name": "Bastion",
+      "tier": 2,
+      "frame": "XC",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 3,
+        "engine": -1,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 6,
+        "data_base": 3
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 24000,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype defensive hull built to hold ground under pressure.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "xc_t3_bulwark",
+      "name": "Bulwark",
+      "tier": 3,
+      "frame": "XC",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 4,
+        "engine": -1,
+        "hull": 3
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 4
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 140000,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Defense prototype designed to outlast conventional opponents.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "xc_t4_citadel",
+      "name": "Citadel",
+      "tier": 4,
+      "frame": "XC",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 5,
+        "engine": -1,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 5
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 350000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Prototype defense hull engineered to survive prolonged engagements.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "xc_t5_sentinel",
+      "name": "Sentinel",
+      "tier": 5,
+      "frame": "XC",
+      "traits": [
+        "ship:trait_experimental"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": 6,
+        "engine": -1,
+        "hull": 6
+      },
+      "cargo": {
+        "physical_base": 9,
+        "data_base": 6
+      },
+      "crew_capacity": 5,
+      "base_price_credits": 590000,
+      "rarity_tier": "unique",
+      "mission_grantable": true,
+      "availability_flags": [
+        "mission_only"
+      ],
+      "description": "Apex defense prototype intended to be functionally unbreakable.",
+      "fuel_capacity_base": 30
+    },
+    {
+      "hull_id": "aln_t1_trilobite",
+      "name": "Trilobite",
+      "tier": 1,
+      "frame": "ALN",
+      "traits": [
+        "ship:trait_alien"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 0,
+        "engine": 1,
+        "hull": 0
+      },
+      "cargo": {
+        "physical_base": 7,
+        "data_base": 6
+      },
+      "crew_capacity": 0,
+      "base_price_credits": 13000,
+      "rarity_tier": "rare",
+      "mission_grantable": false,
+      "availability_flags": [
+        "event_only"
+      ],
+      "description": "Recovered alien relic hull cataloged by human explorers.",
+      "fuel_capacity_base": 10
+    },
+    {
+      "hull_id": "aln_t2_tardigrade",
+      "name": "Tardigrade",
+      "tier": 2,
+      "frame": "ALN",
+      "traits": [
+        "ship:trait_alien"
+      ],
+      "bias": {
+        "weapon": 0,
+        "defense": 1,
+        "engine": 1,
+        "hull": 1
+      },
+      "cargo": {
+        "physical_base": 8,
+        "data_base": 10
+      },
+      "crew_capacity": 1,
+      "base_price_credits": 65000,
+      "rarity_tier": "rare",
+      "mission_grantable": false,
+      "availability_flags": [
+        "event_only"
+      ],
+      "description": "Alien hull noted for resilience and unexpected recovery behavior.",
+      "fuel_capacity_base": 15
+    },
+    {
+      "hull_id": "aln_t3_nautiloid",
+      "name": "Nautiloid",
+      "tier": 3,
+      "frame": "ALN",
+      "traits": [
+        "ship:trait_alien"
+      ],
+      "bias": {
+        "weapon": 1,
+        "defense": 1,
+        "engine": 2,
+        "hull": 2
+      },
+      "cargo": {
+        "physical_base": 10,
+        "data_base": 14
+      },
+      "crew_capacity": 2,
+      "base_price_credits": 210000,
+      "rarity_tier": "unique",
+      "mission_grantable": false,
+      "availability_flags": [
+        "event_only"
+      ],
+      "description": "Alien relic hull with unfamiliar internal volumes and geometry.",
+      "fuel_capacity_base": 20
+    },
+    {
+      "hull_id": "aln_t4_axolotl",
+      "name": "Axolotl",
+      "tier": 4,
+      "frame": "ALN",
+      "traits": [
+        "ship:trait_alien"
+      ],
+      "bias": {
+        "weapon": 2,
+        "defense": 2,
+        "engine": 3,
+        "hull": 3
+      },
+      "cargo": {
+        "physical_base": 12,
+        "data_base": 18
+      },
+      "crew_capacity": 3,
+      "base_price_credits": 520000,
+      "rarity_tier": "unique",
+      "mission_grantable": false,
+      "availability_flags": [
+        "event_only"
+      ],
+      "description": "Alien relic hull rumored to stabilize damage in abnormal ways.",
+      "fuel_capacity_base": 25
+    },
+    {
+      "hull_id": "aln_t5_coelacanth",
+      "name": "Coelacanth",
+      "tier": 5,
+      "frame": "ALN",
+      "traits": [
+        "ship:trait_alien"
+      ],
+      "bias": {
+        "weapon": 3,
+        "defense": 3,
+        "engine": 4,
+        "hull": 4
+      },
+      "cargo": {
+        "physical_base": 14,
+        "data_base": 22
+      },
+      "crew_capacity": 4,
+      "base_price_credits": 850000,
+      "rarity_tier": "unique",
+      "mission_grantable": false,
+      "availability_flags": [
+        "event_only"
+      ],
+      "description": "A pinnacle alien relic hull; humans call it a living fossil of design.",
+      "fuel_capacity_base": 30
+    }
+  ]
+}

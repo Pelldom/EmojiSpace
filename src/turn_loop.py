@@ -71,7 +71,8 @@ class TurnLoop:
             )
             return
 
-        previous = self._player_state.move_to(action.target_system_id)
+        previous = self._player_state.current_system_id
+        self._player_state.current_system_id = action.target_system_id
         turn = self._time_engine.advance()
         self._economy.advance_turn(turn=turn)
         self._apply_heat_decay(action.target_system_id, turn)
@@ -84,7 +85,7 @@ class TurnLoop:
         )
 
     def execute_buy(self, action: BuyAction) -> None:
-        system_id = self._player_state.location_system_id
+        system_id = self._player_state.current_system_id
         market_good = self._market_good(system_id, action.sku)
         if market_good is None:
             turn = self._time_engine.advance()
@@ -96,6 +97,7 @@ class TurnLoop:
                 state_change=f"failed sku_not_in_market system_id={system_id} sku={action.sku}",
             )
             return
+        turn = self._time_engine.current_turn
         if self._customs_checkpoint(system_id, turn) is False:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
@@ -107,7 +109,10 @@ class TurnLoop:
             )
             return
         category_id = market_good.category
-        self._player_state.buy(action.sku)
+        self._player_state.cargo_by_ship.setdefault("active", {})
+        self._player_state.cargo_by_ship["active"][action.sku] = (
+            self._player_state.cargo_by_ship["active"].get(action.sku, 0) + 1
+        )
         turn = self._time_engine.advance()
         self._economy.advance_turn(
             turn=turn,
@@ -130,8 +135,9 @@ class TurnLoop:
             self._log_pricing_transaction(system_id, action.sku, "buy", pricing)
 
     def execute_sell(self, action: SellAction) -> None:
-        system_id = self._player_state.location_system_id
-        if not self._player_state.sell(action.sku):
+        system_id = self._player_state.current_system_id
+        current = self._player_state.cargo_by_ship.get("active", {}).get(action.sku, 0)
+        if current <= 0:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
             self._apply_heat_decay(system_id, turn)
@@ -141,6 +147,8 @@ class TurnLoop:
                 state_change=f"failed no_holdings system_id={system_id} sku={action.sku}",
             )
             return
+        self._player_state.cargo_by_ship.setdefault("active", {})
+        self._player_state.cargo_by_ship["active"][action.sku] = current - 1
         category_id = self._sku_category(action.sku)
         if category_id is None:
             turn = self._time_engine.advance()
@@ -162,6 +170,7 @@ class TurnLoop:
                 state_change=f"failed category_not_present system_id={system_id} sku={action.sku} category_id={category_id}",
             )
             return
+        turn = self._time_engine.current_turn
         if self._customs_checkpoint(system_id, turn) is False:
             turn = self._time_engine.advance()
             self._economy.advance_turn(turn=turn)
@@ -224,9 +233,16 @@ class TurnLoop:
         )
         confiscated = 0
         if outcome.confiscated < 0:
-            confiscated = self._player_state.confiscate(sku, None)
+            current = self._player_state.cargo_by_ship.get("active", {}).get(sku, 0)
+            self._player_state.cargo_by_ship.setdefault("active", {})
+            self._player_state.cargo_by_ship["active"][sku] = 0
+            confiscated = current
         elif outcome.confiscated > 0:
-            confiscated = self._player_state.confiscate(sku, outcome.confiscated)
+            current = self._player_state.cargo_by_ship.get("active", {}).get(sku, 0)
+            take = min(current, outcome.confiscated)
+            self._player_state.cargo_by_ship.setdefault("active", {})
+            self._player_state.cargo_by_ship["active"][sku] = max(0, current - take)
+            confiscated = take
         if confiscated:
             self._logger.log(
                 turn=turn,
@@ -236,15 +252,16 @@ class TurnLoop:
                 ),
             )
         if outcome.reputation_delta != 0:
-            self._player_state.adjust_reputation(outcome.reputation_delta)
+            current_rep = self._player_state.reputation_by_system.get(system_id, 50)
+            self._player_state.reputation_by_system[system_id] = current_rep + outcome.reputation_delta
             self._logger.log(
                 turn=turn,
                 action="reputation_change",
-                state_change=f"delta={outcome.reputation_delta} total={self._player_state.reputation()}",
+                state_change=f"delta={outcome.reputation_delta} total={self._player_state.reputation_by_system[system_id]}",
             )
 
     def _inspect_transport(self, system_id: str, turn: int) -> None:
-        holdings = self._player_state.holdings_snapshot()
+        holdings = dict(self._player_state.cargo_by_ship.get("active", {}))
         for sku, count in holdings.items():
             if count <= 0:
                 continue
@@ -321,7 +338,7 @@ class TurnLoop:
         government_id = self._sector.get_system(system_id).attributes.get("government_id")
         illegal_present = False
         policies: list[tuple[str, object]] = []
-        holdings = self._player_state.holdings_snapshot()
+        holdings = dict(self._player_state.cargo_by_ship.get("active", {}))
         for sku, count in holdings.items():
             if count <= 0:
                 continue
@@ -341,22 +358,17 @@ class TurnLoop:
         for sku, policy in policies:
             if policy.legality_state.value != "RESTRICTED":
                 continue
-            if self._player_state.has_license(system_id, sku):
-                continue
-            category_id = self._sku_category(sku)
-            if category_id is not None and self._player_state.has_license(system_id, category_id):
-                continue
-                return True
+            return True
         return False
 
     def _apply_heat_decay(self, current_system_id: str, turn: int) -> None:
         for system in self._sector.systems:
-            heat_before = self._player_state.get_heat(system.system_id)
+            heat_before = self._player_state.heat_by_system.get(system.system_id, 0)
             if heat_before <= 0:
                 continue
             decay = 10 if system.system_id == current_system_id else 20
             heat_after = max(0, heat_before - decay)
-            self._player_state.set_heat(system.system_id, heat_after)
+            self._player_state.heat_by_system[system.system_id] = heat_after
             self._logger.log(
                 turn=turn,
                 action="heat_decay",
@@ -430,7 +442,7 @@ class TurnLoop:
         return None
 
     def _sku_category(self, sku: str) -> str | None:
-        market_good = self._market_good(self._player_state.location_system_id, sku)
+        market_good = self._market_good(self._player_state.current_system_id, sku)
         if market_good is not None:
             return market_good.category
         try:

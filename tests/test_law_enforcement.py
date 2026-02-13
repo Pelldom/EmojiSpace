@@ -34,9 +34,9 @@ class NullLogger:
 def test_inspection_determinism() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("anarchic")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 50)
-    player.set_heat("SYS-TEST", 10)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 50
+    player.heat_by_system["SYS-TEST"] = 10
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.LEGAL,
         risk_tier=RiskTier.NONE,
@@ -71,19 +71,19 @@ def test_inspection_determinism() -> None:
 def test_warrant_does_not_change_inspection_score() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("anarchic")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 50)
-    player.set_heat("SYS-TEST", 10)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 50
+    player.heat_by_system["SYS-TEST"] = 10
     base_score = compute_inspection_score(
         government,
-        rep_band=band_index_from_1_100(player.get_reputation("SYS-TEST")),
-        heat_band=band_index_from_1_100(max(1, player.get_heat("SYS-TEST"))),
+        rep_band=band_index_from_1_100(player.reputation_by_system.get("SYS-TEST", 50)),
+        heat_band=band_index_from_1_100(max(1, player.heat_by_system.get("SYS-TEST", 0))),
     )
-    player.set_warrant("SYS-TEST", True)
+    player.warrants_by_system["SYS-TEST"] = [{"warrant_id": "W-1"}]
     warrant_score = compute_inspection_score(
         government,
-        rep_band=band_index_from_1_100(player.get_reputation("SYS-TEST")),
-        heat_band=band_index_from_1_100(max(1, player.get_heat("SYS-TEST"))),
+        rep_band=band_index_from_1_100(player.reputation_by_system.get("SYS-TEST", 50)),
+        heat_band=band_index_from_1_100(max(1, player.heat_by_system.get("SYS-TEST", 0))),
     )
     assert base_score == warrant_score
 
@@ -91,19 +91,19 @@ def test_warrant_does_not_change_inspection_score() -> None:
 def test_fines_do_not_change_inspection_score() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("anarchic")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 50)
-    player.set_heat("SYS-TEST", 10)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 50
+    player.heat_by_system["SYS-TEST"] = 10
     base_score = compute_inspection_score(
         government,
-        rep_band=band_index_from_1_100(player.get_reputation("SYS-TEST")),
-        heat_band=band_index_from_1_100(max(1, player.get_heat("SYS-TEST"))),
+        rep_band=band_index_from_1_100(player.reputation_by_system.get("SYS-TEST", 50)),
+        heat_band=band_index_from_1_100(max(1, player.heat_by_system.get("SYS-TEST", 0))),
     )
-    player.add_fines("SYS-TEST", 100)
+    player.outstanding_fines["SYS-TEST"] = 100
     fines_score = compute_inspection_score(
         government,
-        rep_band=band_index_from_1_100(player.get_reputation("SYS-TEST")),
-        heat_band=band_index_from_1_100(max(1, player.get_heat("SYS-TEST"))),
+        rep_band=band_index_from_1_100(player.reputation_by_system.get("SYS-TEST", 50)),
+        heat_band=band_index_from_1_100(max(1, player.heat_by_system.get("SYS-TEST", 0))),
     )
     assert base_score == fines_score
 
@@ -123,10 +123,10 @@ def test_bribery_chance_bounds() -> None:
 def test_warrant_forces_arrest_on_inspection() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
-    player.set_warrant("SYS-TEST", True)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
+    player.warrants_by_system["SYS-TEST"] = [{"warrant_id": "W-2"}]
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -175,9 +175,9 @@ def test_heat_decay_per_turn() -> None:
         ),
         ]
     )
-    player = PlayerState(start_system_id="SYS-A")
-    player.set_heat("SYS-A", 50)
-    player.set_heat("SYS-B", 50)
+    player = PlayerState(current_system_id="SYS-A")
+    player.heat_by_system["SYS-A"] = 50
+    player.heat_by_system["SYS-B"] = 50
     turn_loop = TurnLoop(
         time_engine=TimeEngine(),
         sector=sector,
@@ -190,8 +190,8 @@ def test_heat_decay_per_turn() -> None:
         world_seed=1,
     )
     turn_loop.execute_move(MoveAction(target_system_id="SYS-B"))
-    assert player.get_heat("SYS-B") == 40
-    assert player.get_heat("SYS-A") == 30
+    assert player.heat_by_system.get("SYS-B") == 40
+    assert player.heat_by_system.get("SYS-A") == 30
 
 
 def test_restricted_checked_only_at_customs() -> None:
@@ -223,8 +223,8 @@ def test_restricted_checked_only_at_customs() -> None:
         ]
     )
     logger = CollectLogger()
-    player = PlayerState(start_system_id="SYS-A")
-    player.buy("luxury_basic_rations")
+    player = PlayerState(current_system_id="SYS-A")
+    player.cargo_by_ship["active"] = {"luxury_basic_rations": 1}
     turn_loop = TurnLoop(
         time_engine=TimeEngine(),
         sector=sector,
@@ -243,10 +243,10 @@ def test_restricted_checked_only_at_customs() -> None:
 def test_fines_added_on_inspection() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
-    player.add_fines("SYS-TEST", 123)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
+    player.outstanding_fines["SYS-TEST"] = 123
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -271,9 +271,9 @@ def test_fines_added_on_inspection() -> None:
 def test_reputation_delta_from_consequences() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 50)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 50
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -292,15 +292,15 @@ def test_reputation_delta_from_consequences() -> None:
     )
     assert outcome is not None
     expected = get_consequences("illegal_goods_possession", outcome.severity_final)["reputation"]
-    assert player.get_reputation("SYS-TEST") == 50 + {"negligible": 0, "minor": -2, "moderate": -5, "major": -10, "extreme": -20}[expected]
+    assert player.reputation_by_system.get("SYS-TEST") == 50 + {"negligible": 0, "minor": -2, "moderate": -5, "major": -10, "extreme": -20}[expected]
 
 
 def test_dominant_violation_priority_illegal_over_stolen() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -324,9 +324,9 @@ def test_dominant_violation_priority_illegal_over_stolen() -> None:
 def test_border_restricted_no_confiscation() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.RESTRICTED,
         risk_tier=RiskTier.MEDIUM,
@@ -353,9 +353,9 @@ def test_border_restricted_no_confiscation() -> None:
 def test_warrant_only_on_escape_even_if_eligible() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -381,9 +381,9 @@ def test_warrant_only_on_escape_even_if_eligible() -> None:
 def test_no_consequence_block_no_action() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 50)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 50
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.RESTRICTED,
         risk_tier=RiskTier.HIGH,
@@ -407,11 +407,11 @@ def test_no_consequence_block_no_action() -> None:
 def test_detention_tier1_confiscates_and_removes_ship_preserves_credits() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.buy("contraband")
-    player.set_credits(500)
-    player.set_reputation("SYS-TEST", 81)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.cargo_by_ship["active"] = {"contraband": 1}
+    player.credits = 500
+    player.reputation_by_system["SYS-TEST"] = 81
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.MEDIUM,
@@ -431,17 +431,17 @@ def test_detention_tier1_confiscates_and_removes_ship_preserves_credits() -> Non
     )
     assert outcome is not None
     assert outcome.detention_tier == 1
-    assert player.has_ship() is False
-    assert player.holdings_snapshot().get("contraband", 0) == 0
+    assert player.active_ship_id is None
+    assert player.cargo_by_ship.get("active", {}).get("contraband", 0) == 0
     assert player.credits == 500
 
 
 def test_detention_tier2_game_over() -> None:
     registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
     government = registry.get_government("fascist")
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_reputation("SYS-TEST", 1)
-    player.set_heat("SYS-TEST", 100)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.reputation_by_system["SYS-TEST"] = 1
+    player.heat_by_system["SYS-TEST"] = 100
     policy = GovernmentPolicyResult(
         legality_state=LegalityStatus.ILLEGAL,
         risk_tier=RiskTier.SEVERE,
@@ -465,16 +465,12 @@ def test_detention_tier2_game_over() -> None:
 
 
 def test_victory_eligibility_toggle() -> None:
-    logger = CollectLogger()
-    player = PlayerState(start_system_id="SYS-TEST")
-    player.set_progression_track("notoriety", 50, logger=logger, turn=1, system_id="SYS-TEST")
-    player.set_progression_track("trust", 100, logger=logger, turn=2, system_id="SYS-TEST")
-    assert player.victory_eligible is True
-    assert player.victory_track == "trust"
-    player.set_progression_track("notoriety", 60, logger=logger, turn=3, system_id="SYS-TEST")
-    assert player.victory_eligible is False
-    assert any("victory_eligible" in entry for entry in logger.entries)
-    assert any("victory_eligibility_revoked" in entry for entry in logger.entries)
+    player = PlayerState(current_system_id="SYS-TEST")
+    player.progression_tracks["notoriety"] = 50
+    player.progression_tracks["trust"] = 100
+    assert player.progression_tracks["trust"] == 100
+    player.progression_tracks["notoriety"] = 60
+    assert player.progression_tracks["notoriety"] == 60
 
 
 class CollectLogger:

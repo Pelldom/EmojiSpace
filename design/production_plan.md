@@ -51,6 +51,7 @@ All expansion must originate here.
 | **Phase 4.5 (COMPLETED)** | **0.6.3** | **Deterministic Ship Assembler (scope C)** |
 | **Phase 4.6 (COMPLETED)** | **0.6.4** | **Combat integration with deterministic assembler** |
 | **Phase 4.7 (COMPLETED)** | **0.6.5** | **Deterministic shipdock inventory generator** |
+| **Phase 4.8 (COMPLETED)** | **0.7.0** | **Fuel system integration and refuel interaction** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -492,6 +493,21 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Weighted, without-replacement module and hull selection implemented.
 - Rare module caps enforced by population with deterministic replacement behavior.
 - Purchase bans and defensive filtering applied for prohibited inventory entries.
+
+---
+
+## Phase 4.8 - Fuel System Integration (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.7.0
+
+### Completed Components
+- Added explicit per-hull base fuel capacity field in hull data and load-time validation.
+- Added ship utility module support for `ship:utility_extra_fuel`.
+- Extended deterministic ship assembly output with final `fuel_capacity`.
+- Added persistent ship fuel state (`current_fuel`) with strict bounds invariant.
+- Added deterministic travel fuel consumption/rejection flow including emergency transport bypass.
+- Added refuel interaction helpers with DataNet-gated action availability and fixed unit pricing.
 
 ---
 

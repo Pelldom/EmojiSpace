@@ -365,8 +365,8 @@ def enforcement_checkpoint(
     option: PlayerOption | None = None,
     bribe_tier: str = "SMALL",
 ) -> EnforcementOutcome | None:
-    rep_score = player.get_reputation(system_id)
-    heat_score = player.get_heat(system_id)
+    rep_score = player.reputation_by_system.get(system_id, 50)
+    heat_score = player.heat_by_system.get(system_id, 0)
     rep_band = band_index_from_1_100(rep_score)
     heat_band = band_index_from_1_100(max(1, heat_score))
     inspection_score = compute_inspection_score(government, rep_band, heat_band)
@@ -404,8 +404,8 @@ def enforcement_checkpoint(
         player_snapshot=PlayerSnapshot(
             reputation=rep_score,
             heat=heat_score,
-            warrant=player.has_warrant(system_id),
-            fines=player.get_fines(system_id),
+            warrant=bool(player.warrants_by_system.get(system_id, [])),
+            fines=player.outstanding_fines.get(system_id, 0),
         ),
         cargo_snapshot=cargo_snapshot,
     )
@@ -414,8 +414,8 @@ def enforcement_checkpoint(
     config = {
         "enforcement_strength": government.enforcement_strength,
         "rep_band": rep_band,
-        "warrant_present": player.has_warrant(system_id),
-        "fines_outstanding": player.get_fines(system_id),
+        "warrant_present": bool(player.warrants_by_system.get(system_id, [])),
+        "fines_outstanding": player.outstanding_fines.get(system_id, 0),
         "government": government,
         "bribe_tier": bribe_tier,
     }
@@ -433,7 +433,7 @@ def enforcement_checkpoint(
         outcome = replace(outcome, confiscated_amount=confiscated_amount)
     if outcome.detention_tier == 1:
         _confiscate_all(player)
-        player.remove_ship()
+        player.active_ship_id = None
         outcome = replace(outcome, ship_lost=True)
         logger.log(
             turn=turn,
@@ -447,7 +447,7 @@ def enforcement_checkpoint(
             action="detention_tier2",
             state_change=f"system_id={system_id} game_over=True",
         )
-        player.end_run("tier2_arrest", logger=logger, turn=turn, system_id=system_id)
+        player.arrest_state = "detained_tier_2"
 
     _apply_outcome(player, system_id, outcome)
     logger.log(
@@ -467,8 +467,10 @@ def enforcement_checkpoint(
             f"ship_lost={outcome.ship_lost} game_over={outcome.dead} "
             f"bribery_chance={outcome.bribery_chance} "
             f"bribery_roll={outcome.bribery_roll} bribery_result={outcome.bribery_result} "
-            f"rep_before={event.player_snapshot.reputation} rep_after={player.get_reputation(system_id)} "
-            f"heat_before={event.player_snapshot.heat} heat_after={player.get_heat(system_id)} "
+            f"rep_before={event.player_snapshot.reputation} "
+            f"rep_after={player.reputation_by_system.get(system_id, 50)} "
+            f"heat_before={event.player_snapshot.heat} "
+            f"heat_after={player.heat_by_system.get(system_id, 0)} "
             f"outcome=escaped:{outcome.escaped} arrested:{outcome.arrested}"
         ),
     )
@@ -476,12 +478,13 @@ def enforcement_checkpoint(
 
 
 def _apply_outcome(player: PlayerState, system_id: str, outcome: EnforcementOutcome) -> None:
-    player.set_reputation(system_id, player.get_reputation(system_id) + outcome.rep_delta)
-    player.set_heat(system_id, player.get_heat(system_id) + outcome.heat_delta)
+    player.reputation_by_system[system_id] = player.reputation_by_system.get(system_id, 50) + outcome.rep_delta
+    player.heat_by_system[system_id] = player.heat_by_system.get(system_id, 0) + outcome.heat_delta
     if outcome.warrant_issued:
-        player.set_warrant(system_id, True)
+        player.warrants_by_system.setdefault(system_id, [])
+        player.warrants_by_system[system_id].append({"warrant_id": "AUTO"})
     if outcome.fines_added:
-        player.add_fines(system_id, outcome.fines_added)
+        player.outstanding_fines[system_id] = player.outstanding_fines.get(system_id, 0) + outcome.fines_added
 
 
 def _resolve_option(option: PlayerOption | None) -> PlayerOption:
@@ -697,19 +700,23 @@ def _apply_confiscation(
             continue
         if violation_type == "counterfeit_goods_possession" and "counterfeit" not in policy.consumed_tags:
             continue
-        count = player.holdings_snapshot().get(sku, 0)
+        count = player.cargo_by_ship.get("active", {}).get(sku, 0)
         if count <= 0:
             continue
         take = int(count * (percent / 100.0))
         if take <= 0:
             continue
-        total += player.confiscate(sku, take)
+        remaining = max(0, count - take)
+        player.cargo_by_ship.setdefault("active", {})
+        player.cargo_by_ship["active"][sku] = remaining
+        total += take
     return total
 
 
 def _confiscate_all(player: PlayerState) -> None:
-    holdings = player.holdings_snapshot()
+    holdings = dict(player.cargo_by_ship.get("active", {}))
     for sku, count in holdings.items():
         if count <= 0:
             continue
-        player.confiscate(sku, None)
+        player.cargo_by_ship.setdefault("active", {})
+        player.cargo_by_ship["active"][sku] = 0

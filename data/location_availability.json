@@ -1,0 +1,169 @@
+{
+  "market": {
+    "min_population": 1,
+    "government": {
+      "free_trade_coalition": "YES",
+      "corporate_authority": "YES",
+      "fascist": "YES",
+      "anarchic": "YES",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "YES",
+      "communist": "YES",
+      "collective_commune": "YES",
+      "theocracy": "YES",
+      "dictatorship": "YES"
+    },
+    "economy": {
+      "mining": "YES",
+      "agricultural": "YES",
+      "industrial": "YES",
+      "tech": "YES",
+      "military": "LIMITED",
+      "tourism": "YES",
+      "cultural": "YES",
+      "trade": "YES",
+      "research": "YES"
+    }
+  },
+
+  "bar": {
+    "min_population": 2,
+    "government": {
+      "free_trade_coalition": "YES",
+      "corporate_authority": "YES",
+      "fascist": "NO",
+      "anarchic": "YES",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "LIMITED",
+      "communist": "NO",
+      "collective_commune": "LIMITED",
+      "theocracy": "NO",
+      "dictatorship": "LIMITED"
+    },
+    "economy": {
+      "mining": "LIMITED",
+      "agricultural": "LIMITED",
+      "industrial": "YES",
+      "tech": "YES",
+      "military": "NO",
+      "tourism": "YES",
+      "cultural": "YES",
+      "trade": "YES",
+      "research": "LIMITED"
+    }
+  },
+
+  "warehouse": {
+    "min_population": 2,
+    "government": {
+      "free_trade_coalition": "YES",
+      "corporate_authority": "YES",
+      "fascist": "YES",
+      "anarchic": "YES",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "YES",
+      "communist": "YES",
+      "collective_commune": "YES",
+      "theocracy": "YES",
+      "dictatorship": "YES"
+    },
+    "economy": {
+      "mining": "YES",
+      "agricultural": "LIMITED",
+      "industrial": "YES",
+      "tech": "LIMITED",
+      "military": "LIMITED",
+      "tourism": "LIMITED",
+      "cultural": "NO",
+      "trade": "YES",
+      "research": "LIMITED"
+    }
+  },
+
+  "shipdock": {
+    "min_population": 3,
+    "government": {
+      "free_trade_coalition": "LIMITED",
+      "corporate_authority": "YES",
+      "fascist": "YES",
+      "anarchic": "LIMITED",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "LIMITED",
+      "communist": "YES",
+      "collective_commune": "LIMITED",
+      "theocracy": "LIMITED",
+      "dictatorship": "YES"
+    },
+    "economy": {
+      "mining": "LIMITED",
+      "agricultural": "NO",
+      "industrial": "YES",
+      "tech": "YES",
+      "military": "YES",
+      "tourism": "NO",
+      "cultural": "NO",
+      "trade": "YES",
+      "research": "LIMITED"
+    }
+  },
+
+  "administration": {
+    "min_population": 3,
+    "government": {
+      "free_trade_coalition": "NO",
+      "corporate_authority": "YES",
+      "fascist": "YES",
+      "anarchic": "NO",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "YES",
+      "communist": "YES",
+      "collective_commune": "YES",
+      "theocracy": "YES",
+      "dictatorship": "YES"
+    },
+    "economy": {
+      "mining": "NO",
+      "agricultural": "NO",
+      "industrial": "LIMITED",
+      "tech": "LIMITED",
+      "military": "YES",
+      "tourism": "NO",
+      "cultural": "NO",
+      "trade": "LIMITED",
+      "research": "YES"
+    }
+  },
+
+  "bank": {
+    "min_population": 4,
+    "government": {
+      "free_trade_coalition": "NO",
+      "corporate_authority": "YES",
+      "fascist": "NO",
+      "anarchic": "NO",
+      "democracy": "YES",
+      "republic": "YES",
+      "socialist": "LIMITED",
+      "communist": "NO",
+      "collective_commune": "NO",
+      "theocracy": "NO",
+      "dictatorship": "LIMITED"
+    },
+    "economy": {
+      "mining": "NO",
+      "agricultural": "NO",
+      "industrial": "LIMITED",
+      "tech": "YES",
+      "military": "NO",
+      "tourism": "YES",
+      "cultural": "LIMITED",
+      "trade": "YES",
+      "research": "LIMITED"
+    }
+  }
+}

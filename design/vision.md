@@ -51,6 +51,12 @@ A living sector
 
 The sector is persistent for the duration of a run.
 
+The galaxy evolves over time. Events are not static, and opportunities may arise, escalate, or disappear based on the passage of time and player action or inaction. Time in EmojiSpace is discrete and systemic rather than real-time, serving as a foundation for world state changes, consequences, and long-term outcomes.
+
+Missions in EmojiSpace are not scripted quests, but emergent contracts formed from context, relationships, and circumstance. Their meaning comes not from predefined narratives, but from outcomes, consequences, and how they intersect with the wider state of the galaxy.
+
+DataNet represents the underlying information and service infrastructure of the galaxy. It provides access to news, messages, and rare system-level opportunities, but does not replace physical presence, ships, or local interactions. DataNet informs and enables; it does not trivialize distance, risk, or consequence.
+
 Systems experience:
 
 economic shifts

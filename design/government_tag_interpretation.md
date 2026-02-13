@@ -1,6 +1,6 @@
 ###  government_tag_interpretation.md
 **Status:** Authoritative / Binding  
-**Phase:** 2.6 — Government × Tag Interpretation  
+**Phase:** 2.6 ï¿½ Government ï¿½ Tag Interpretation  
 **Applies To:** Economy Engine, Government & Law Engine, Testing Harnesses  
 **Consumes:**  
 - `governments.json`  
@@ -98,6 +98,19 @@ Legality resolution occurs **before** pricing.
 
 ---
 
+### Consumed Tags (Phase 2.6 Clarification)
+When a government rule references a tag (e.g., stolen, counterfeit, weaponized),
+that tag is considered **consumed** by Government.
+
+Rules:
+- Consumed tags must not be reinterpreted downstream by Pricing.
+- Tags not referenced by the government remain eligible for pricing interpretation.
+
+Example:
+- SKU tags: [luxury, stolen]
+- Government consumes `stolen` â†’ sets legality/risk
+- Pricing ignores `stolen` but may still apply `luxury` modifiers
+
 ## 5. Risk Tiers (Coarse)
 
 Risk is represented using **four discrete tiers**:
@@ -114,7 +127,7 @@ Risk is represented using **four discrete tiers**:
 
 ## 6. Base Government Risk Profile
 
-A government’s baseline risk profile is derived as follows:
+A governmentï¿½s baseline risk profile is derived as follows:
 
 - High regulation_level = increases risk
 - High enforcement_strength = increases risk
@@ -127,7 +140,7 @@ into the risk tiers above.
 
 ---
 
-## 7. Possible Tag Interpretation — Default Bands
+## 7. Possible Tag Interpretation ï¿½ Default Bands
 
 The following tables define **default Phase 2.6 interpretation**.
 

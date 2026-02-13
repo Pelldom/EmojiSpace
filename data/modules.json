@@ -1,0 +1,990 @@
+{
+  "version": "0.6.2",
+  "modules": [
+    {
+      "module_id": "weapon_energy_mk1",
+      "name": "Energy Weapon Mk I",
+      "display_names": [
+        "Laser Cannon",
+        "Phaser Array",
+        "Pulse Emitter",
+        "Turbo Laser",
+        "Beam Projector",
+        "Ion Lance",
+        "Photon Blaster",
+        "Plasma Thrower",
+        "Arc Spitter",
+        "Solar Flare Gun",
+        "Wave-Motion Coil",
+        "Lightwave Repeater"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_energy",
+      "numeric_bonus": {
+        "weapon": 1
+      },
+      "base_price_credits": 1800,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common energy weapon archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "weapon_energy_mk2",
+      "name": "Energy Weapon Mk II",
+      "display_names": [
+        "High-Output Laser",
+        "Heavy Phaser Bank",
+        "Overdriven Pulse Cannon",
+        "Ultra Turbo Laser",
+        "Focused Beam Array",
+        "Ion Lance Battery",
+        "Photon Storm Projector",
+        "Plasma Lance",
+        "Arc Cascade Emitter",
+        "Solar Sear Cannon",
+        "Wave-Motion Amplifier",
+        "Lightwave Saturator"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_energy",
+      "numeric_bonus": {
+        "weapon": 2
+      },
+      "base_price_credits": 7200,
+      "rarity_weight": 18,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced energy weapon archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "weapon_kinetic_mk1",
+      "name": "Kinetic Weapon Mk I",
+      "display_names": [
+        "Railgun",
+        "Mass Driver",
+        "Coilgun",
+        "Gauss Cannon",
+        "Slug Thrower",
+        "Shrapnel Cannon",
+        "Needle Launcher",
+        "Hypervelocity Gun",
+        "Rivet Cannon",
+        "Kinetic Repeater",
+        "Meteor Gun",
+        "Pounder Battery"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_kinetic",
+      "numeric_bonus": {
+        "weapon": 1
+      },
+      "base_price_credits": 1700,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common kinetic weapon archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "weapon_kinetic_mk2",
+      "name": "Kinetic Weapon Mk II",
+      "display_names": [
+        "Heavy Railgun",
+        "Supercharged Mass Driver",
+        "Twin Coilgun",
+        "Gauss Siege Cannon",
+        "Armor-Piercing Slugger",
+        "Shrapnel Storm Gun",
+        "Needle Swarm Launcher",
+        "Hypervelocity Battery",
+        "Rivet Barrage Cannon",
+        "Kinetic Saturator",
+        "Meteor Breaker",
+        "Pounder Siege Bank"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_kinetic",
+      "numeric_bonus": {
+        "weapon": 2
+      },
+      "base_price_credits": 6800,
+      "rarity_weight": 18,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced kinetic weapon archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "weapon_disruptive_mk1",
+      "name": "Disruptive Weapon Mk I",
+      "display_names": [
+        "Disruptor",
+        "EMP Projector",
+        "Jammer Cannon",
+        "Phase Scrambler",
+        "Flux Driver",
+        "Grav Spike",
+        "Shockwave Emitter",
+        "Signal Ruiner",
+        "Field Breaker",
+        "Harmonics Gun",
+        "Static Lance",
+        "Distortion Array"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_disruptive",
+      "numeric_bonus": {
+        "weapon": 1
+      },
+      "base_price_credits": 1900,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common disruptive weapon archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "weapon_disruptive_mk2",
+      "name": "Disruptive Weapon Mk II",
+      "display_names": [
+        "Heavy Disruptor",
+        "EMP Lance",
+        "Wideband Jammer Cannon",
+        "Phase Scrambler Bank",
+        "Flux Driver Array",
+        "Grav Spike Projector",
+        "Shockwave Cannon",
+        "Signal Shredder",
+        "Field Cracker",
+        "Harmonics Breaker",
+        "Static Storm Lance",
+        "Distortion Battery"
+      ],
+      "slot_type": "weapon",
+      "primary_tag": "combat:weapon_disruptive",
+      "numeric_bonus": {
+        "weapon": 2
+      },
+      "base_price_credits": 7600,
+      "rarity_weight": 18,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced disruptive weapon archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "defense_shielded_mk1",
+      "name": "Shield Defense Mk I",
+      "display_names": [
+        "Shield Generator",
+        "Deflector Screen",
+        "Barrier Projector",
+        "Shield Emitter",
+        "Bubble Field",
+        "Aegis Screen",
+        "Phase Shield",
+        "Guard Field",
+        "Shield Array",
+        "Deflection Grid",
+        "Kinetic Dampener",
+        "Mirror Screen"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_shielded",
+      "numeric_bonus": {
+        "defense": 1
+      },
+      "base_price_credits": 1600,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common shielded defense archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "defense_shielded_mk2",
+      "name": "Shield Defense Mk II",
+      "display_names": [
+        "Reinforced Shield Generator",
+        "Heavy Deflector Screen",
+        "Barrier Projector Bank",
+        "High-Cap Shield Emitter",
+        "Bubble Field Matrix",
+        "Aegis Screen Array",
+        "Phase Shield Lattice",
+        "Guard Field Bank",
+        "Shield Overgrid",
+        "Deflection Grid Prime",
+        "Kinetic Dampener Suite",
+        "Mirror Screen Array"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_shielded",
+      "numeric_bonus": {
+        "defense": 2
+      },
+      "base_price_credits": 6400,
+      "rarity_weight": 16,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced shielded defense archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "defense_armored_mk1",
+      "name": "Armor Defense Mk I",
+      "display_names": [
+        "Armor Plating",
+        "Reactive Plating",
+        "Hull Bracing",
+        "Ablative Panels",
+        "Bulkhead Kit",
+        "Impact Plates",
+        "Hardplate Skin",
+        "Ridge Armor",
+        "Laminate Shell",
+        "Ceramic Layer",
+        "Rebar Frame",
+        "Hull Lamination"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_armored",
+      "numeric_bonus": {
+        "defense": 1
+      },
+      "base_price_credits": 1500,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common armored defense archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "defense_armored_mk2",
+      "name": "Armor Defense Mk II",
+      "display_names": [
+        "Reinforced Armor Plating",
+        "Reactive Plating Suite",
+        "Heavy Hull Bracing",
+        "Ablative Panel Bank",
+        "Bulkhead Kit Prime",
+        "Impact Plate Array",
+        "Hardplate Skin Mk II",
+        "Ridge Armor Lattice",
+        "Laminate Shell Prime",
+        "Ceramic Layered Skin",
+        "Rebar Frame Suite",
+        "Hull Lamination Prime"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_armored",
+      "numeric_bonus": {
+        "defense": 2
+      },
+      "base_price_credits": 6000,
+      "rarity_weight": 16,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced armored defense archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "defense_adaptive_mk1",
+      "name": "Adaptive Defense Mk I",
+      "display_names": [
+        "Adaptive Matrix",
+        "Response Lattice",
+        "Flux Weave",
+        "Shift Armor",
+        "Harmonic Guard",
+        "Dynamic Screen",
+        "Polarity Net",
+        "Phase Mesh",
+        "Counterfield Web",
+        "Balance Grid",
+        "Tuning Shell",
+        "Reactive Field"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_adaptive",
+      "numeric_bonus": {
+        "defense": 1
+      },
+      "base_price_credits": 1700,
+      "rarity_weight": 120,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Common adaptive defense archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "defense_adaptive_mk2",
+      "name": "Adaptive Defense Mk II",
+      "display_names": [
+        "Advanced Adaptive Matrix",
+        "Response Lattice Prime",
+        "Flux Weave Array",
+        "Shift Armor Suite",
+        "Harmonic Guard Bank",
+        "Dynamic Screen Prime",
+        "Polarity Net Mk II",
+        "Phase Mesh Lattice",
+        "Counterfield Web Prime",
+        "Balance Grid Prime",
+        "Tuning Shell Suite",
+        "Reactive Field Array"
+      ],
+      "slot_type": "defense",
+      "primary_tag": "combat:defense_adaptive",
+      "numeric_bonus": {
+        "defense": 2
+      },
+      "base_price_credits": 6800,
+      "rarity_weight": 16,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced adaptive defense archetype. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "combat_utility_engine_boost_mk1",
+      "name": "Combat Utility Engine Boost Mk I",
+      "display_names": [
+        "Afterburner Kit",
+        "Engine Tuner",
+        "Boost Nozzle",
+        "Throttle Overlink",
+        "Impulse Injector",
+        "Drive Spooler",
+        "Hot-Rod Manifold",
+        "Sprint Coupler",
+        "Burner Module",
+        "Vector Thrusters",
+        "Overthrust Kit",
+        "Acceleration Suite"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_engine_boost",
+      "numeric_bonus": {
+        "engine": 1
+      },
+      "base_price_credits": 1400,
+      "rarity_weight": 110,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Combat mobility utility archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "combat_utility_engine_boost_mk2",
+      "name": "Combat Utility Engine Boost Mk II",
+      "display_names": [
+        "Afterburner Suite",
+        "Precision Engine Tuner",
+        "Boost Nozzle Bank",
+        "Throttle Overlink Prime",
+        "Impulse Injector Array",
+        "Drive Spooler Prime",
+        "Hot-Rod Manifold Mk II",
+        "Sprint Coupler Suite",
+        "Burner Module Prime",
+        "Vector Thrusters Bank",
+        "Overthrust Suite",
+        "Acceleration Prime"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_engine_boost",
+      "numeric_bonus": {
+        "engine": 2
+      },
+      "base_price_credits": 5200,
+      "rarity_weight": 14,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced combat mobility utility. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "combat_utility_targeting_mk1",
+      "name": "Combat Utility Targeting Mk I",
+      "display_names": [
+        "Targeting Suite",
+        "Rangefinder Array",
+        "Gunnery Computer",
+        "Lock-On Assist",
+        "Aim Stabilizer",
+        "Tracking Chipset",
+        "Fire Control",
+        "Sightline Pack",
+        "Precision Optics",
+        "Lead Calculator",
+        "Strike Coordinator",
+        "Target Painter"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_targeting",
+      "numeric_bonus": {
+        "weapon": 1
+      },
+      "base_price_credits": 1600,
+      "rarity_weight": 110,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Combat targeting utility archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "combat_utility_targeting_mk2",
+      "name": "Combat Utility Targeting Mk II",
+      "display_names": [
+        "Advanced Targeting Suite",
+        "Rangefinder Bank",
+        "Gunnery Computer Prime",
+        "Lock-On Assist Array",
+        "Aim Stabilizer Prime",
+        "Tracking Chipset Mk II",
+        "Fire Control Prime",
+        "Sightline Pack Prime",
+        "Precision Optics Bank",
+        "Lead Calculator Prime",
+        "Strike Coordinator Suite",
+        "Target Painter Array"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_targeting",
+      "numeric_bonus": {
+        "weapon": 2
+      },
+      "base_price_credits": 5600,
+      "rarity_weight": 14,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced targeting utility. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "combat_utility_repair_system_mk1",
+      "name": "Combat Utility Repair Mk I",
+      "display_names": [
+        "Auto-Repair Rig",
+        "Patch Drone Bay",
+        "Field Welder",
+        "Sealant Sprayer",
+        "Emergency Nanokit",
+        "Hull Stitcher",
+        "Repair Spares",
+        "Damage Control Rack",
+        "Quick-Fix Suite",
+        "Spare Parts Crate",
+        "Maintenance Bot",
+        "Seal and Brace Kit"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_repair_system",
+      "numeric_bonus": {
+        "defense": 1
+      },
+      "base_price_credits": 1500,
+      "rarity_weight": 110,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Combat sustain utility archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "combat_utility_repair_system_mk2",
+      "name": "Combat Utility Repair Mk II",
+      "display_names": [
+        "Advanced Auto-Repair Rig",
+        "Patch Drone Bay Prime",
+        "Field Welder Suite",
+        "Sealant Sprayer Bank",
+        "Emergency Nanokit Prime",
+        "Hull Stitcher Array",
+        "Repair Spares Prime",
+        "Damage Control Rack Mk II",
+        "Quick-Fix Prime",
+        "Spare Parts Vault",
+        "Maintenance Bot Bank",
+        "Seal and Brace Suite"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_repair_system",
+      "numeric_bonus": {
+        "defense": 2
+      },
+      "base_price_credits": 5200,
+      "rarity_weight": 14,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced repair utility. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "combat_utility_signal_scrambler_mk1",
+      "name": "Combat Utility Scrambler Mk I",
+      "display_names": [
+        "Signal Scrambler",
+        "ECM Pod",
+        "Noise Injector",
+        "Chaff Launcher",
+        "Ghost Field",
+        "Jamming Suite",
+        "Masking Array",
+        "Decoy Projector",
+        "Signature Blender",
+        "Static Fogger",
+        "Confuser Coil",
+        "Spoof Pack"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_signal_scrambler",
+      "numeric_bonus": {
+        "defense": 1
+      },
+      "base_price_credits": 1600,
+      "rarity_weight": 110,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Defensive electronic warfare utility archetype. Name is generated at instantiation."
+    },
+    {
+      "module_id": "combat_utility_signal_scrambler_mk2",
+      "name": "Combat Utility Scrambler Mk II",
+      "display_names": [
+        "Signal Scrambler Prime",
+        "ECM Pod Bank",
+        "Noise Injector Array",
+        "Chaff Launcher Suite",
+        "Ghost Field Prime",
+        "Jamming Suite Mk II",
+        "Masking Array Prime",
+        "Decoy Projector Bank",
+        "Signature Blender Prime",
+        "Static Fogger Array",
+        "Confuser Coil Prime",
+        "Spoof Pack Prime"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_signal_scrambler",
+      "numeric_bonus": {
+        "defense": 2
+      },
+      "base_price_credits": 5600,
+      "rarity_weight": 14,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced scrambler utility. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "combat_utility_overcharger_mk1",
+      "name": "Combat Utility Overcharger Mk I",
+      "display_names": [
+        "Overcharger",
+        "Reactor Tap",
+        "Power Spiker",
+        "Heat Riser",
+        "Overdrive Coupler",
+        "Hotline Bridge",
+        "Charge Amplifier",
+        "Burst Regulator",
+        "Redline Kit",
+        "Flux Pump",
+        "Core Jumper",
+        "Surge Link"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_overcharger",
+      "numeric_bonus": {
+        "weapon": 1
+      },
+      "base_price_credits": 1900,
+      "rarity_weight": 90,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Offensive power utility archetype. Secondary tags define risk (unstable/prototype) later."
+    },
+    {
+      "module_id": "combat_utility_overcharger_mk2",
+      "name": "Combat Utility Overcharger Mk II",
+      "display_names": [
+        "Overcharger Prime",
+        "Reactor Tap Bank",
+        "Power Spiker Array",
+        "Heat Riser Prime",
+        "Overdrive Coupler Mk II",
+        "Hotline Bridge Prime",
+        "Charge Amplifier Bank",
+        "Burst Regulator Prime",
+        "Redline Suite",
+        "Flux Pump Prime",
+        "Core Jumper Array",
+        "Surge Link Prime"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "combat:utility_overcharger",
+      "numeric_bonus": {
+        "weapon": 2
+      },
+      "base_price_credits": 6400,
+      "rarity_weight": 12,
+      "rarity_tier": "rare",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Rare advanced power utility. Mostly missions/salvage; market very rare."
+    },
+    {
+      "module_id": "ship_utility_extra_cargo",
+      "name": "Ship Utility Extra Cargo",
+      "display_names": [
+        "Cargo Pod",
+        "External Rack",
+        "Hold Expansion",
+        "Cargo Sling",
+        "Bulk Crate Mounts",
+        "Pallet Rails",
+        "Cargo Tie-Down Kit",
+        "Overhead Stowage",
+        "Bay Extender",
+        "Sidecar Hold",
+        "Cargo Cage",
+        "Pack Mule Frame"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_extra_cargo",
+      "base_price_credits": 1200,
+      "rarity_weight": 100,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Cargo effects are applied by ship systems later."
+    },
+    {
+      "module_id": "ship_utility_data_array",
+      "name": "Ship Utility Data Array",
+      "display_names": [
+        "Data Array",
+        "Memory Vault",
+        "Cipher Bank",
+        "Signal Stack",
+        "Data Spool",
+        "Archive Core",
+        "Record Lattice",
+        "Telemetry Suite",
+        "Packet Cache",
+        "Comms Buffer",
+        "Vault Drive",
+        "Black Box Rack"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_data_array",
+      "base_price_credits": 1300,
+      "rarity_weight": 95,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Data effects are applied by ship systems later."
+    },
+    {
+      "module_id": "ship_utility_smuggler_hold",
+      "name": "Ship Utility Smuggler Hold",
+      "display_names": [
+        "Smuggler Hold",
+        "False Bulkhead",
+        "Hidden Locker",
+        "Deadspace Bay",
+        "Shadow Compartment",
+        "Slip Panel",
+        "Concealment Rack",
+        "Blind Bay",
+        "Quiet Cache",
+        "Secret Stow",
+        "Ghost Hold",
+        "Hollow Frame"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_smuggler_hold",
+      "base_price_credits": 2100,
+      "rarity_weight": 70,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Smuggling effects are applied by economy/law systems later."
+    },
+    {
+      "module_id": "ship_utility_mining_equipment",
+      "name": "Ship Utility Mining Equipment",
+      "display_names": [
+        "Mining Rig",
+        "Rock Cutter",
+        "Ore Breaker",
+        "Prospector Kit",
+        "Drill Arm",
+        "Seismic Tapper",
+        "Dust Sifter",
+        "Fragment Harvester",
+        "Ore Scoop",
+        "Claim Jumper Kit",
+        "Miner Frame",
+        "Asteroid Tongs"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_mining_equipment",
+      "base_price_credits": 2400,
+      "rarity_weight": 75,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Mining effects are applied by ship systems later."
+    },
+    {
+      "module_id": "ship_utility_probe_array",
+      "name": "Ship Utility Probe Array",
+      "display_names": [
+        "Probe Array",
+        "Survey Drones",
+        "Scanner Buoys",
+        "Deep Scan Kit",
+        "Long-Range Pings",
+        "Recon Package",
+        "Sensor Pod",
+        "Pathfinder Suite",
+        "Horizon Scanner",
+        "Echo Mapper",
+        "Signal Finder",
+        "Prospect Array"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_probe_array",
+      "base_price_credits": 1700,
+      "rarity_weight": 85,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Exploration effects are applied by encounter/world systems later."
+    },
+    {
+      "module_id": "ship_utility_interdiction",
+      "name": "Ship Utility Interdiction",
+      "display_names": [
+        "Interdiction Suite",
+        "Drag Net",
+        "Warp Snare",
+        "Gravity Hook",
+        "Lane Blocker",
+        "Anchor Projector",
+        "Tether Field",
+        "Snare Array",
+        "Route Clamp",
+        "Holdfast Rig",
+        "Intercept Grid",
+        "Stopper Coil"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_interdiction",
+      "base_price_credits": 2600,
+      "rarity_weight": 55,
+      "rarity_tier": "uncommon",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Non-combat ship utility. Interdiction effects are applied by pursuit/travel systems later."
+    },
+    {
+      "module_id": "ship_utility_extra_fuel_mk1",
+      "name": "Auxiliary Fuel Tank Mk I",
+      "display_names": [
+        "Aux Fuel Pod",
+        "Drop Tank",
+        "Range Extender"
+      ],
+      "slot_type": "utility",
+      "primary_tag": "ship:utility_extra_fuel",
+      "base_price_credits": 1900,
+      "rarity_weight": 110,
+      "rarity_tier": "common",
+      "mission_grantable": true,
+      "secondary_policy": {
+        "allowed": true
+      },
+      "salvage_policy": {
+        "salvageable": true,
+        "mutation_allowed": true
+      },
+      "description": "Adds additional onboard fuel storage capacity."
+    }
+  ]
+}

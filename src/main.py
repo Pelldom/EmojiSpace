@@ -150,7 +150,7 @@ def _log_galaxy_overview(
     )
     printed_system_market = False
     for system in sector.systems:
-        _log_system_warning_for_shim(system, logger, turn)
+        _log_system_warning_for_shim(system, logger, turn, verbose=False)
         logger.log(
             turn=turn,
             action="galaxy_overview",
@@ -278,7 +278,9 @@ def _enforcement_demo(
     )
 
 
-def _log_system_warning_for_shim(system: System, logger: Logger, turn: int) -> None:
+def _log_system_warning_for_shim(system: System, logger: Logger, turn: int, verbose: bool) -> None:
+    if not verbose:
+        return
     if system.attributes.get("market") is not None:
         logger.log(
             turn=turn,

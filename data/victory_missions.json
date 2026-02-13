@@ -1,0 +1,234 @@
+[
+  {
+    "victory_id": "charter_of_authority",
+    "tier": 5,
+    "axis": "reputation",
+    "polarity": "positive",
+    "allowed_sources": [
+      "datanet",
+      "npc_administration"
+    ],
+    "risk_disclosure": {
+      "summary": "The review is final and unforgiving.",
+      "on_failure": [
+        "Reputation standing is set back",
+        "Authority becomes more distant"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "reputation",
+      "percentage": 20
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Your name will be written into formal record as sanctioned authority. The systems that track conduct have judged you acceptable for permanent inclusion. This is not approval of character—it is institutional acknowledgment that you may be trusted with position.",
+        "title": "Charter of Authority",
+        "description": "A formal path is open for those with steady standing.",
+        "completion_text": "The record is sealed with official approval.",
+        "failure_text": "The record remains unsettled and distant."
+      },
+      "npc": {
+        "opening_gravitas": "They remember who plays clean, and you built a name they can cite without hesitation. What you're walking into is acknowledgment—not as a favor, but as fact. You'll be written down as someone they let through the door.",
+        "title": "Charter of Authority",
+        "description": "Keep your record clean and they will listen.",
+        "completion_text": "You leave with a stamped legacy.",
+        "failure_text": "They turn you away and the door closes."
+      }
+    }
+  },
+  {
+    "victory_id": "escape_the_datanet",
+    "tier": 5,
+    "axis": "reputation",
+    "polarity": "negative",
+    "allowed_sources": [
+      "datanet",
+      "npc_bar"
+    ],
+    "risk_disclosure": {
+      "summary": "The hunt will not ease its grip.",
+      "on_failure": [
+        "Heat deepens across the network",
+        "The trail grows harder to bury"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "reputation",
+      "percentage": 20
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Your entry will be redacted from persistent archives and replaced with administrative void. No pardon is offered or implied—only the collapse of the trail that identifies you. What remains will be insufficient for reconstruction.",
+        "title": "Escape the DataNet",
+        "description": "A signal path offers a narrow way out of record and reach.",
+        "completion_text": "The trail collapses into silence.",
+        "failure_text": "The trail stays open and loud."
+      },
+      "npc": {
+        "opening_gravitas": "You're not buying forgiveness—you're buying silence. They'll bury your name so deep that searching for it returns nothing but static. Walk through this door and no one will remember you were here.",
+        "title": "Escape the DataNet",
+        "description": "If you want to vanish, this is the door.",
+        "completion_text": "You slip into the dark with no echo.",
+        "failure_text": "The noise follows and the shadow fades."
+      }
+    }
+  },
+  {
+    "victory_id": "retirement_acquisition",
+    "tier": 5,
+    "axis": "economic",
+    "polarity": "positive",
+    "allowed_sources": [
+      "datanet",
+      "npc_administration"
+    ],
+    "risk_disclosure": {
+      "summary": "The transfer is complex and exacting.",
+      "on_failure": [
+        "Assets are diminished",
+        "Legitimate standing is weakened"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "economic",
+      "percentage": 20
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Accumulated holdings may now be formally converted to permanent, transferable ownership. The cycle from risk to security concludes here through legitimate channels. This represents a completed arc—no longer accumulating, but secured.",
+        "title": "Retirement Acquisition",
+        "description": "A legitimate asset can be secured through formal channels.",
+        "completion_text": "Ownership settles into a quiet future.",
+        "failure_text": "The claim slips away without ceremony."
+      },
+      "npc": {
+        "opening_gravitas": "You spent years building something worth protecting, and now you can lock it in and walk away free. No more risk, no more scrambling—just a quiet place to land. You earned the right to be done.",
+        "title": "Retirement Acquisition",
+        "description": "Do it clean and you can walk away in comfort.",
+        "completion_text": "You lock it in and step back for good.",
+        "failure_text": "The deal falls apart and the wait goes on."
+      }
+    }
+  },
+  {
+    "victory_id": "secure_the_hoard",
+    "tier": 5,
+    "axis": "economic",
+    "polarity": "negative",
+    "allowed_sources": [
+      "datanet",
+      "npc_bar"
+    ],
+    "risk_disclosure": {
+      "summary": "Seizure and betrayal are close at hand.",
+      "on_failure": [
+        "Illicit holdings are exposed",
+        "The cache becomes unstable"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "economic",
+      "percentage": 20,
+      "conditional": {
+        "skip_if_already_degraded": true,
+        "fallback_reason": "seizure_by_authorities"
+      }
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Holdings exist outside formal record and must remain there to survive. This operation seals wealth into concealment rather than legitimacy. You preserve what you possess, not what you declare.",
+        "title": "Secure the Hoard",
+        "description": "A final consolidation window is open for those in the shadows.",
+        "completion_text": "The hoard is sealed beyond reach.",
+        "failure_text": "The hoard is scattered and unmoored."
+      },
+      "npc": {
+        "opening_gravitas": "You built something they can't touch if they can't find it. Lock it down, bury the access, and keep your head low. This isn't wealth you spend—it's wealth that keeps you breathing.",
+        "title": "Secure the Hoard",
+        "description": "Move it fast and lock it down for good.",
+        "completion_text": "The stash is safe and the heat cools.",
+        "failure_text": "The stash cracks and the risk spreads."
+      }
+    }
+  },
+  {
+    "victory_id": "crown_of_order",
+    "tier": 5,
+    "axis": "combat",
+    "polarity": "positive",
+    "allowed_sources": [
+      "datanet",
+      "npc_administration"
+    ],
+    "risk_disclosure": {
+      "summary": "The final target will not yield easily.",
+      "on_failure": [
+        "Standing weakens in the eyes of order",
+        "Violence invites renewed scrutiny"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "combat",
+      "percentage": 20
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Conflict has been resolved through overwhelming application of force on behalf of structural stability. You will be recorded as the instrument that ended disruption and restored predictable governance. This is dominance formalized as order.",
+        "title": "Crown of Order",
+        "description": "A decisive action can restore calm to a fractured region.",
+        "completion_text": "Order returns under a steady banner.",
+        "failure_text": "The fracture widens and the order fades."
+      },
+      "npc": {
+        "opening_gravitas": "You proved you can put things back together when everyone else was tearing them apart. They'll remember you as the one who brought the hammer down and made it stick. Peace through strength—that's your mark.",
+        "title": "Crown of Order",
+        "description": "Finish the threat and the system will settle.",
+        "completion_text": "You bring calm where chaos lingered.",
+        "failure_text": "You fall short and the threat remains."
+      }
+    }
+  },
+  {
+    "victory_id": "rule_through_fear",
+    "tier": 5,
+    "axis": "combat",
+    "polarity": "negative",
+    "allowed_sources": [
+      "datanet",
+      "npc_bar"
+    ],
+    "risk_disclosure": {
+      "summary": "Defiance will flare if you hesitate.",
+      "on_failure": [
+        "Resistance stiffens",
+        "Fear loses its hold"
+      ]
+    },
+    "failure_penalty": {
+      "type": "tracker_drop",
+      "tracker": "combat",
+      "percentage": 20
+    },
+    "prose": {
+      "datanet": {
+        "opening_gravitas": "Compliance will be maintained through sustained threat rather than cooperation. Your presence will function as deterrence—a memory of consequence that discourages resistance. Control persists because defiance is remembered as costly.",
+        "title": "Rule Through Fear",
+        "description": "A path exists to force a system into submission.",
+        "completion_text": "The system bows under a hard shadow.",
+        "failure_text": "Defiance rises and the shadow breaks."
+      },
+      "npc": {
+        "opening_gravitas": "You'll be the name people whisper when they think about stepping out of line. They won't fight back because they've seen what happens when someone tries. Fear is a long shadow—cast it right and it never fades.",
+        "title": "Rule Through Fear",
+        "description": "Make a statement they will not forget.",
+        "completion_text": "They fall in line and the silence follows.",
+        "failure_text": "They push back and the fear slips away."
+      }
+    }
+  }
+]

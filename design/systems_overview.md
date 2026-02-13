@@ -315,6 +315,15 @@ Notes
 
 Combat scan success currently uses a deterministic placeholder in the resolver and is intended to be replaced by interaction-layer scan resolution.
 
+## Fuel System Invariants
+
+- Fuel is a travel gating resource.
+- Fuel does not affect combat resolution.
+- Fuel does not affect time cost.
+- Fuel does not interact with government legality.
+- Fuel availability for refueling depends on DataNet presence.
+- Fuel price is fixed at 5 credits per unit.
+
 Forbidden dependency rules (hard constraints)
 
 Narrative systems may not directly modify simulation state.

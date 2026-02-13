@@ -1,0 +1,151 @@
+{
+  "version": "0.5.x",
+  "encounter_types": [
+
+    {
+      "subtype_id": "civilian_trader_ship",
+      "emoji": "trader_placeholder",
+      "posture": "neutral",
+      "initiative": "player",
+      "allows_betrayal": false,
+      "base_weight": 10,
+      "allowed_TR_range": { "min": 1, "max": 2 },
+      "participant_templates": [
+        { "template_id": "civilian_trader", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["civilian_target", "trade_possible"],
+      "reward_profiles": [
+        { "reward_profile_id": "civilian_manifest", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "hail": 5 },
+        "on_intimidate": { "refuse_stand": 3, "refuse_attack": 1 },
+        "on_bribe": { "accept": 2, "refuse_attack": 1 },
+        "on_surrender": { "accept": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "customs_patrol",
+      "emoji": "authority_placeholder",
+      "posture": "authority",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 8,
+      "allowed_TR_range": { "min": 2, "max": 3 },
+      "participant_templates": [
+        { "template_id": "patrol_ship", "role": "primary", "min_count": 1, "max_count": 2 }
+      ],
+      "default_flags": ["authority_actor"],
+      "reward_profiles": [],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 2, "hail": 5, "attack": 1 },
+        "on_respond": { "hail": 5 },
+        "on_intimidate": { "refuse_attack": 4 },
+        "on_bribe": { "accept": 3, "refuse_attack": 2 },
+        "on_surrender": { "ignore": 5 }
+      },
+      "government_bias": {
+        "empire": 2
+      }
+    },
+
+    {
+      "subtype_id": "bounty_hunter",
+      "emoji": "bounty_placeholder",
+      "posture": "authority",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 6,
+      "allowed_TR_range": { "min": 2, "max": 4 },
+      "participant_templates": [
+        { "template_id": "bounty_ship", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["authority_actor"],
+      "reward_profiles": [
+        { "reward_profile_id": "bounty_credit", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "hail": 5, "pursue": 3 },
+        "on_respond": { "hail": 5 },
+        "on_intimidate": { "refuse_attack": 4 },
+        "on_bribe": { "refuse_attack": 4 },
+        "on_surrender": { "accept": 3, "attack": 2 }
+      }
+    },
+
+    {
+      "subtype_id": "pirate_raider",
+      "emoji": "pirate_placeholder",
+      "posture": "hostile",
+      "initiative": "npc",
+      "allows_betrayal": true,
+      "base_weight": 10,
+      "allowed_TR_range": { "min": 2, "max": 4 },
+      "participant_templates": [
+        { "template_id": "pirate_ship", "role": "primary", "min_count": 1, "max_count": 2 }
+      ],
+      "default_flags": ["criminal_actor", "piracy_context", "salvage_possible"],
+      "reward_profiles": [
+        { "reward_profile_id": "pirate_loot", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "attack": 5 },
+        "on_respond": { "attack": 5 },
+        "on_intimidate": { "refuse_attack": 3, "refuse_flee": 2 },
+        "on_bribe": { "accept": 2, "accept_and_attack": 2 },
+        "on_surrender": { "accept": 3, "attack": 1 }
+      },
+      "situation_bias": {
+        "war": 2
+      }
+    },
+
+    {
+      "subtype_id": "blood_raider",
+      "emoji": "raider_placeholder",
+      "posture": "hostile",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 5,
+      "allowed_TR_range": { "min": 3, "max": 5 },
+      "participant_templates": [
+        { "template_id": "raider_ship", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["criminal_actor", "salvage_possible"],
+      "reward_profiles": [
+        { "reward_profile_id": "raider_loot", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "attack": 5 },
+        "on_respond": { "attack": 5 },
+        "on_intimidate": { "refuse_attack": 5 },
+        "on_bribe": { "refuse_attack": 5 },
+        "on_surrender": { "attack": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "derelict_ship",
+      "emoji": "derelict_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 7,
+      "allowed_TR_range": { "min": 1, "max": 3 },
+      "participant_templates": [
+        { "template_id": "derelict_hull", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["salvage_possible", "anomaly_discovery_possible"],
+      "reward_profiles": [
+        { "reward_profile_id": "derelict_salvage", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    }
+
+  ]
+}

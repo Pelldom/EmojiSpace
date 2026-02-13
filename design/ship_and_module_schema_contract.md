@@ -170,6 +170,23 @@ HullObject MUST NOT include:
 - percent modifiers
 - NPC-only modifiers
 
+### Fuel Capacity
+
+Field: fuel_capacity_base  
+Type: integer  
+Required: yes  
+Minimum: 0  
+
+Description:
+Base fuel capacity for the hull before module bonuses.
+Final fuel capacity is computed by the assembler as:
+
+fuel_capacity = fuel_capacity_base + sum(module fuel bonuses)
+
+This field must be explicitly defined per hull in hulls.json.
+No implicit tier or frame scaling is permitted in engine logic.
+
+
 ----------------------------------------------------------------
 6. Module Schema (Authoritative)
 ----------------------------------------------------------------

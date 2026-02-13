@@ -28,6 +28,7 @@ _HULL_REQUIRED_KEYS = {
     "bias",
     "cargo",
     "crew_capacity",
+    "fuel_capacity_base",
     "base_price_credits",
     "rarity_tier",
     "mission_grantable",
@@ -118,6 +119,7 @@ def _validate_hull(hull: dict[str, Any], index: int) -> None:
     _require_type(hull, index, "rarity_tier", str, "hulls.json")
     _require_type(hull, index, "mission_grantable", bool, "hulls.json")
     _require_type(hull, index, "crew_capacity", int, "hulls.json")
+    _require_type(hull, index, "fuel_capacity_base", int, "hulls.json")
     _require_type(hull, index, "base_price_credits", int, "hulls.json")
     _require_type(hull, index, "tier", int, "hulls.json")
     _require_type(hull, index, "frame", str, "hulls.json")
@@ -127,6 +129,8 @@ def _validate_hull(hull: dict[str, Any], index: int) -> None:
         raise ValueError(f"hulls.json hull[{index}]: 'tier' must be 1..5.")
     if hull["frame"] not in _ALLOWED_FRAMES:
         raise ValueError(f"hulls.json hull[{index}]: invalid frame '{hull['frame']}'.")
+    if hull["fuel_capacity_base"] < 0:
+        raise ValueError(f"hulls.json hull[{index}]: fuel_capacity_base must be >= 0.")
 
     crew_capacity = hull["crew_capacity"]
     low, high = _CREW_BANDS[tier]

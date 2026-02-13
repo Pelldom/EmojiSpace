@@ -6,6 +6,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
 from data_catalog import DataCatalog, Good  # noqa: E402
+from government_law_engine import Commodity, GovernmentLawEngine  # noqa: E402
 from government_registry import GovernmentRegistry  # noqa: E402
 from market import Market, MarketCategory, MarketGood  # noqa: E402
 from market_pricing import price_transaction, resolve_substitute_discount  # noqa: E402
@@ -32,9 +33,9 @@ def main() -> None:
         ),
     ]
     catalog = DataCatalog(tags=tags, goods=goods, economies={})
-    government = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json").get_government(
-        "anarchic"
-    )
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    government = registry.get_government("anarchic")
+    law_engine = GovernmentLawEngine(registry=registry, logger=NullLogger(), seed=12345)
 
     listed = MarketGood(
         sku="basic_rations",
@@ -55,10 +56,17 @@ def main() -> None:
         secondary_economies=(),
     )
 
+    buy_policy = law_engine.evaluate_policy(
+        government_id=government.id,
+        commodity=Commodity(commodity_id="basic_rations", tags=set()),
+        action="buy",
+        turn=0,
+    )
     buy = price_transaction(
         catalog=catalog,
         market=market,
         government=government,
+        policy=buy_policy,
         sku="basic_rations",
         action="buy",
         world_seed=12345,
@@ -68,10 +76,17 @@ def main() -> None:
     assert buy.final_price == 80.0
 
     discount = resolve_substitute_discount(12345, "SYS-TEST", "fresh_produce")
+    sell_policy = law_engine.evaluate_policy(
+        government_id=government.id,
+        commodity=Commodity(commodity_id="fresh_produce", tags=set()),
+        action="sell",
+        turn=0,
+    )
     sell = price_transaction(
         catalog=catalog,
         market=market,
         government=government,
+        policy=sell_policy,
         sku="fresh_produce",
         action="sell",
         world_seed=12345,
@@ -107,10 +122,16 @@ def _log_pricing(action: str, sku: str, pricing) -> None:
     print(f"  substitute={breakdown.substitute} discount={breakdown.substitute_discount:.2f}")
     print(f"  tags={breakdown.tags}")
     print(f"  tag_bias={breakdown.tag_bias:.2f}")
+    print(f"  skipped_tags={breakdown.skipped_tags} interpreted_tags={breakdown.interpreted_tags}")
     print(f"  government_bias={breakdown.government_bias:.2f}")
     print(f"  scarcity_modifier={breakdown.scarcity_modifier:.2f}")
     print(f"  final_price={breakdown.final_price:.2f}")
     print(f"  legality={breakdown.legality.value} risk={breakdown.risk_tier.value}")
+
+
+class NullLogger:
+    def log(self, turn: int, action: str, state_change: str) -> None:
+        return
 
 
 if __name__ == "__main__":

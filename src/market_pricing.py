@@ -1,26 +1,12 @@
 from dataclasses import dataclass
-from enum import Enum
 from typing import Dict, List
 import random
 
 from data_catalog import DataCatalog, Good
+from government_law_engine import GovernmentPolicyResult, LegalityStatus, RiskTier
 from government_type import GovernmentType
 from logger import Logger
 from market import Market, MarketGood
-
-
-class LegalityState(str, Enum):
-    LEGAL = "legal"
-    RESTRICTED = "restricted"
-    ILLEGAL = "illegal"
-
-
-class RiskTier(str, Enum):
-    NONE = "None"
-    LOW = "Low"
-    MEDIUM = "Medium"
-    HIGH = "High"
-    SEVERE = "Severe"
 
 
 @dataclass(frozen=True)
@@ -34,15 +20,17 @@ class PricingBreakdown:
     scarcity_modifier: float
     final_price: float
     tags: List[str]
+    skipped_tags: List[str]
+    interpreted_tags: List[str]
     risk_tier: RiskTier
-    legality: LegalityState
+    legality: LegalityStatus
     notes: str
 
 
 @dataclass(frozen=True)
 class PricingResult:
     final_price: float
-    legality: LegalityState
+    legality: LegalityStatus
     risk_tier: RiskTier
     breakdown: PricingBreakdown
 
@@ -70,6 +58,7 @@ def price_transaction(
     catalog: DataCatalog,
     market: Market,
     government: GovernmentType,
+    policy: GovernmentPolicyResult,
     sku: str,
     action: str,
     world_seed: int,
@@ -119,10 +108,11 @@ def price_transaction(
         price *= 1.0 + substitute_discount
 
     tags = _resolved_tags(good, market_good)
-    legality = _resolve_legality(government, sku, tags)
+    skipped_tags = [tag for tag in tags if tag in policy.consumed_tags]
+    interpreted_tags = [tag for tag in tags if tag not in policy.consumed_tags]
 
     # Step 5: tag-based price interpretation
-    tag_bias, risk_from_tags = _interpret_tags(government, tags)
+    tag_bias, _ = _interpret_tags(government, interpreted_tags)
     tag_bias = _clamp(tag_bias, TAG_BIAS_CAP_NEGATIVE, TAG_BIAS_CAP_POSITIVE)
     price *= 1.0 + tag_bias
 
@@ -142,8 +132,6 @@ def price_transaction(
         )
         price = min(price, ideal_price)
 
-    risk_tier = _combine_risk(_government_base_risk(government), risk_from_tags)
-
     breakdown = PricingBreakdown(
         base_price=base_price,
         category_role=category_role,
@@ -154,14 +142,16 @@ def price_transaction(
         scarcity_modifier=scarcity_modifier,
         final_price=price,
         tags=tags,
-        risk_tier=risk_tier,
-        legality=legality,
+        skipped_tags=skipped_tags,
+        interpreted_tags=interpreted_tags,
+        risk_tier=policy.risk_tier,
+        legality=policy.legality_state,
         notes="pricing_contract_v2_6",
     )
     result = PricingResult(
         final_price=price,
-        legality=legality,
-        risk_tier=risk_tier,
+        legality=policy.legality_state,
+        risk_tier=policy.risk_tier,
         breakdown=breakdown,
     )
     if logger is not None:
@@ -192,19 +182,6 @@ def _resolved_tags(good: Good, market_good: MarketGood | None) -> List[str]:
     if market_good is None:
         return list(good.tags)
     return list(market_good.tags)
-
-
-def _resolve_legality(
-    government: GovernmentType,
-    sku: str,
-    tags: List[str],
-) -> LegalityState:
-    if sku in government.illegal_goods:
-        return LegalityState.ILLEGAL
-    restricted_tags = set(government.ideological_modifiers.get("restricted_tags", []))
-    if restricted_tags.intersection(tags):
-        return LegalityState.RESTRICTED
-    return LegalityState.LEGAL
 
 
 def _interpret_tags(
@@ -335,30 +312,6 @@ def _ideal_price_without_substitute(
     return price
 
 
-def _government_base_risk(government: GovernmentType) -> RiskTier:
-    score = (
-        government.regulation_level
-        + government.enforcement_strength
-        + government.penalty_severity
-        - government.tolerance_bias
-        - government.bribery_susceptibility
-    )
-    if score <= -50:
-        return RiskTier.NONE
-    if score <= 0:
-        return RiskTier.LOW
-    if score <= 50:
-        return RiskTier.MEDIUM
-    if score <= 100:
-        return RiskTier.HIGH
-    return RiskTier.SEVERE
-
-
-def _combine_risk(current: RiskTier, incoming: RiskTier) -> RiskTier:
-    order = [RiskTier.NONE, RiskTier.LOW, RiskTier.MEDIUM, RiskTier.HIGH, RiskTier.SEVERE]
-    return order[max(order.index(current), order.index(incoming))]
-
-
 def _stable_seed(world_seed: int, system_id: str, sku: str) -> int:
     value = world_seed
     for part in (system_id, sku):
@@ -404,6 +357,7 @@ def _log_pricing(
             f"base={breakdown.base_price:.2f} role={breakdown.category_role} "
             f"substitute={breakdown.substitute} discount={breakdown.substitute_discount:.2f} "
             f"tags={breakdown.tags} tag_bias={breakdown.tag_bias:.2f} "
+            f"skipped_tags={breakdown.skipped_tags} interpreted_tags={breakdown.interpreted_tags} "
             f"gov_bias={breakdown.government_bias:.2f} scarcity={breakdown.scarcity_modifier:.2f} "
             f"final={breakdown.final_price:.2f} legality={breakdown.legality.value} "
             f"risk={breakdown.risk_tier.value}"

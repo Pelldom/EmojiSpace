@@ -1,6 +1,6 @@
 ## market_pricing_contract.md
 **Status:** Authoritative / Binding  
-**Phase:** 2.6 — Market Pricing  
+**Phase:** 2.6 ï¿½ Market Pricing  
 **Applies To:** Economy Engine, Government & Law Engine (read-only), Testing Harnesses  
 **Consumes:**  
 - Market definition (from Market Creation)  
@@ -68,6 +68,10 @@ Pricing may consume **only** the following inputs:
 - System government
 - SKU tags (fixed + possible)
 - Deterministic world seed
+- Government policy result:
+  - legality_state
+  - risk_tier
+  - consumed_tags
 
 No other inputs are permitted.
 
@@ -78,7 +82,7 @@ No other inputs are permitted.
 ### Buying
 - Buying is **SKU-specific**
 - A player may only buy SKUs explicitly present in the system market
-- Buy price represents the market’s asking price
+- Buy price represents the marketï¿½s asking price
 
 ### Selling
 - Selling is **category-based**
@@ -120,7 +124,7 @@ application of the substitute discount.
   **-40% and -55%**
 
 ### Deterministic Resolution
-- The exact discount value is resolved **once per system × SKU**
+- The exact discount value is resolved **once per system ï¿½ SKU**
 - Resolution uses:
   - World seed
   - System identifier
@@ -162,7 +166,7 @@ before substitute discounts.
 
 ---
 
-## 9. Tags — Pricing Rules
+## 9. Tags ï¿½ Pricing Rules
 
 ### Tag Vocabulary
 - The tag list is **fixed and final**
@@ -214,6 +218,18 @@ Rules:
 - May influence price, risk, and legality
 - Interpretation is contextual
 - No possible tag has unconditional effects
+
+### Government Policy Inputs (Phase 2.6 Clarification)
+Pricing consumes a **Government policy result** that includes:
+- `legality_state`
+- `risk_tier`
+- `consumed_tags`
+
+Rules:
+- Pricing MUST ignore any tag listed in `consumed_tags`.
+- Pricing MAY interpret tags not listed in `consumed_tags`.
+- Pricing reacts to `legality_state` and `risk_tier`, but does not redefine them.
+- Pricing must not reinterpret `consumed_tags` for price, legality, or risk.
 
 ---
 

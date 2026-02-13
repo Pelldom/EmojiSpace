@@ -247,6 +247,7 @@ def assemble_ship(
         "unlock_mining": False,
         "unlock_probe": False,
     }
+    fuel_bonus = 0
 
     for entry in resolved:
         numeric_bonus = entry["numeric_bonus"] or {}
@@ -276,6 +277,8 @@ def assemble_ship(
             ship_utility_effects["unlock_mining"] = True
         elif entry["primary_tag"] == "ship:utility_probe_array":
             ship_utility_effects["unlock_probe"] = True
+        elif entry["primary_tag"] == "ship:utility_extra_fuel":
+            fuel_bonus += 5
 
     base_bands = {
         "weapon": max(0, tier_baseline(hull["tier"]) + int(hull["bias"]["weapon"])),
@@ -331,6 +334,7 @@ def assemble_ship(
         "hull_id": hull_id,
         "frame": hull["frame"],
         "tier": hull["tier"],
+        "fuel_capacity": int(hull["fuel_capacity_base"]) + fuel_bonus,
         "slots": dict(slots),
         "slot_assignment": slot_assignment,
         "bonuses": {

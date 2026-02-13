@@ -1,0 +1,73 @@
+{
+  "version": "0.5.x",
+  "reward_profiles": [
+
+    {
+      "reward_profile_id": "civilian_manifest",
+      "emoji": "cargo_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "medium",
+      "stolen_behavior": "always",
+      "notes": "Cargo taken from civilian ships."
+    },
+
+    {
+      "reward_profile_id": "pirate_loot",
+      "emoji": "skull_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "high",
+      "stolen_behavior": "probabilistic",
+      "stolen_probability": 0.5,
+      "notes": "Loot from pirate vessels."
+    },
+
+    {
+      "reward_profile_id": "raider_loot",
+      "emoji": "raider_crate_placeholder",
+      "reward_kind": "mixed",
+      "quantity_band": "high",
+      "credit_range": { "min": 500, "max": 1000 },
+      "stolen_behavior": "always",
+      "notes": "Loot from violent raiders."
+    },
+
+    {
+      "reward_profile_id": "alien_salvage",
+      "emoji": "alien_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "medium",
+      "stolen_behavior": "none",
+      "notes": "Salvage from alien vessels."
+    },
+
+    {
+      "reward_profile_id": "derelict_salvage",
+      "emoji": "derelict_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "low",
+      "stolen_behavior": "probabilistic",
+      "stolen_probability": 0.3,
+      "notes": "Salvage recovered from derelicts."
+    },
+
+    {
+      "reward_profile_id": "cargo_cache",
+      "emoji": "cache_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "medium",
+      "stolen_behavior": "none",
+      "notes": "Recovered lost cargo."
+    },
+
+    {
+      "reward_profile_id": "bounty_credit",
+      "emoji": "credit_placeholder",
+      "reward_kind": "credits",
+      "quantity_band": "very_low",
+      "credit_range": { "min": 1000, "max": 2000 },
+      "stolen_behavior": "none",
+      "notes": "Credit reward for defeating bounty target."
+    }
+
+  ]
+}
