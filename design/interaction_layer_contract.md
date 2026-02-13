@@ -364,6 +364,185 @@ Refuel does not:
 - Affect legality.
 - Affect pricing systems.
 
+## Shipdock Interaction Extensions (0.7.1)
+
+The following actions are available only at destinations that include a Shipdock service.
+
+All actions require the ship involved to be physically present at the destination.
+
+Ship ownership and active/inactive state are governed by the entity layer.
+This section extends interaction capabilities only.
+
+---
+
+### Buy Hull
+
+Requirements:
+- Destination includes Shipdock.
+- Hull is present in shipdock inventory.
+- Player has sufficient credits.
+
+Behavior:
+- Create new ship entity with:
+  - hull_id = selected hull
+  - module_instances = empty list
+  - degradation_state = all zeros
+  - current_hull_integrity = max_hull_integrity
+  - current_fuel = fuel_capacity
+  - location_id = current destination
+  - active_flag = false
+- Deduct credits equal to hull base_price_credits.
+- Add ship to player fleet at this location.
+
+Buy Hull does not:
+- Automatically activate the ship.
+- Transfer modules from other ships.
+
+---
+
+### Sell Hull
+
+Requirements:
+- Destination includes Shipdock.
+- Ship is physically located at current destination.
+
+Constraints:
+- If selling active ship:
+  - Player must have at least one other ship at this destination.
+  - One remaining ship at this location becomes active immediately.
+
+Sell Price:
+sell_price = base_price_credits * 0.5
+
+Modifier Hook:
+final_price = sell_price * price_modifier_multiplier
+Default price_modifier_multiplier = 1.0
+
+Behavior:
+- Remove ship entity from player fleet.
+- Add credits equal to final_price.
+
+Sell Hull does not:
+- Affect other ships.
+- Transfer modules.
+
+---
+
+### Buy Module
+
+Requirements:
+- Destination includes Shipdock.
+- Module is present in shipdock inventory.
+- Target ship is physically present at this destination.
+- Slot constraints must pass assembler validation.
+- Player has sufficient credits.
+
+Behavior:
+- Deduct module base_price_credits.
+- Add module instance to target ship.
+- Recompute ship stats via assembler.
+
+Buy Module does not:
+- Bypass slot limits.
+- Apply secondary tags.
+
+---
+
+### Sell Module
+
+Requirements:
+- Destination includes Shipdock.
+- Ship is physically present at this destination.
+- Module is installed on that ship or stored with it.
+
+Sell Price:
+sell_price = base_price_credits * 0.5
+
+Modifier Hook:
+final_price = sell_price * price_modifier_multiplier
+Default price_modifier_multiplier = 1.0
+
+Behavior:
+- Remove module instance from ship.
+- Add credits equal to final_price.
+- Recompute ship stats via assembler.
+
+---
+### Secondary Tag Resale Modifiers (0.7.2)
+
+When selling a module at Shipdock, resale value is modified by secondary tags before applying global price_modifier_multiplier.
+
+Base Sell Price:
+sell_price = base_price_credits * 0.5
+
+Secondary Multipliers:
+If module includes secondary:prototype:
+    resale_multiplier *= 1.5
+
+If module includes secondary:alien:
+    resale_multiplier *= 2.0
+
+Multipliers stack multiplicatively.
+
+Final Sell Price:
+final_price = sell_price * resale_multiplier * price_modifier_multiplier
+
+Notes:
+- Secondary tags do not alter base_price_credits.
+- Secondary tags do not affect market purchase price.
+- This modifier applies only to sell operations.
+- This rule does not alter rarity_weight.
+
+### Repair Ship
+
+Requirements:
+- Destination includes Shipdock.
+- Ship is physically present at this destination.
+
+Repair restores:
+- current_hull_integrity to max_hull_integrity
+- All subsystem degradation_state values to 0
+
+Repair Cost Calculation:
+
+Let:
+hull_damage = max_hull_integrity - current_hull_integrity
+subsystem_damage = sum(degradation_state values)
+
+Constants:
+HULL_REPAIR_UNIT = 10
+SUBSYSTEM_REPAIR_UNIT = 25
+
+Base Cost:
+base_cost =
+(hull_damage * HULL_REPAIR_UNIT) +
+(subsystem_damage * SUBSYSTEM_REPAIR_UNIT)
+
+Population Modifier:
+population_modifier:
+1 -> 1.20
+2 -> 1.10
+3 -> 1.00
+4 -> 0.90
+5 -> 0.80
+
+final_cost = round(base_cost * population_modifier)
+
+Repair Behavior:
+- If player has sufficient credits:
+  - Deduct final_cost
+  - Restore hull integrity
+  - Reset degradation_state
+- If insufficient credits:
+  - Reject repair
+
+Repair does not:
+- Affect fuel
+- Affect modules
+- Affect cargo
+- Affect legality
+- Affect inventory generation
+
 
 ## 16. Explicit Non-Responsibilities
 

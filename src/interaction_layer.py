@@ -609,7 +609,7 @@ def execute_sell_module(
             break
     if remove_index is None:
         return {"ok": False, "reason": "module_not_found"}
-    modules.pop(remove_index)
+    removed_module_instance = modules.pop(remove_index)
 
     module = _module_by_id().get(module_id)
     if module is None:
@@ -621,7 +621,13 @@ def execute_sell_module(
     ship.persistent_state["assembled"] = assembled
 
     sell_price = float(module["base_price_credits"]) * 0.5
-    final_price = int(round(sell_price * float(price_modifier_multiplier)))
+    resale_multiplier = 1.0
+    secondary_tags = set(removed_module_instance.get("secondary_tags", []))
+    if "secondary:prototype" in secondary_tags:
+        resale_multiplier *= 1.5
+    if "secondary:alien" in secondary_tags:
+        resale_multiplier *= 2.0
+    final_price = int(round(sell_price * resale_multiplier * float(price_modifier_multiplier)))
     player.credits = int(player.credits) + final_price
     return {"ok": True, "reason": "ok", "credits": int(player.credits), "final_price": final_price}
 

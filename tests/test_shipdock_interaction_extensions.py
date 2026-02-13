@@ -144,3 +144,53 @@ def test_sell_module_and_repair_ship_apply_contract_math() -> None:
     assert player.credits == credits_before - 105
     assert ship.persistent_state["current_hull_integrity"] == 10
     assert ship.persistent_state["degradation_state"] == {"weapon": 0, "defense": 0, "engine": 0}
+
+
+def test_sell_module_secondary_resale_multipliers() -> None:
+    destination = _shipdock_destination()
+    player = PlayerState(player_id="player", credits=0, owned_ship_ids=["SHIP-1"])
+    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", location_id="DST-1")
+    ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
+    fleet = {"SHIP-1": ship}
+
+    ship.persistent_state["module_instances"] = [
+        {"module_id": "combat_utility_engine_boost_mk1", "secondary_tags": ["secondary:prototype"]}
+    ]
+    sold_proto = execute_sell_module(
+        destination=destination,
+        player=player,
+        fleet_by_id=fleet,
+        ship_id="SHIP-1",
+        module_id="combat_utility_engine_boost_mk1",
+    )
+    assert sold_proto["ok"] is True
+    assert sold_proto["final_price"] == 1050  # 1400 * 0.5 * 1.5
+
+    ship.persistent_state["module_instances"] = [
+        {"module_id": "combat_utility_engine_boost_mk1", "secondary_tags": ["secondary:alien"]}
+    ]
+    sold_alien = execute_sell_module(
+        destination=destination,
+        player=player,
+        fleet_by_id=fleet,
+        ship_id="SHIP-1",
+        module_id="combat_utility_engine_boost_mk1",
+    )
+    assert sold_alien["ok"] is True
+    assert sold_alien["final_price"] == 1400  # 1400 * 0.5 * 2.0
+
+    ship.persistent_state["module_instances"] = [
+        {
+            "module_id": "combat_utility_engine_boost_mk1",
+            "secondary_tags": ["secondary:prototype", "secondary:alien"],
+        }
+    ]
+    sold_stacked = execute_sell_module(
+        destination=destination,
+        player=player,
+        fleet_by_id=fleet,
+        ship_id="SHIP-1",
+        module_id="combat_utility_engine_boost_mk1",
+    )
+    assert sold_stacked["ok"] is True
+    assert sold_stacked["final_price"] == 2100  # 1400 * 0.5 * 1.5 * 2.0

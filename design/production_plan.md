@@ -53,6 +53,7 @@ All expansion must originate here.
 | **Phase 4.7 (COMPLETED)** | **0.6.5** | **Deterministic shipdock inventory generator** |
 | **Phase 4.8 (COMPLETED)** | **0.7.0** | **Fuel system integration and refuel interaction** |
 | **Phase 4.9 (COMPLETED)** | **0.7.1** | **Shipdock interaction extensions** |
+| **Phase 4.9.1 (COMPLETED)** | **0.7.2** | **Secondary tag resale multipliers** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.6.x | Emergent narrative |
 | Phase 6 | 0.7�0.9.x | Stabilization & balance |
@@ -523,6 +524,17 @@ DataNet feed, prose generator, and victory mission prose support implemented. Pr
 - Added deterministic buy/sell pricing paths with modifier hook for sale operations.
 - Added assembler-validated module purchase flow with rejection on slot constraint failures.
 - Added repair cost flow based on hull damage, subsystem degradation, and population modifier.
+
+---
+## Phase 4.9.1 - Secondary Tag Resale Multipliers (COMPLETED)
+
+**Status:** COMPLETE  
+**Version Achieved:** 0.7.2
+
+### Completed Components
+- Added module resale multipliers for `secondary:prototype` and `secondary:alien`.
+- Applied multipliers multiplicatively when both tags are present.
+- Restricted multiplier behavior to module resale only.
 
 ---
 
