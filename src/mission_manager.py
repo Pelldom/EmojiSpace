@@ -1,6 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+try:
+    from crew_modifiers import compute_crew_modifiers
+except ModuleNotFoundError:
+    from src.crew_modifiers import compute_crew_modifiers
+
 from mission_entity import MissionEntity, MissionOutcome, MissionState
 from player_state import PlayerState
 from reward_applicator import apply_mission_rewards
@@ -17,11 +22,20 @@ class MissionManager:
             self.offered.append(mission.mission_id)
         _log_manager(logger, turn, "offer", mission.mission_id)
 
-    def accept(self, mission_id: str, player: PlayerState, logger=None, turn: int = 0) -> bool:
+    def accept(
+        self,
+        mission_id: str,
+        player: PlayerState,
+        logger=None,
+        turn: int = 0,
+        location_type: str | None = None,
+        ship: Any | None = None,
+    ) -> bool:
         mission = self.missions.get(mission_id)
         if mission is None:
             return False
-        if len(player.active_missions) >= player.mission_slots:
+        mission_slots = _effective_mission_slots(player=player, location_type=location_type, ship=ship)
+        if len(player.active_missions) >= mission_slots:
             _log_manager(logger, turn, "accept_failed_slots", mission_id)
             return False
         mission.mission_state = MissionState.ACTIVE
@@ -95,6 +109,16 @@ class MissionManager:
 def _remove_from_list(items: List[str], value: str) -> None:
     if value in items:
         items.remove(value)
+
+
+def _effective_mission_slots(*, player: PlayerState, location_type: str | None, ship: Any | None) -> int:
+    slots = int(player.mission_slots)
+    if location_type not in {"bar", "administration"}:
+        return slots
+    if ship is None:
+        return slots
+    crew_mods = compute_crew_modifiers(ship)
+    return slots + int(crew_mods.mission_slot_bonus)
 
 
 def _log_manager(logger, turn: int, action: str, mission_id: str, detail: str | None = None) -> None:
