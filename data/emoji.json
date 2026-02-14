@@ -1,327 +1,327 @@
 [
   {
-    "tag_id": "agricultural",
-    "emoji_id": "goods_agricultural",
-    "description": "Agricultural production attribute."
-  },
-  {
-    "tag_id": "biological",
-    "emoji_id": "goods_biological",
-    "description": "Biological material attribute."
-  },
-  {
-    "tag_id": "combat:defense_adaptive",
     "emoji_id": "combat_defense_adaptive",
-    "description": "Adaptive defensive system."
+    "glyph": "������",
+    "description": "Adaptive defensive system that adjusts to threats."
   },
   {
-    "tag_id": "combat:defense_armored",
     "emoji_id": "combat_defense_armored",
-    "description": "Armor-based defensive system."
+    "glyph": "������",
+    "description": "Armor-based defensive reinforcement."
   },
   {
-    "tag_id": "combat:defense_shielded",
     "emoji_id": "combat_defense_shielded",
+    "glyph": "������",
     "description": "Shield-based defensive system."
   },
   {
-    "tag_id": "combat:utility_cloak",
     "emoji_id": "combat_utility_cloak",
+    "glyph": "������",
     "description": "Cloaking or stealth system."
   },
   {
-    "tag_id": "combat:utility_engine_boost",
     "emoji_id": "combat_utility_engine_boost",
-    "description": "Engine boost utility system."
+    "glyph": "������",
+    "description": "Engine boost utility module."
   },
   {
-    "tag_id": "combat:utility_overcharger",
     "emoji_id": "combat_utility_overcharger",
+    "glyph": "������",
     "description": "Power overcharger system."
   },
   {
-    "tag_id": "combat:utility_repair_system",
     "emoji_id": "combat_utility_repair_system",
-    "description": "Automated repair system."
+    "glyph": "������",
+    "description": "Automated repair or maintenance system."
   },
   {
-    "tag_id": "combat:utility_signal_scrambler",
     "emoji_id": "combat_utility_signal_scrambler",
-    "description": "Signal scrambling system."
+    "glyph": "������",
+    "description": "Signal scrambling or electronic countermeasure system."
   },
   {
-    "tag_id": "combat:utility_targeting",
     "emoji_id": "combat_utility_targeting",
+    "glyph": "������",
     "description": "Targeting assistance system."
   },
   {
-    "tag_id": "combat:weapon_disruptive",
     "emoji_id": "combat_weapon_disruptive",
-    "description": "Disruptive weapon system."
+    "glyph": "������",
+    "description": "Disruptive or destabilizing weapon system."
   },
   {
-    "tag_id": "combat:weapon_energy",
     "emoji_id": "combat_weapon_energy",
+    "glyph": "⚡",
     "description": "Energy-based weapon system."
   },
   {
-    "tag_id": "combat:weapon_kinetic",
     "emoji_id": "combat_weapon_kinetic",
+    "glyph": "������",
     "description": "Kinetic projectile weapon system."
   },
   {
-    "tag_id": "counterfeit",
-    "emoji_id": "goods_counterfeit",
-    "description": "Counterfeit or falsified goods."
-  },
-  {
-    "tag_id": "crew:alien",
     "emoji_id": "crew_alien",
+    "glyph": "������",
     "description": "Crew member of alien origin."
   },
   {
-    "tag_id": "crew:awkward",
     "emoji_id": "crew_awkward",
+    "glyph": "❔",
     "description": "Socially awkward and poor in negotiations."
   },
   {
-    "tag_id": "crew:bargain_hunter",
     "emoji_id": "crew_bargain_hunter",
+    "glyph": "❔",
     "description": "Skilled at identifying favorable purchase opportunities."
   },
   {
-    "tag_id": "crew:blacklisted",
     "emoji_id": "crew_blacklisted",
+    "glyph": "❔",
     "description": "Restricted or viewed unfavorably in certain systems."
   },
   {
-    "tag_id": "crew:cluttered",
     "emoji_id": "crew_cluttered",
+    "glyph": "❔",
     "description": "Disorganized and reduces operational efficiency."
   },
   {
-    "tag_id": "crew:connected",
     "emoji_id": "crew_connected",
+    "glyph": "❔",
     "description": "Well connected with contacts across systems."
   },
   {
-    "tag_id": "crew:damage_control",
     "emoji_id": "crew_damage_control",
+    "glyph": "❔",
     "description": "Experienced in handling ship damage under pressure."
   },
   {
-    "tag_id": "crew:data_savvy",
     "emoji_id": "crew_data_savvy",
+    "glyph": "❔",
     "description": "Highly capable with digital systems and information handling."
   },
   {
-    "tag_id": "crew:evasive",
     "emoji_id": "crew_evasive",
+    "glyph": "❔",
     "description": "Quick to react and avoid incoming threats."
   },
   {
-    "tag_id": "crew:ex_navy",
     "emoji_id": "crew_ex_navy",
+    "glyph": "❔",
     "description": "Former member of a naval or military organization."
   },
   {
-    "tag_id": "crew:ex_pirate",
     "emoji_id": "crew_ex_pirate",
+    "glyph": "❔",
     "description": "Former pirate with experience outside the law."
   },
   {
-    "tag_id": "crew:fuel_efficient",
     "emoji_id": "crew_fuel_efficient",
+    "glyph": "❔",
     "description": "Operates systems with exceptional fuel discipline."
   },
   {
-    "tag_id": "crew:haggler",
     "emoji_id": "crew_haggler",
+    "glyph": "❔",
     "description": "Persistent negotiator in trade dealings."
   },
   {
-    "tag_id": "crew:high_maintenance",
     "emoji_id": "crew_high_maintenance",
+    "glyph": "❔",
     "description": "Requires additional oversight or upkeep."
   },
   {
-    "tag_id": "crew:loyal",
     "emoji_id": "crew_loyal",
+    "glyph": "❔",
     "description": "Strongly committed to the captain and crew."
   },
   {
-    "tag_id": "crew:opportunist",
     "emoji_id": "crew_opportunist",
+    "glyph": "❔",
     "description": "Seeks advantage in shifting circumstances."
   },
   {
-    "tag_id": "crew:organized",
     "emoji_id": "crew_organized",
+    "glyph": "❔",
     "description": "Maintains structured and orderly ship operations."
   },
   {
-    "tag_id": "crew:overconfident",
     "emoji_id": "crew_overconfident",
+    "glyph": "❔",
     "description": "Tends to underestimate risk in tense situations."
   },
   {
-    "tag_id": "crew:slow_reactions",
     "emoji_id": "crew_slow_reactions",
+    "glyph": "❔",
     "description": "Delayed response under pressure."
   },
   {
-    "tag_id": "crew:steady_aim",
     "emoji_id": "crew_steady_aim",
+    "glyph": "❔",
     "description": "Maintains consistent aim in combat."
   },
   {
-    "tag_id": "crew:trigger_happy",
     "emoji_id": "crew_trigger_happy",
+    "glyph": "❔",
     "description": "Quick to fire, sometimes without full consideration."
   },
   {
-    "tag_id": "crew:undercover",
     "emoji_id": "crew_undercover",
+    "glyph": "❔",
     "description": "Operating under concealed identity."
   },
   {
-    "tag_id": "crew:wanted",
     "emoji_id": "crew_wanted",
+    "glyph": "❔",
     "description": "Actively sought by authorities in one or more systems."
   },
   {
-    "tag_id": "crew:wasteful",
     "emoji_id": "crew_wasteful",
+    "glyph": "❔",
     "description": "Consumes more resources than necessary."
   },
   {
-    "tag_id": "cultural",
+    "emoji_id": "goods_agricultural",
+    "glyph": "������",
+    "description": "Agricultural production attribute."
+  },
+  {
+    "emoji_id": "goods_biological",
+    "glyph": "������",
+    "description": "Biological material attribute."
+  },
+  {
+    "emoji_id": "goods_counterfeit",
+    "glyph": "������",
+    "description": "Counterfeit or falsified goods attribute."
+  },
+  {
     "emoji_id": "goods_cultural",
+    "glyph": "������",
     "description": "Cultural goods or influence attribute."
   },
   {
-    "tag_id": "cybernetic",
     "emoji_id": "goods_cybernetic",
-    "description": "Cybernetic enhancement attribute."
+    "glyph": "������",
+    "description": "Cybernetic or synthetic enhancement attribute."
   },
   {
-    "tag_id": "data",
     "emoji_id": "goods_data",
+    "glyph": "������",
     "description": "Digital or informational attribute."
   },
   {
-    "tag_id": "energy",
     "emoji_id": "goods_energy",
+    "glyph": "⚡",
     "description": "Energy-related attribute."
   },
   {
-    "tag_id": "essential",
     "emoji_id": "goods_essential",
+    "glyph": "⭐",
     "description": "Essential goods attribute."
   },
   {
-    "tag_id": "hazardous",
     "emoji_id": "goods_hazardous",
-    "description": "Hazardous or dangerous material."
+    "glyph": "☣",
+    "description": "Hazardous or dangerous material attribute."
   },
   {
-    "tag_id": "industrial",
     "emoji_id": "goods_industrial",
+    "glyph": "������",
     "description": "Industrial production attribute."
   },
   {
-    "tag_id": "luxury",
     "emoji_id": "goods_luxury",
+    "glyph": "������",
     "description": "Luxury or prestige attribute."
   },
   {
-    "tag_id": "medical",
     "emoji_id": "goods_medical",
+    "glyph": "������",
     "description": "Medical-related attribute."
   },
   {
-    "tag_id": "propaganda",
     "emoji_id": "goods_propaganda",
-    "description": "Propaganda or influence material."
+    "glyph": "������",
+    "description": "Propaganda or influence material attribute."
   },
   {
-    "tag_id": "secondary:alien",
-    "emoji_id": "secondary_alien",
-    "description": "Alien-origin modifier."
-  },
-  {
-    "tag_id": "secondary:compact",
-    "emoji_id": "secondary_compact",
-    "description": "Compact design modifier."
-  },
-  {
-    "tag_id": "secondary:efficient",
-    "emoji_id": "secondary_efficient",
-    "description": "Efficiency-enhanced modifier."
-  },
-  {
-    "tag_id": "secondary:enhanced",
-    "emoji_id": "secondary_enhanced",
-    "description": "Performance-enhanced modifier."
-  },
-  {
-    "tag_id": "secondary:prototype",
-    "emoji_id": "secondary_prototype",
-    "description": "Prototype-grade modifier."
-  },
-  {
-    "tag_id": "secondary:unstable",
-    "emoji_id": "secondary_unstable",
-    "description": "Unstable or experimental modifier."
-  },
-  {
-    "tag_id": "sentient_adjacent",
     "emoji_id": "goods_sentient_adjacent",
+    "glyph": "������",
     "description": "Goods associated with sentient entities."
   },
   {
-    "tag_id": "ship:trait_alien",
-    "emoji_id": "ship_trait_alien",
-    "description": "Ship of alien origin."
-  },
-  {
-    "tag_id": "ship:trait_civilian",
-    "emoji_id": "ship_trait_civilian",
-    "description": "Civilian-class ship."
-  },
-  {
-    "tag_id": "ship:trait_experimental",
-    "emoji_id": "ship_trait_experimental",
-    "description": "Experimental-class ship."
-  },
-  {
-    "tag_id": "ship:trait_freighter",
-    "emoji_id": "ship_trait_freighter",
-    "description": "Freighter-class ship."
-  },
-  {
-    "tag_id": "ship:trait_military",
-    "emoji_id": "ship_trait_military",
-    "description": "Military-class ship."
-  },
-  {
-    "tag_id": "stolen",
     "emoji_id": "goods_stolen",
-    "description": "Stolen goods."
+    "glyph": "������",
+    "description": "Stolen goods attribute."
   },
   {
-    "tag_id": "synthetic",
     "emoji_id": "goods_synthetic",
-    "description": "Artificial or manufactured material."
+    "glyph": "������",
+    "description": "Artificial or manufactured material attribute."
   },
   {
-    "tag_id": "technological",
     "emoji_id": "goods_technological",
+    "glyph": "������",
     "description": "Technological advancement attribute."
   },
   {
-    "tag_id": "weaponized",
     "emoji_id": "goods_weaponized",
+    "glyph": "������",
     "description": "Goods that are weapons or weapon components."
+  },
+  {
+    "emoji_id": "secondary_alien",
+    "glyph": "������",
+    "description": "Alien-origin modifier."
+  },
+  {
+    "emoji_id": "secondary_compact",
+    "glyph": "❔",
+    "description": "Compact design modifier."
+  },
+  {
+    "emoji_id": "secondary_efficient",
+    "glyph": "❔",
+    "description": "Efficiency-enhanced modifier."
+  },
+  {
+    "emoji_id": "secondary_enhanced",
+    "glyph": "❔",
+    "description": "Performance-enhanced modifier."
+  },
+  {
+    "emoji_id": "secondary_prototype",
+    "glyph": "❔",
+    "description": "Prototype-grade modifier."
+  },
+  {
+    "emoji_id": "secondary_unstable",
+    "glyph": "❔",
+    "description": "Unstable or experimental modifier."
+  },
+  {
+    "emoji_id": "ship_trait_alien",
+    "glyph": "������",
+    "description": "Alien origin. Non-human design or biology."
+  },
+  {
+    "emoji_id": "ship_trait_civilian",
+    "glyph": "������",
+    "description": "Civilian vessel. Built for non-combat roles."
+  },
+  {
+    "emoji_id": "ship_trait_experimental",
+    "glyph": "������",
+    "description": "Experimental vessel. Advanced or unstable technology."
+  },
+  {
+    "emoji_id": "ship_trait_freighter",
+    "glyph": "������",
+    "description": "Freighter vessel. Optimized for cargo capacity."
+  },
+  {
+    "emoji_id": "ship_trait_military",
+    "glyph": "������",
+    "description": "Military vessel. Designed for combat effectiveness."
   }
 ]
