@@ -15,6 +15,36 @@
     "description": "Shield-based defensive system."
   },
   {
+    "emoji_id": "combat_module_defense",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_module_defense."
+  },
+  {
+    "emoji_id": "combat_module_utility",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_module_utility."
+  },
+  {
+    "emoji_id": "combat_module_weapon",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_module_weapon."
+  },
+  {
+    "emoji_id": "combat_pursuit_active",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_pursuit_active."
+  },
+  {
+    "emoji_id": "combat_pursuit_engaged",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_pursuit_engaged."
+  },
+  {
+    "emoji_id": "combat_pursuit_evaded",
+    "glyph": "❔",
+    "description": "Restored registry entry for combat_pursuit_evaded."
+  },
+  {
     "emoji_id": "combat_utility_cloak",
     "glyph": "������",
     "description": "Cloaking or stealth system."
@@ -150,6 +180,56 @@
     "description": "Tends to underestimate risk in tense situations."
   },
   {
+    "emoji_id": "crew_role_broker",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_broker."
+  },
+  {
+    "emoji_id": "crew_role_engineer",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_engineer."
+  },
+  {
+    "emoji_id": "crew_role_gunner",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_gunner."
+  },
+  {
+    "emoji_id": "crew_role_lawyer",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_lawyer."
+  },
+  {
+    "emoji_id": "crew_role_mechanic",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_mechanic."
+  },
+  {
+    "emoji_id": "crew_role_navigator",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_navigator."
+  },
+  {
+    "emoji_id": "crew_role_pilot",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_pilot."
+  },
+  {
+    "emoji_id": "crew_role_quartermaster",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_quartermaster."
+  },
+  {
+    "emoji_id": "crew_role_science",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_science."
+  },
+  {
+    "emoji_id": "crew_role_tactician",
+    "glyph": "❔",
+    "description": "Restored registry entry for crew_role_tactician."
+  },
+  {
     "emoji_id": "crew_slow_reactions",
     "glyph": "❔",
     "description": "Delayed response under pressure."
@@ -180,6 +260,106 @@
     "description": "Consumes more resources than necessary."
   },
   {
+    "emoji_id": "defeat_arrest",
+    "glyph": "❔",
+    "description": "Restored registry entry for defeat_arrest."
+  },
+  {
+    "emoji_id": "defeat_bankruptcy",
+    "glyph": "❔",
+    "description": "Restored registry entry for defeat_bankruptcy."
+  },
+  {
+    "emoji_id": "defeat_death",
+    "glyph": "❔",
+    "description": "Restored registry entry for defeat_death."
+  },
+  {
+    "emoji_id": "event_assassination",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_assassination."
+  },
+  {
+    "emoji_id": "event_discovery",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_discovery."
+  },
+  {
+    "emoji_id": "event_encounter_bounty_hunter",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_bounty_hunter."
+  },
+  {
+    "emoji_id": "event_encounter_customs",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_customs."
+  },
+  {
+    "emoji_id": "event_encounter_derelict_ship",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_derelict_ship."
+  },
+  {
+    "emoji_id": "event_encounter_inspection",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_inspection."
+  },
+  {
+    "emoji_id": "event_encounter_pirate",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_pirate."
+  },
+  {
+    "emoji_id": "event_encounter_random_event",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_random_event."
+  },
+  {
+    "emoji_id": "event_encounter_trader",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_encounter_trader."
+  },
+  {
+    "emoji_id": "event_market_crash",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_market_crash."
+  },
+  {
+    "emoji_id": "event_pirate_surge",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_pirate_surge."
+  },
+  {
+    "emoji_id": "event_rebellion",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_rebellion."
+  },
+  {
+    "emoji_id": "event_refugee_wave",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_refugee_wave."
+  },
+  {
+    "emoji_id": "event_scientific_anomaly",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_scientific_anomaly."
+  },
+  {
+    "emoji_id": "event_solar_flare",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_solar_flare."
+  },
+  {
+    "emoji_id": "event_system_failure",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_system_failure."
+  },
+  {
+    "emoji_id": "event_trade_summit",
+    "glyph": "❔",
+    "description": "Restored registry entry for event_trade_summit."
+  },
+  {
     "emoji_id": "goods_agricultural",
     "glyph": "������",
     "description": "Agricultural production attribute."
@@ -188,6 +368,61 @@
     "emoji_id": "goods_biological",
     "glyph": "������",
     "description": "Biological material attribute."
+  },
+  {
+    "emoji_id": "goods_category_chemicals",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_chemicals."
+  },
+  {
+    "emoji_id": "goods_category_data",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_data."
+  },
+  {
+    "emoji_id": "goods_category_energy",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_energy."
+  },
+  {
+    "emoji_id": "goods_category_food",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_food."
+  },
+  {
+    "emoji_id": "goods_category_luxury",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_luxury."
+  },
+  {
+    "emoji_id": "goods_category_machinery",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_machinery."
+  },
+  {
+    "emoji_id": "goods_category_medicine",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_medicine."
+  },
+  {
+    "emoji_id": "goods_category_metal",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_metal."
+  },
+  {
+    "emoji_id": "goods_category_ore",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_ore."
+  },
+  {
+    "emoji_id": "goods_category_parts",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_parts."
+  },
+  {
+    "emoji_id": "goods_category_weapons",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_category_weapons."
   },
   {
     "emoji_id": "goods_counterfeit",
@@ -235,6 +470,16 @@
     "description": "Luxury or prestige attribute."
   },
   {
+    "emoji_id": "goods_market_shortage",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_market_shortage."
+  },
+  {
+    "emoji_id": "goods_market_surplus",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_market_surplus."
+  },
+  {
     "emoji_id": "goods_medical",
     "glyph": "������",
     "description": "Medical-related attribute."
@@ -243,6 +488,11 @@
     "emoji_id": "goods_propaganda",
     "glyph": "������",
     "description": "Propaganda or influence material attribute."
+  },
+  {
+    "emoji_id": "goods_sentient",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_sentient."
   },
   {
     "emoji_id": "goods_sentient_adjacent",
@@ -265,9 +515,214 @@
     "description": "Technological advancement attribute."
   },
   {
+    "emoji_id": "goods_weapon",
+    "glyph": "❔",
+    "description": "Restored registry entry for goods_weapon."
+  },
+  {
     "emoji_id": "goods_weaponized",
     "glyph": "������",
     "description": "Goods that are weapons or weapon components."
+  },
+  {
+    "emoji_id": "government_anarchic",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_anarchic."
+  },
+  {
+    "emoji_id": "government_collective_commune",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_collective_commune."
+  },
+  {
+    "emoji_id": "government_communist",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_communist."
+  },
+  {
+    "emoji_id": "government_corporate_authority",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_corporate_authority."
+  },
+  {
+    "emoji_id": "government_democracy",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_democracy."
+  },
+  {
+    "emoji_id": "government_dictatorship",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_dictatorship."
+  },
+  {
+    "emoji_id": "government_fascist",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_fascist."
+  },
+  {
+    "emoji_id": "government_free_trade_coalition",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_free_trade_coalition."
+  },
+  {
+    "emoji_id": "government_republic",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_republic."
+  },
+  {
+    "emoji_id": "government_socialist",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_socialist."
+  },
+  {
+    "emoji_id": "government_theocracy",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_theocracy."
+  },
+  {
+    "emoji_id": "government_violation_major",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_violation_major."
+  },
+  {
+    "emoji_id": "government_violation_minor",
+    "glyph": "❔",
+    "description": "Restored registry entry for government_violation_minor."
+  },
+  {
+    "emoji_id": "location_administration",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_administration."
+  },
+  {
+    "emoji_id": "location_bar",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_bar."
+  },
+  {
+    "emoji_id": "location_contact",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_contact."
+  },
+  {
+    "emoji_id": "location_datanet",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_datanet."
+  },
+  {
+    "emoji_id": "location_market",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_market."
+  },
+  {
+    "emoji_id": "location_planet",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_planet."
+  },
+  {
+    "emoji_id": "location_shipdock",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_shipdock."
+  },
+  {
+    "emoji_id": "location_station",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_station."
+  },
+  {
+    "emoji_id": "location_unknown",
+    "glyph": "❔",
+    "description": "Restored registry entry for location_unknown."
+  },
+  {
+    "emoji_id": "mission_active",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_active."
+  },
+  {
+    "emoji_id": "mission_bounty",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_bounty."
+  },
+  {
+    "emoji_id": "mission_completed",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_completed."
+  },
+  {
+    "emoji_id": "mission_delivery",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_delivery."
+  },
+  {
+    "emoji_id": "mission_exploration",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_exploration."
+  },
+  {
+    "emoji_id": "mission_failed",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_failed."
+  },
+  {
+    "emoji_id": "mission_illegal",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_illegal."
+  },
+  {
+    "emoji_id": "mission_reward_credits",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_reward_credits."
+  },
+  {
+    "emoji_id": "mission_reward_goods",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_reward_goods."
+  },
+  {
+    "emoji_id": "mission_reward_module",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_reward_module."
+  },
+  {
+    "emoji_id": "mission_reward_reputation",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_reward_reputation."
+  },
+  {
+    "emoji_id": "mission_reward_ship",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_reward_ship."
+  },
+  {
+    "emoji_id": "mission_salvage",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_salvage."
+  },
+  {
+    "emoji_id": "mission_transport",
+    "glyph": "❔",
+    "description": "Restored registry entry for mission_transport."
+  },
+  {
+    "emoji_id": "npc_law",
+    "glyph": "❔",
+    "description": "Restored registry entry for npc_law."
+  },
+  {
+    "emoji_id": "npc_reaction_friendly",
+    "glyph": "❔",
+    "description": "Restored registry entry for npc_reaction_friendly."
+  },
+  {
+    "emoji_id": "npc_reaction_hostile",
+    "glyph": "❔",
+    "description": "Restored registry entry for npc_reaction_hostile."
+  },
+  {
+    "emoji_id": "npc_reaction_neutral",
+    "glyph": "❔",
+    "description": "Restored registry entry for npc_reaction_neutral."
   },
   {
     "emoji_id": "secondary_alien",
@@ -300,6 +755,71 @@
     "description": "Unstable or experimental modifier."
   },
   {
+    "emoji_id": "ship_condition_critical",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_condition_critical."
+  },
+  {
+    "emoji_id": "ship_condition_damaged",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_condition_damaged."
+  },
+  {
+    "emoji_id": "ship_condition_pristine",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_condition_pristine."
+  },
+  {
+    "emoji_id": "ship_roman_i",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_i."
+  },
+  {
+    "emoji_id": "ship_roman_ii",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_ii."
+  },
+  {
+    "emoji_id": "ship_roman_iii",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_iii."
+  },
+  {
+    "emoji_id": "ship_roman_iv",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_iv."
+  },
+  {
+    "emoji_id": "ship_roman_ix",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_ix."
+  },
+  {
+    "emoji_id": "ship_roman_v",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_v."
+  },
+  {
+    "emoji_id": "ship_roman_vi",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_vi."
+  },
+  {
+    "emoji_id": "ship_roman_vii",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_vii."
+  },
+  {
+    "emoji_id": "ship_roman_viii",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_viii."
+  },
+  {
+    "emoji_id": "ship_roman_x",
+    "glyph": "❔",
+    "description": "Restored registry entry for ship_roman_x."
+  },
+  {
     "emoji_id": "ship_trait_alien",
     "glyph": "������",
     "description": "Alien origin. Non-human design or biology."
@@ -323,5 +843,105 @@
     "emoji_id": "ship_trait_military",
     "glyph": "������",
     "description": "Military vessel. Designed for combat effectiveness."
+  },
+  {
+    "emoji_id": "situation_blockade",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_blockade."
+  },
+  {
+    "emoji_id": "situation_civil_unrest",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_civil_unrest."
+  },
+  {
+    "emoji_id": "situation_economic_boom",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_economic_boom."
+  },
+  {
+    "emoji_id": "situation_famine",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_famine."
+  },
+  {
+    "emoji_id": "situation_plague",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_plague."
+  },
+  {
+    "emoji_id": "situation_recession",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_recession."
+  },
+  {
+    "emoji_id": "situation_research_breakthrough",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_research_breakthrough."
+  },
+  {
+    "emoji_id": "situation_resource_shortage",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_resource_shortage."
+  },
+  {
+    "emoji_id": "situation_trade_embargo",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_trade_embargo."
+  },
+  {
+    "emoji_id": "situation_war",
+    "glyph": "❔",
+    "description": "Restored registry entry for situation_war."
+  },
+  {
+    "emoji_id": "star_binary",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_binary."
+  },
+  {
+    "emoji_id": "star_blackhole",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_blackhole."
+  },
+  {
+    "emoji_id": "star_blue",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_blue."
+  },
+  {
+    "emoji_id": "star_neutron",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_neutron."
+  },
+  {
+    "emoji_id": "star_red",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_red."
+  },
+  {
+    "emoji_id": "star_white",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_white."
+  },
+  {
+    "emoji_id": "star_yellow",
+    "glyph": "❔",
+    "description": "Restored registry entry for star_yellow."
+  },
+  {
+    "emoji_id": "victory_combat",
+    "glyph": "❔",
+    "description": "Restored registry entry for victory_combat."
+  },
+  {
+    "emoji_id": "victory_reputation",
+    "glyph": "❔",
+    "description": "Restored registry entry for victory_reputation."
+  },
+  {
+    "emoji_id": "victory_trade",
+    "glyph": "❔",
+    "description": "Restored registry entry for victory_trade."
   }
 ]
