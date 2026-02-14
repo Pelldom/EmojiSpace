@@ -1,157 +1,927 @@
 [
-  { "emoji_id": "roman_i", "glyph": "Ⅰ", "description": "Tier I. Indicates the lowest tier in a progression scale." },
-  { "emoji_id": "roman_ii", "glyph": "Ⅱ", "description": "Tier II. Indicates the second tier in a progression scale." },
-  { "emoji_id": "roman_iii", "glyph": "Ⅲ", "description": "Tier III. Indicates the third tier in a progression scale." },
-  { "emoji_id": "roman_iv", "glyph": "Ⅳ", "description": "Tier IV. Indicates the fourth tier in a progression scale." },
-  { "emoji_id": "roman_v", "glyph": "Ⅴ", "description": "Tier V. Indicates the fifth tier in a progression scale." },
-  { "emoji_id": "roman_vi", "glyph": "Ⅵ", "description": "Tier VI. Indicates the sixth tier in a progression scale." },
-  { "emoji_id": "roman_vii", "glyph": "Ⅶ", "description": "Tier VII. Indicates the seventh tier in a progression scale." },
-  { "emoji_id": "roman_viii", "glyph": "Ⅷ", "description": "Tier VIII. Indicates the eighth tier in a progression scale." },
-  { "emoji_id": "roman_ix", "glyph": "Ⅸ", "description": "Tier IX. Indicates the ninth tier in a progression scale." },
-  { "emoji_id": "roman_x", "glyph": "Ⅹ", "description": "Tier X. Indicates the highest defined tier in a progression scale." },
-
-  { "emoji_id": "government_anarchic", "glyph": "🏳", "description": "Anarchic system. No centralized government or formal law enforcement exists." },
-  { "emoji_id": "government_democracy", "glyph": "🗳", "description": "Democratic government." },
-  { "emoji_id": "government_dictatorship", "glyph": "👑", "description": "Dictatorship." },
-  { "emoji_id": "government_theocracy", "glyph": "⛪", "description": "Theocracy." },
-  { "emoji_id": "government_fascist", "glyph": "🦅", "description": "Fascist regime." },
-  { "emoji_id": "government_corporate_authority", "glyph": "🏢", "description": "Corporate Authority." },
-  { "emoji_id": "government_free_trade_coalition", "glyph": "🤝", "description": "Free Trade Coalition." },
-  { "emoji_id": "government_republic", "glyph": "🏛", "description": "Republic." },
-  { "emoji_id": "government_socialist", "glyph": "⚙", "description": "Socialist system." },
-  { "emoji_id": "government_communist", "glyph": "☭", "description": "Communist system." },
-  { "emoji_id": "government_collective_commune", "glyph": "🌾", "description": "Collective Commune." },
-
-  { "emoji_id": "tag_alien", "glyph": "👽", "description": "Alien origin or non-human design." },
-
-  { "emoji_id": "location_bar", "glyph": "🍺", "description": "Bar." },
-  { "emoji_id": "location_shipdock", "glyph": "🛠", "description": "Shipdock." },
-  { "emoji_id": "location_market", "glyph": "🏬", "description": "Market." },
-  { "emoji_id": "location_contact", "glyph": "🧑", "description": "Contact." },
-  { "emoji_id": "location_planet", "glyph": "🌍", "description": "Planet." },
-  { "emoji_id": "location_station", "glyph": "🛰", "description": "Station." },
-  { "emoji_id": "location_unknown", "glyph": "❓", "description": "Unknown destination." },
-  { "emoji_id": "location_administration", "glyph": "🏢", "description": "Administration." },
-  { "emoji_id": "location_datanet", "glyph": "🌐", "description": "DataNet access." },
-
-  { "emoji_id": "reward_credits", "glyph": "💰", "description": "Credits reward." },
-  { "emoji_id": "reward_goods", "glyph": "📦", "description": "Goods reward." },
-  { "emoji_id": "reward_reputation", "glyph": "🌟", "description": "Reputation reward." },
-  { "emoji_id": "reward_ship", "glyph": "🚀", "description": "Ship reward." },
-  { "emoji_id": "reward_module", "glyph": "🔧", "description": "Module reward." },
-
-  { "emoji_id": "ship_trait_military", "glyph": "🛡", "description": "Military vessel." },
-  { "emoji_id": "ship_trait_civilian", "glyph": "🏠", "description": "Civilian vessel." },
-  { "emoji_id": "ship_trait_freighter", "glyph": "📦", "description": "Freighter vessel." },
-  { "emoji_id": "ship_trait_experimental", "glyph": "🧪", "description": "Experimental vessel." },
-
-  { "emoji_id": "ship_condition_pristine", "glyph": "🟢", "description": "Ship pristine." },
-  { "emoji_id": "ship_condition_damaged", "glyph": "🟡", "description": "Ship damaged." },
-  { "emoji_id": "ship_condition_critical", "glyph": "🔴", "description": "Ship critical." },
-
-  { "emoji_id": "crew_role_pilot", "glyph": "🧑‍✈️", "description": "Pilot." },
-  { "emoji_id": "crew_role_gunner", "glyph": "🔫", "description": "Gunner." },
-  { "emoji_id": "crew_role_engineer", "glyph": "🧰", "description": "Engineer." },
-  { "emoji_id": "crew_role_mechanic", "glyph": "🔩", "description": "Mechanic." },
-  { "emoji_id": "crew_role_tactician", "glyph": "♟", "description": "Tactician." },
-  { "emoji_id": "crew_role_broker", "glyph": "💼", "description": "Broker." },
-  { "emoji_id": "crew_role_quartermaster", "glyph": "📦", "description": "Quartermaster." },
-  { "emoji_id": "crew_role_lawyer", "glyph": "⚖", "description": "Lawyer." },
-  { "emoji_id": "crew_role_navigator", "glyph": "🧭", "description": "Navigator." },
-  { "emoji_id": "crew_role_science", "glyph": "🔬", "description": "Science specialist." },
-
-  { "emoji_id": "star_yellow", "glyph": "🟡", "description": "Yellow star." },
-  { "emoji_id": "star_red", "glyph": "🔴", "description": "Red star." },
-  { "emoji_id": "star_blue", "glyph": "🔵", "description": "Blue star." },
-  { "emoji_id": "star_white", "glyph": "⚪", "description": "White star." },
-  { "emoji_id": "star_binary", "glyph": "✨", "description": "Binary star." },
-  { "emoji_id": "star_neutron", "glyph": "🟣", "description": "Neutron star." },
-  { "emoji_id": "star_blackhole", "glyph": "🕳", "description": "Black hole." },
-
-  { "emoji_id": "npc_law", "glyph": "🚔", "description": "Law enforcement presence." },
-
-  { "emoji_id": "goods_category_food", "glyph": "🍎", "description": "Food category." },
-  { "emoji_id": "goods_category_ore", "glyph": "⛏", "description": "Ore category." },
-  { "emoji_id": "goods_category_metal", "glyph": "🪙", "description": "Metal category." },
-  { "emoji_id": "goods_category_medicine", "glyph": "💊", "description": "Medicine category." },
-  { "emoji_id": "goods_category_parts", "glyph": "🔩", "description": "Parts category." },
-  { "emoji_id": "goods_category_energy", "glyph": "⚡", "description": "Energy category." },
-  { "emoji_id": "goods_category_data", "glyph": "💾", "description": "Data category." },
-  { "emoji_id": "goods_category_weapons", "glyph": "🗡", "description": "Weapons category." },
-  { "emoji_id": "goods_category_luxury", "glyph": "💎", "description": "Luxury category." },
-  { "emoji_id": "goods_category_chemicals", "glyph": "🧪", "description": "Chemicals category." },
-  { "emoji_id": "goods_category_machinery", "glyph": "⚙", "description": "Machinery category." },
-
-  { "emoji_id": "goods_energy", "glyph": "⚡", "description": "Energy-related attribute." },
-  { "emoji_id": "goods_industrial", "glyph": "🏭", "description": "Industrial attribute." },
-  { "emoji_id": "goods_medical", "glyph": "💊", "description": "Medical attribute." },
-  { "emoji_id": "goods_agricultural", "glyph": "🌾", "description": "Agricultural attribute." },
-  { "emoji_id": "goods_technological", "glyph": "💻", "description": "Technological attribute." },
-  { "emoji_id": "goods_luxury", "glyph": "💎", "description": "Luxury attribute." },
-  { "emoji_id": "goods_cultural", "glyph": "🎭", "description": "Cultural attribute." },
-  { "emoji_id": "goods_data", "glyph": "💾", "description": "Data attribute." },
-  { "emoji_id": "goods_hazardous", "glyph": "☣", "description": "Hazardous attribute." },
-  { "emoji_id": "goods_weapon", "glyph": "🗡", "description": "Weapon attribute." },
-  { "emoji_id": "goods_cybernetic", "glyph": "🤖", "description": "Cybernetic attribute." },
-  { "emoji_id": "goods_biological", "glyph": "🧬", "description": "Biological attribute." },
-  { "emoji_id": "goods_synthetic", "glyph": "🧪", "description": "Synthetic attribute." },
-  { "emoji_id": "goods_sentient", "glyph": "🧠", "description": "Sentient attribute." },
-  { "emoji_id": "goods_propaganda", "glyph": "📣", "description": "Propaganda attribute." },
-  { "emoji_id": "goods_counterfeit", "glyph": "🧾", "description": "Counterfeit attribute." },
-  { "emoji_id": "goods_stolen", "glyph": "🏴", "description": "Stolen attribute." },
-  { "emoji_id": "goods_essential", "glyph": "⭐", "description": "Essential attribute." },
-
-  { "emoji_id": "crew_steady_aim", "glyph": "🎯", "description": "Accurate aim." },
-  { "emoji_id": "crew_evasive", "glyph": "🏃", "description": "Evasive under pressure." },
-  { "emoji_id": "crew_damage_control", "glyph": "🩹", "description": "Damage control specialist." },
-  { "emoji_id": "crew_trigger_happy", "glyph": "🔫", "description": "Quick to fire." },
-  { "emoji_id": "crew_slow_reactions", "glyph": "🐢", "description": "Delayed reactions." },
-  { "emoji_id": "crew_overconfident", "glyph": "😎", "description": "Overconfident behavior." },
-  { "emoji_id": "crew_organized", "glyph": "📋", "description": "Organized operations." },
-  { "emoji_id": "crew_cluttered", "glyph": "🗃️", "description": "Cluttered operations." },
-  { "emoji_id": "crew_data_savvy", "glyph": "🖥️", "description": "Data savvy." },
-  { "emoji_id": "crew_fuel_efficient", "glyph": "⛽", "description": "Fuel efficient." },
-  { "emoji_id": "crew_haggler", "glyph": "💬", "description": "Haggler." },
-  { "emoji_id": "crew_bargain_hunter", "glyph": "🛒", "description": "Bargain hunter." },
-  { "emoji_id": "crew_connected", "glyph": "🔗", "description": "Well connected." },
-  { "emoji_id": "crew_blacklisted", "glyph": "📛", "description": "Blacklisted." },
-  { "emoji_id": "crew_wanted", "glyph": "🚨", "description": "Wanted by authorities." },
-  { "emoji_id": "crew_awkward", "glyph": "😬", "description": "Socially awkward." },
-  { "emoji_id": "crew_ex_navy", "glyph": "⚓", "description": "Former navy." },
-  { "emoji_id": "crew_ex_pirate", "glyph": "🏴‍☠️", "description": "Former pirate." },
-  { "emoji_id": "crew_undercover", "glyph": "🕵️", "description": "Undercover." },
-  { "emoji_id": "crew_loyal", "glyph": "❤️", "description": "Loyal." },
-  { "emoji_id": "crew_opportunist", "glyph": "👀", "description": "Opportunist." },
-  { "emoji_id": "crew_wasteful", "glyph": "🗑️", "description": "Wasteful." },
-
-  { "emoji_id": "secondary_compact", "glyph": "📦", "description": "Compact design." },
-  { "emoji_id": "secondary_efficient", "glyph": "⚙️", "description": "Efficient systems." },
-  { "emoji_id": "secondary_enhanced", "glyph": "✨", "description": "Enhanced performance." },
-  { "emoji_id": "secondary_prototype", "glyph": "🧪", "description": "Prototype technology." },
-  { "emoji_id": "secondary_unstable", "glyph": "⚠️", "description": "Unstable configuration." },
-
-  { "emoji_id": "combat_weapon_energy", "glyph": "\u26A1", "description": "Energy-based weapon system." },
-  { "emoji_id": "combat_weapon_kinetic", "glyph": "\uD83D\uDCA5", "description": "Kinetic projectile weapon system." },
-  { "emoji_id": "combat_weapon_disruptive", "glyph": "\uD83C\uDF00", "description": "Disruptive or destabilizing weapon system." },
-
-  { "emoji_id": "combat_defense_shielded", "glyph": "\uD83D\uDEE1", "description": "Shield-based defensive system." },
-  { "emoji_id": "combat_defense_armored", "glyph": "\uD83E\uDDF1", "description": "Armor-based defensive reinforcement." },
-  { "emoji_id": "combat_defense_adaptive", "glyph": "\uD83D\uDD04", "description": "Adaptive defensive system that adjusts to threats." },
-
-  { "emoji_id": "combat_utility_engine_boost", "glyph": "\uD83D\uDE80", "description": "Engine boost utility module." },
-  { "emoji_id": "combat_utility_cloak", "glyph": "\uD83D\uDD76\uFE0F", "description": "Cloaking or stealth system." },
-  { "emoji_id": "combat_utility_targeting", "glyph": "\uD83C\uDFAF", "description": "Targeting assistance system." },
-  { "emoji_id": "combat_utility_repair_system", "glyph": "\uD83D\uDD27", "description": "Automated repair or maintenance system." },
-  { "emoji_id": "combat_utility_overcharger", "glyph": "\uD83D\uDD0B", "description": "Power overcharger system." },
-  { "emoji_id": "combat_utility_signal_scrambler", "glyph": "\uD83D\uDCE1", "description": "Signal scrambling or electronic countermeasure system." },
-
-  { "emoji_id": "crew_high_maintenance", "glyph": "\uD83D\uDE24", "description": "High maintenance crew member requiring additional cost." },
-  { "emoji_id": "crew_alien", "glyph": "\uD83D\uDC7D", "description": "Alien crew member." },
-
-  { "emoji_id": "goods_weaponized", "glyph": "\uD83D\uDDE1", "description": "Weaponized goods attribute." },
-  { "emoji_id": "goods_sentient_adjacent", "glyph": "\uD83E\uDDE0", "description": "Sentient-adjacent goods attribute." },
-
-  { "emoji_id": "ship_trait_alien", "glyph": "\uD83D\uDC7D", "description": "Alien-origin vessel." },
-
-  { "emoji_id": "secondary_alien", "glyph": "\uD83D\uDC7D", "description": "Alien secondary trait." }
+  {
+    "emoji_id": "roman_i",
+    "glyph": "Ⅰ",
+    "description": "Tier I. Indicates the lowest tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_ii",
+    "glyph": "Ⅱ",
+    "description": "Tier II. Indicates the second tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_iii",
+    "glyph": "Ⅲ",
+    "description": "Tier III. Indicates the third tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_iv",
+    "glyph": "Ⅳ",
+    "description": "Tier IV. Indicates the fourth tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_v",
+    "glyph": "Ⅴ",
+    "description": "Tier V. Indicates the fifth tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_vi",
+    "glyph": "Ⅵ",
+    "description": "Tier VI. Indicates the sixth tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_vii",
+    "glyph": "Ⅶ",
+    "description": "Tier VII. Indicates the seventh tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_viii",
+    "glyph": "Ⅷ",
+    "description": "Tier VIII. Indicates the eighth tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_ix",
+    "glyph": "Ⅸ",
+    "description": "Tier IX. Indicates the ninth tier in a progression scale."
+  },
+  {
+    "emoji_id": "roman_x",
+    "glyph": "Ⅹ",
+    "description": "Tier X. Indicates the highest defined tier in a progression scale."
+  },
+  {
+    "emoji_id": "government_anarchic",
+    "glyph": "🏳",
+    "description": "Anarchic system. No centralized government or formal law enforcement exists."
+  },
+  {
+    "emoji_id": "government_democracy",
+    "glyph": "🗳",
+    "description": "Democratic government."
+  },
+  {
+    "emoji_id": "government_dictatorship",
+    "glyph": "👑",
+    "description": "Dictatorship."
+  },
+  {
+    "emoji_id": "government_theocracy",
+    "glyph": "⛪",
+    "description": "Theocracy."
+  },
+  {
+    "emoji_id": "government_fascist",
+    "glyph": "🦅",
+    "description": "Fascist regime."
+  },
+  {
+    "emoji_id": "government_corporate_authority",
+    "glyph": "🏢",
+    "description": "Corporate Authority."
+  },
+  {
+    "emoji_id": "government_free_trade_coalition",
+    "glyph": "🤝",
+    "description": "Free Trade Coalition."
+  },
+  {
+    "emoji_id": "government_republic",
+    "glyph": "🏛",
+    "description": "Republic."
+  },
+  {
+    "emoji_id": "government_socialist",
+    "glyph": "⚙",
+    "description": "Socialist system."
+  },
+  {
+    "emoji_id": "government_communist",
+    "glyph": "☭",
+    "description": "Communist system."
+  },
+  {
+    "emoji_id": "government_collective_commune",
+    "glyph": "🌾",
+    "description": "Collective Commune."
+  },
+  {
+    "emoji_id": "tag_alien",
+    "glyph": "👽",
+    "description": "Alien origin or non-human design."
+  },
+  {
+    "emoji_id": "location_bar",
+    "glyph": "🍺",
+    "description": "Bar."
+  },
+  {
+    "emoji_id": "location_shipdock",
+    "glyph": "🛠",
+    "description": "Shipdock."
+  },
+  {
+    "emoji_id": "location_market",
+    "glyph": "🏬",
+    "description": "Market."
+  },
+  {
+    "emoji_id": "location_contact",
+    "glyph": "🧑",
+    "description": "Contact."
+  },
+  {
+    "emoji_id": "location_planet",
+    "glyph": "🌍",
+    "description": "Planet."
+  },
+  {
+    "emoji_id": "location_station",
+    "glyph": "🛰",
+    "description": "Station."
+  },
+  {
+    "emoji_id": "location_unknown",
+    "glyph": "❓",
+    "description": "Unknown destination."
+  },
+  {
+    "emoji_id": "location_administration",
+    "glyph": "🏢",
+    "description": "Administration."
+  },
+  {
+    "emoji_id": "location_datanet",
+    "glyph": "🌐",
+    "description": "DataNet access."
+  },
+  {
+    "emoji_id": "reward_credits",
+    "glyph": "💰",
+    "description": "Credits reward."
+  },
+  {
+    "emoji_id": "reward_goods",
+    "glyph": "📦",
+    "description": "Goods reward."
+  },
+  {
+    "emoji_id": "reward_reputation",
+    "glyph": "🌟",
+    "description": "Reputation reward."
+  },
+  {
+    "emoji_id": "reward_ship",
+    "glyph": "🚀",
+    "description": "Ship reward."
+  },
+  {
+    "emoji_id": "reward_module",
+    "glyph": "🔧",
+    "description": "Module reward."
+  },
+  {
+    "emoji_id": "ship_trait_military",
+    "glyph": "🛡",
+    "description": "Military vessel."
+  },
+  {
+    "emoji_id": "ship_trait_civilian",
+    "glyph": "🏠",
+    "description": "Civilian vessel."
+  },
+  {
+    "emoji_id": "ship_trait_freighter",
+    "glyph": "📦",
+    "description": "Freighter vessel."
+  },
+  {
+    "emoji_id": "ship_trait_experimental",
+    "glyph": "🧪",
+    "description": "Experimental vessel."
+  },
+  {
+    "emoji_id": "ship_condition_pristine",
+    "glyph": "🟢",
+    "description": "Ship pristine."
+  },
+  {
+    "emoji_id": "ship_condition_damaged",
+    "glyph": "🟡",
+    "description": "Ship damaged."
+  },
+  {
+    "emoji_id": "ship_condition_critical",
+    "glyph": "🔴",
+    "description": "Ship critical."
+  },
+  {
+    "emoji_id": "crew_role_pilot",
+    "glyph": "🧑‍✈️",
+    "description": "Pilot."
+  },
+  {
+    "emoji_id": "crew_role_gunner",
+    "glyph": "🔫",
+    "description": "Gunner."
+  },
+  {
+    "emoji_id": "crew_role_engineer",
+    "glyph": "🧰",
+    "description": "Engineer."
+  },
+  {
+    "emoji_id": "crew_role_mechanic",
+    "glyph": "🔩",
+    "description": "Mechanic."
+  },
+  {
+    "emoji_id": "crew_role_tactician",
+    "glyph": "♟",
+    "description": "Tactician."
+  },
+  {
+    "emoji_id": "crew_role_broker",
+    "glyph": "💼",
+    "description": "Broker."
+  },
+  {
+    "emoji_id": "crew_role_quartermaster",
+    "glyph": "📦",
+    "description": "Quartermaster."
+  },
+  {
+    "emoji_id": "crew_role_lawyer",
+    "glyph": "⚖",
+    "description": "Lawyer."
+  },
+  {
+    "emoji_id": "crew_role_navigator",
+    "glyph": "🧭",
+    "description": "Navigator."
+  },
+  {
+    "emoji_id": "crew_role_science",
+    "glyph": "🔬",
+    "description": "Science specialist."
+  },
+  {
+    "emoji_id": "star_yellow",
+    "glyph": "🟡",
+    "description": "Yellow star."
+  },
+  {
+    "emoji_id": "star_red",
+    "glyph": "🔴",
+    "description": "Red star."
+  },
+  {
+    "emoji_id": "star_blue",
+    "glyph": "🔵",
+    "description": "Blue star."
+  },
+  {
+    "emoji_id": "star_white",
+    "glyph": "⚪",
+    "description": "White star."
+  },
+  {
+    "emoji_id": "star_binary",
+    "glyph": "✨",
+    "description": "Binary star."
+  },
+  {
+    "emoji_id": "star_neutron",
+    "glyph": "🟣",
+    "description": "Neutron star."
+  },
+  {
+    "emoji_id": "star_blackhole",
+    "glyph": "🕳",
+    "description": "Black hole."
+  },
+  {
+    "emoji_id": "npc_law",
+    "glyph": "🚔",
+    "description": "Law enforcement presence."
+  },
+  {
+    "emoji_id": "goods_category_food",
+    "glyph": "🍎",
+    "description": "Food category."
+  },
+  {
+    "emoji_id": "goods_category_ore",
+    "glyph": "⛏",
+    "description": "Ore category."
+  },
+  {
+    "emoji_id": "goods_category_metal",
+    "glyph": "🪙",
+    "description": "Metal category."
+  },
+  {
+    "emoji_id": "goods_category_medicine",
+    "glyph": "💊",
+    "description": "Medicine category."
+  },
+  {
+    "emoji_id": "goods_category_parts",
+    "glyph": "🔩",
+    "description": "Parts category."
+  },
+  {
+    "emoji_id": "goods_category_energy",
+    "glyph": "⚡",
+    "description": "Energy category."
+  },
+  {
+    "emoji_id": "goods_category_data",
+    "glyph": "💾",
+    "description": "Data category."
+  },
+  {
+    "emoji_id": "goods_category_weapons",
+    "glyph": "🗡",
+    "description": "Weapons category."
+  },
+  {
+    "emoji_id": "goods_category_luxury",
+    "glyph": "💎",
+    "description": "Luxury category."
+  },
+  {
+    "emoji_id": "goods_category_chemicals",
+    "glyph": "🧪",
+    "description": "Chemicals category."
+  },
+  {
+    "emoji_id": "goods_category_machinery",
+    "glyph": "⚙",
+    "description": "Machinery category."
+  },
+  {
+    "emoji_id": "goods_energy",
+    "glyph": "⚡",
+    "description": "Energy-related attribute."
+  },
+  {
+    "emoji_id": "goods_industrial",
+    "glyph": "🏭",
+    "description": "Industrial attribute."
+  },
+  {
+    "emoji_id": "goods_medical",
+    "glyph": "💊",
+    "description": "Medical attribute."
+  },
+  {
+    "emoji_id": "goods_agricultural",
+    "glyph": "🌾",
+    "description": "Agricultural attribute."
+  },
+  {
+    "emoji_id": "goods_technological",
+    "glyph": "💻",
+    "description": "Technological attribute."
+  },
+  {
+    "emoji_id": "goods_luxury",
+    "glyph": "💎",
+    "description": "Luxury attribute."
+  },
+  {
+    "emoji_id": "goods_cultural",
+    "glyph": "🎭",
+    "description": "Cultural attribute."
+  },
+  {
+    "emoji_id": "goods_data",
+    "glyph": "💾",
+    "description": "Data attribute."
+  },
+  {
+    "emoji_id": "goods_hazardous",
+    "glyph": "☣",
+    "description": "Hazardous attribute."
+  },
+  {
+    "emoji_id": "goods_weapon",
+    "glyph": "🗡",
+    "description": "Weapon attribute."
+  },
+  {
+    "emoji_id": "goods_cybernetic",
+    "glyph": "🤖",
+    "description": "Cybernetic attribute."
+  },
+  {
+    "emoji_id": "goods_biological",
+    "glyph": "🧬",
+    "description": "Biological attribute."
+  },
+  {
+    "emoji_id": "goods_synthetic",
+    "glyph": "🧪",
+    "description": "Synthetic attribute."
+  },
+  {
+    "emoji_id": "goods_sentient",
+    "glyph": "🧠",
+    "description": "Sentient attribute."
+  },
+  {
+    "emoji_id": "goods_propaganda",
+    "glyph": "📣",
+    "description": "Propaganda attribute."
+  },
+  {
+    "emoji_id": "goods_counterfeit",
+    "glyph": "🧾",
+    "description": "Counterfeit attribute."
+  },
+  {
+    "emoji_id": "goods_stolen",
+    "glyph": "🏴",
+    "description": "Stolen attribute."
+  },
+  {
+    "emoji_id": "goods_essential",
+    "glyph": "⭐",
+    "description": "Essential attribute."
+  },
+  {
+    "emoji_id": "crew_steady_aim",
+    "glyph": "🎯",
+    "description": "Accurate aim."
+  },
+  {
+    "emoji_id": "crew_evasive",
+    "glyph": "🏃",
+    "description": "Evasive under pressure."
+  },
+  {
+    "emoji_id": "crew_damage_control",
+    "glyph": "🩹",
+    "description": "Damage control specialist."
+  },
+  {
+    "emoji_id": "crew_trigger_happy",
+    "glyph": "🔫",
+    "description": "Quick to fire."
+  },
+  {
+    "emoji_id": "crew_slow_reactions",
+    "glyph": "🐢",
+    "description": "Delayed reactions."
+  },
+  {
+    "emoji_id": "crew_overconfident",
+    "glyph": "😎",
+    "description": "Overconfident behavior."
+  },
+  {
+    "emoji_id": "crew_organized",
+    "glyph": "📋",
+    "description": "Organized operations."
+  },
+  {
+    "emoji_id": "crew_cluttered",
+    "glyph": "🗃️",
+    "description": "Cluttered operations."
+  },
+  {
+    "emoji_id": "crew_data_savvy",
+    "glyph": "🖥️",
+    "description": "Data savvy."
+  },
+  {
+    "emoji_id": "crew_fuel_efficient",
+    "glyph": "⛽",
+    "description": "Fuel efficient."
+  },
+  {
+    "emoji_id": "crew_haggler",
+    "glyph": "💬",
+    "description": "Haggler."
+  },
+  {
+    "emoji_id": "crew_bargain_hunter",
+    "glyph": "🛒",
+    "description": "Bargain hunter."
+  },
+  {
+    "emoji_id": "crew_connected",
+    "glyph": "🔗",
+    "description": "Well connected."
+  },
+  {
+    "emoji_id": "crew_blacklisted",
+    "glyph": "📛",
+    "description": "Blacklisted."
+  },
+  {
+    "emoji_id": "crew_wanted",
+    "glyph": "🚨",
+    "description": "Wanted by authorities."
+  },
+  {
+    "emoji_id": "crew_awkward",
+    "glyph": "😬",
+    "description": "Socially awkward."
+  },
+  {
+    "emoji_id": "crew_ex_navy",
+    "glyph": "⚓",
+    "description": "Former navy."
+  },
+  {
+    "emoji_id": "crew_ex_pirate",
+    "glyph": "🏴‍☠️",
+    "description": "Former pirate."
+  },
+  {
+    "emoji_id": "crew_undercover",
+    "glyph": "🕵️",
+    "description": "Undercover."
+  },
+  {
+    "emoji_id": "crew_loyal",
+    "glyph": "❤️",
+    "description": "Loyal."
+  },
+  {
+    "emoji_id": "crew_opportunist",
+    "glyph": "👀",
+    "description": "Opportunist."
+  },
+  {
+    "emoji_id": "crew_wasteful",
+    "glyph": "🗑️",
+    "description": "Wasteful."
+  },
+  {
+    "emoji_id": "secondary_compact",
+    "glyph": "📦",
+    "description": "Compact design."
+  },
+  {
+    "emoji_id": "secondary_efficient",
+    "glyph": "⚙️",
+    "description": "Efficient systems."
+  },
+  {
+    "emoji_id": "secondary_enhanced",
+    "glyph": "✨",
+    "description": "Enhanced performance."
+  },
+  {
+    "emoji_id": "secondary_prototype",
+    "glyph": "🧪",
+    "description": "Prototype technology."
+  },
+  {
+    "emoji_id": "secondary_unstable",
+    "glyph": "⚠️",
+    "description": "Unstable configuration."
+  },
+  {
+    "emoji_id": "combat_weapon_energy",
+    "glyph": "⚡",
+    "description": "Energy-based weapon system."
+  },
+  {
+    "emoji_id": "combat_weapon_kinetic",
+    "glyph": "💥",
+    "description": "Kinetic projectile weapon system."
+  },
+  {
+    "emoji_id": "combat_weapon_disruptive",
+    "glyph": "🌀",
+    "description": "Disruptive or destabilizing weapon system."
+  },
+  {
+    "emoji_id": "combat_defense_shielded",
+    "glyph": "🛡",
+    "description": "Shield-based defensive system."
+  },
+  {
+    "emoji_id": "combat_defense_armored",
+    "glyph": "🧱",
+    "description": "Armor-based defensive reinforcement."
+  },
+  {
+    "emoji_id": "combat_defense_adaptive",
+    "glyph": "🔄",
+    "description": "Adaptive defensive system that adjusts to threats."
+  },
+  {
+    "emoji_id": "combat_utility_engine_boost",
+    "glyph": "🚀",
+    "description": "Engine boost utility module."
+  },
+  {
+    "emoji_id": "combat_utility_cloak",
+    "glyph": "🕶️",
+    "description": "Cloaking or stealth system."
+  },
+  {
+    "emoji_id": "combat_utility_targeting",
+    "glyph": "🎯",
+    "description": "Targeting assistance system."
+  },
+  {
+    "emoji_id": "combat_utility_repair_system",
+    "glyph": "🔧",
+    "description": "Automated repair or maintenance system."
+  },
+  {
+    "emoji_id": "combat_utility_overcharger",
+    "glyph": "🔋",
+    "description": "Power overcharger system."
+  },
+  {
+    "emoji_id": "combat_utility_signal_scrambler",
+    "glyph": "📡",
+    "description": "Signal scrambling or electronic countermeasure system."
+  },
+  {
+    "emoji_id": "crew_high_maintenance",
+    "glyph": "😤",
+    "description": "High maintenance crew member requiring additional cost."
+  },
+  {
+    "emoji_id": "crew_alien",
+    "glyph": "👽",
+    "description": "Alien crew member."
+  },
+  {
+    "emoji_id": "goods_weaponized",
+    "glyph": "🗡",
+    "description": "Weaponized goods attribute."
+  },
+  {
+    "emoji_id": "goods_sentient_adjacent",
+    "glyph": "🧠",
+    "description": "Sentient-adjacent goods attribute."
+  },
+  {
+    "emoji_id": "ship_trait_alien",
+    "glyph": "👽",
+    "description": "Alien-origin vessel."
+  },
+  {
+    "emoji_id": "secondary_alien",
+    "glyph": "👽",
+    "description": "Alien secondary trait."
+  },
+  {
+    "emoji_id": "encounter_pirate",
+    "glyph": "🏴‍☠️",
+    "description": "Pirate encounter. Hostile raiders attempting to attack or steal."
+  },
+  {
+    "emoji_id": "encounter_bounty_hunter",
+    "glyph": "🎯",
+    "description": "Bounty hunter encounter. Armed hunter pursuing a target."
+  },
+  {
+    "emoji_id": "encounter_trader",
+    "glyph": "📦",
+    "description": "Trader encounter. Civilian merchant vessel."
+  },
+  {
+    "emoji_id": "encounter_derelict_ship",
+    "glyph": "🛰️",
+    "description": "Derelict ship encounter. Abandoned vessel that may be salvaged."
+  },
+  {
+    "emoji_id": "encounter_random_event",
+    "glyph": "🎲",
+    "description": "Random encounter. Unpredictable event during travel."
+  },
+  {
+    "emoji_id": "pursuit_active",
+    "glyph": "🚨",
+    "description": "Active pursuit underway."
+  },
+  {
+    "emoji_id": "pursuit_evaded",
+    "glyph": "💨",
+    "description": "Pursuit successfully evaded."
+  },
+  {
+    "emoji_id": "pursuit_engaged",
+    "glyph": "⚔️",
+    "description": "Pursuit escalated into direct combat."
+  },
+  {
+    "emoji_id": "mission_delivery",
+    "glyph": "📮",
+    "description": "Delivery mission. Transport goods to a specified destination."
+  },
+  {
+    "emoji_id": "mission_transport",
+    "glyph": "🚚",
+    "description": "Transport mission. Move cargo or personnel between locations."
+  },
+  {
+    "emoji_id": "mission_bounty",
+    "glyph": "🎯",
+    "description": "Bounty mission. Eliminate or capture a specified target."
+  },
+  {
+    "emoji_id": "mission_exploration",
+    "glyph": "🧭",
+    "description": "Exploration mission. Travel to and investigate unknown locations."
+  },
+  {
+    "emoji_id": "mission_salvage",
+    "glyph": "🧲",
+    "description": "Salvage mission. Recover materials or ships from derelicts."
+  },
+  {
+    "emoji_id": "mission_illegal",
+    "glyph": "🚫",
+    "description": "Illegal mission. Activity that violates local laws."
+  },
+  {
+    "emoji_id": "mission_active",
+    "glyph": "🟡",
+    "description": "Mission currently active."
+  },
+  {
+    "emoji_id": "mission_completed",
+    "glyph": "✅",
+    "description": "Mission completed successfully."
+  },
+  {
+    "emoji_id": "mission_failed",
+    "glyph": "❌",
+    "description": "Mission failed."
+  },
+  {
+    "emoji_id": "reaction_hostile",
+    "glyph": "🔴",
+    "description": "Hostile reaction. Immediate aggression expected."
+  },
+  {
+    "emoji_id": "reaction_neutral",
+    "glyph": "⚪",
+    "description": "Neutral reaction. No immediate threat or alliance."
+  },
+  {
+    "emoji_id": "reaction_friendly",
+    "glyph": "🟢",
+    "description": "Friendly reaction. Cooperative interaction likely."
+  },
+  {
+    "emoji_id": "market_surplus",
+    "glyph": "📈",
+    "description": "Market surplus. Supply exceeds demand."
+  },
+  {
+    "emoji_id": "market_shortage",
+    "glyph": "📉",
+    "description": "Market shortage. Demand exceeds supply."
+  },
+  {
+    "emoji_id": "violation_minor",
+    "glyph": "⚠️",
+    "description": "Minor violation. Typically results in fines or warnings."
+  },
+  {
+    "emoji_id": "violation_major",
+    "glyph": "🚓",
+    "description": "Major violation. May trigger arrest or severe penalties."
+  },
+  {
+    "emoji_id": "situation_war",
+    "glyph": "⚔️",
+    "description": "System is in a state of war."
+  },
+  {
+    "emoji_id": "situation_plague",
+    "glyph": "🦠",
+    "description": "Widespread disease affecting the population."
+  },
+  {
+    "emoji_id": "situation_famine",
+    "glyph": "🥀",
+    "description": "Severe food shortages impacting the system."
+  },
+  {
+    "emoji_id": "situation_economic_boom",
+    "glyph": "💹",
+    "description": "Rapid economic growth and prosperity."
+  },
+  {
+    "emoji_id": "situation_blockade",
+    "glyph": "🚧",
+    "description": "Restricted travel and trade routes."
+  },
+  {
+    "emoji_id": "situation_recession",
+    "glyph": "📉",
+    "description": "Economic downturn reducing trade activity."
+  },
+  {
+    "emoji_id": "situation_civil_unrest",
+    "glyph": "🔥",
+    "description": "Widespread protests or instability."
+  },
+  {
+    "emoji_id": "situation_trade_embargo",
+    "glyph": "⛔",
+    "description": "Formal restriction on trade activity."
+  },
+  {
+    "emoji_id": "situation_research_breakthrough",
+    "glyph": "🔬",
+    "description": "Major scientific advancement in the system."
+  },
+  {
+    "emoji_id": "situation_resource_shortage",
+    "glyph": "⛏️",
+    "description": "Critical shortage of raw materials."
+  },
+  {
+    "emoji_id": "event_solar_flare",
+    "glyph": "☀️",
+    "description": "A solar flare disrupts local systems."
+  },
+  {
+    "emoji_id": "event_market_crash",
+    "glyph": "💥",
+    "description": "Sudden collapse in market value."
+  },
+  {
+    "emoji_id": "event_rebellion",
+    "glyph": "✊",
+    "description": "Organized uprising against authority."
+  },
+  {
+    "emoji_id": "event_pirate_surge",
+    "glyph": "🏴‍☠️",
+    "description": "Increase in pirate activity."
+  },
+  {
+    "emoji_id": "event_discovery",
+    "glyph": "🧭",
+    "description": "New discovery made in the system."
+  },
+  {
+    "emoji_id": "event_assassination",
+    "glyph": "🗡️",
+    "description": "High-profile assassination attempt."
+  },
+  {
+    "emoji_id": "event_scientific_anomaly",
+    "glyph": "🌀",
+    "description": "Strange unexplained phenomenon detected."
+  },
+  {
+    "emoji_id": "event_system_failure",
+    "glyph": "⚡",
+    "description": "Major infrastructure failure."
+  },
+  {
+    "emoji_id": "event_refugee_wave",
+    "glyph": "🧳",
+    "description": "Large influx of displaced civilians."
+  },
+  {
+    "emoji_id": "event_trade_summit",
+    "glyph": "🤝",
+    "description": "Major inter-system trade negotiations."
+  },
+  {
+    "emoji_id": "victory_trade",
+    "glyph": "💰",
+    "description": "Victory through trade dominance and economic success."
+  },
+  {
+    "emoji_id": "victory_reputation",
+    "glyph": "🌟",
+    "description": "Victory through widespread reputation and influence."
+  },
+  {
+    "emoji_id": "victory_combat",
+    "glyph": "🏆",
+    "description": "Victory through superior combat capability."
+  },
+  {
+    "emoji_id": "defeat_bankruptcy",
+    "glyph": "📉",
+    "description": "Defeat by bankruptcy. Financial collapse ends the run."
+  },
+  {
+    "emoji_id": "defeat_arrest",
+    "glyph": "⛓️",
+    "description": "Defeat by arrest. Detention permanently ends the run."
+  },
+  {
+    "emoji_id": "defeat_death",
+    "glyph": "💀",
+    "description": "Defeat by destruction. Ship destroyed with no recovery."
+  }
 ]
