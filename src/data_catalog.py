@@ -72,9 +72,29 @@ def _load_categories(path: Path) -> Dict[str, str]:
 
 def _load_tags(path: Path) -> Dict[str, Tag]:
     data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    tag_data = data.get("tags", {})
+    if isinstance(data, list):
+        tag_data: Dict[str, Dict[str, str]] = {}
+        for index, entry in enumerate(data):
+            if not isinstance(entry, dict):
+                raise ValueError(f"tags.json list entry at index {index} must be an object.")
+            tag_id = entry.get("tag_id")
+            if not isinstance(tag_id, str) or not tag_id:
+                raise ValueError(f"tags.json entry at index {index} missing required string field: tag_id")
+            if tag_id in tag_data:
+                raise ValueError(f"Duplicate tag id: {tag_id}")
+            tag_data[tag_id] = entry
+    elif isinstance(data, dict):
+        raw_tags = data.get("tags", data)
+        if not isinstance(raw_tags, dict):
+            raise ValueError("tags.json object format must provide a mapping in 'tags'.")
+        tag_data = raw_tags
+    else:
+        raise ValueError("tags.json must be either a list of tag objects or an object mapping.")
+
     tags: Dict[str, Tag] = {}
     for tag_id, details in tag_data.items():
+        if tag_id in tags:
+            raise ValueError(f"Duplicate tag id: {tag_id}")
         tags[tag_id] = Tag(
             tag_id=tag_id,
             description=details.get("description", ""),
