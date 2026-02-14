@@ -1,6 +1,11 @@
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Any, Dict, List
 import random
+
+try:
+    from crew_modifiers import compute_crew_modifiers
+except ModuleNotFoundError:
+    from src.crew_modifiers import compute_crew_modifiers
 
 from data_catalog import DataCatalog, Good
 from government_law_engine import GovernmentPolicyResult, LegalityStatus, RiskTier
@@ -58,6 +63,7 @@ def price_transaction(
     scarcity_modifier: float = 1.0,
     logger: Logger | None = None,
     turn: int = 0,
+    ship: Any | None = None,
 ) -> PricingResult:
     market_good, _ = _find_market_good(market, sku)
     try:
@@ -123,6 +129,17 @@ def price_transaction(
             government_bias=government_bias,
         )
         price = min(price, ideal_price)
+
+    # Phase 5.6: apply crew multipliers at pricing source of truth only.
+    multiplier = 1.0
+    if ship is not None:
+        crew_mods = compute_crew_modifiers(ship)
+        if action == "buy":
+            multiplier = float(crew_mods.buy_multiplier)
+        elif action == "sell":
+            multiplier = float(crew_mods.sell_multiplier)
+    if multiplier != 1.0:
+        price = round(price * multiplier)
 
     breakdown = PricingBreakdown(
         base_price=base_price,
