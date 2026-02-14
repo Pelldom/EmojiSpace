@@ -95,6 +95,7 @@ def test_combat_does_not_recompute_bands_internally(monkeypatch) -> None:
     def fake_assemble_ship(hull_id, module_instances, degradation_state=None):
         calls.append((hull_id, tuple(sorted(degradation_state.items())) if degradation_state else ()))
         return {
+            "hull_max": 12,
             "bands": {
                 "effective": {"weapon": 9, "defense": 1, "engine": 1},
                 "red": {"weapon": False, "defense": False, "engine": False},

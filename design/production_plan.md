@@ -56,6 +56,7 @@ All expansion must originate here.
 | **Phase 4.9.1 (COMPLETED)** | **0.7.2** | **Secondary tag resale multipliers** |
 | **Phase 4.11 (COMPLETED)** | **0.8.0** | **NPC ship generation and salvage** |
 | **Phase 4.11.1 (COMPLETED)** | **0.8.1** | **Stabilization and orchestration patch (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
+| **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 | 0.9.x | Emergent narrative |
 | Phase 6 | 0.9.x | Stabilization & balance |
@@ -589,6 +590,18 @@ Patch phase under 4.11. No new mechanics; boundary cleanup + orchestration wirin
 - Boundary cleanup across existing Phase 2.7-4.11 systems.
 - Single-authority consolidation for duplicated runtime logic paths.
 - Minimal playable CLI wiring across already-implemented simulation systems.
+
+## Phase 4.11.2 - Structural Consolidation (COMPLETED)
+
+**Status:** COMPLETE
+**Version Achieved:** 0.8.2
+
+### Completed Components
+- Added `SimulationController` as single orchestration authority for command execution.
+- Consolidated CLI runner to `cli_run.py` and reduced legacy harness entry points.
+- Centralized shared tag interpretation logic into `tag_policy_engine.py`.
+- Moved hull max authority into ship assembler output and removed combat-local duplicate.
+- Added deterministic SimulationController end-to-end coverage.
 
 ## Phase 5 - Emergent Narrative
 

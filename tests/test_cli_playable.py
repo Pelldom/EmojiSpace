@@ -5,34 +5,35 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
-import cli_playable  # noqa: E402
-from cli_playable import run_playable  # noqa: E402
+from cli_run import build_simulation  # noqa: E402
+from simulation_controller import SimulationController  # noqa: E402
 
 
-def test_cli_playable_five_turn_scripted_is_deterministic() -> None:
-    first = run_playable(seed=2026, turns=5, scripted_actions=["travel"] * 5, interactive=False)
-    second = run_playable(seed=2026, turns=5, scripted_actions=["travel"] * 5, interactive=False)
+def _run_scripted(seed: int, turns: int) -> list[dict]:
+    controller, world_state = build_simulation(seed)
+    assert isinstance(controller, SimulationController)
+    sector = world_state["sector"]
+    system_ids = [system.system_id for system in sector.systems]
+    events: list[dict] = []
+    for index in range(turns):
+        target = system_ids[(index + 1) % len(system_ids)]
+        result = controller.execute(
+            {
+                "action_type": "travel_to_destination",
+                "payload": {"target_system_id": target, "encounter_action": "ignore"},
+            }
+        )
+        events.append(result)
+    return events
 
+
+def test_simulation_controller_five_turn_scripted_is_deterministic() -> None:
+    first = _run_scripted(seed=2026, turns=5)
+    second = _run_scripted(seed=2026, turns=5)
     assert first == second
-    events = [entry.get("event") for entry in first]
-    assert events.count("turn_start") == 5
-    assert "travel" in events
-    assert "encounter" in events
-    assert "interaction_dispatch" in events
-    assert "reward" in events
-
-
-def test_cli_playable_applies_rewards_via_reward_applicator(monkeypatch) -> None:
-    calls = {"count": 0}
-    original = cli_playable.apply_materialized_reward
-
-    def _spy_apply_materialized_reward(*, player, reward_payload, context=None):
-        calls["count"] += 1
-        return original(player=player, reward_payload=reward_payload, context=context)
-
-    monkeypatch.setattr(cli_playable, "apply_materialized_reward", _spy_apply_materialized_reward)
-    run_playable(seed=2026, turns=5, scripted_actions=["travel"] * 5, interactive=False)
-    assert calls["count"] >= 1
-
-    source = (SRC_ROOT / "cli_playable.py").read_text(encoding="utf-8", errors="replace")
-    assert "_apply_reward(" not in source
+    for result in first:
+        assert result["ok"] is True
+        event_types = [entry.get("event_type") for entry in result["events"]]
+        assert "travel_resolution" in event_types
+        assert "encounter_generated" in event_types
+        assert "reward_applied" in event_types

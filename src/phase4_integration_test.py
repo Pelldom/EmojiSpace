@@ -243,4 +243,4 @@ def run_phase4_integration_test():
 
 
 if __name__ == "__main__":
-    run_phase4_integration_test()
+    print("Deprecated harness entry point. Use src/cli_run.py.")

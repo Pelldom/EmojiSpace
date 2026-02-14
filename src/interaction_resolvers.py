@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 try:
-    from combat_resolver import _compute_hull_max_from_ship_state
     from data_loader import load_hulls, load_modules
-    from ship_assembler import assemble_ship
+    from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
     from ship_entity import ShipEntity
 except ModuleNotFoundError:
-    from src.combat_resolver import _compute_hull_max_from_ship_state
     from src.data_loader import load_hulls, load_modules
-    from src.ship_assembler import assemble_ship
+    from src.ship_assembler import assemble_ship, compute_hull_max_from_ship_state
     from src.ship_entity import ShipEntity
 
 
@@ -67,7 +65,7 @@ def destination_actions(destination, base_actions=None):
     return sorted(actions, key=lambda value: value)
 
 
-def execute_refuel(*, ship, player_credits: int, requested_units: int | None = None) -> dict:
+def execute_refuel(*, ship, player_credits: int, requested_units: int | None = None, player=None) -> dict:
     if requested_units is not None and requested_units < 0:
         return {"ok": False, "reason": "invalid_request", "units_purchased": 0, "total_cost": 0, "credits": player_credits}
 
@@ -78,12 +76,15 @@ def execute_refuel(*, ship, player_credits: int, requested_units: int | None = N
         return {"ok": False, "reason": "insufficient_credits", "units_purchased": 0, "total_cost": 0, "credits": player_credits}
 
     ship.current_fuel = int(ship.current_fuel) + units_target
+    updated_credits = player_credits - total_cost
+    if player is not None:
+        player.credits = int(updated_credits)
     return {
         "ok": True,
         "reason": "ok",
         "units_purchased": units_target,
         "total_cost": total_cost,
-        "credits": player_credits - total_cost,
+        "credits": updated_credits,
         "current_fuel": int(ship.current_fuel),
     }
 
@@ -182,7 +183,7 @@ def execute_buy_hull(
         return {"ok": False, "reason": "ship_id_exists"}
 
     assembled = assemble_ship(hull_id, [], {"weapon": 0, "defense": 0, "engine": 0})
-    max_hull_integrity = _compute_hull_max_from_ship_state({"hull_id": hull_id, "module_instances": []})
+    max_hull_integrity = compute_hull_max_from_ship_state({"hull_id": hull_id, "module_instances": []})
     ship = ShipEntity(
         ship_id=ship_id,
         model_id=hull_id,

@@ -6,12 +6,10 @@ from typing import Any
 
 try:
     from data_loader import load_hulls, load_modules
-    from ship_assembler import assemble_ship, get_slot_distribution
-    from combat_resolver import _compute_hull_max_from_ship_state
+    from ship_assembler import assemble_ship, compute_hull_max_from_ship_state, get_slot_distribution
 except ModuleNotFoundError:
     from src.data_loader import load_hulls, load_modules
-    from src.ship_assembler import assemble_ship, get_slot_distribution
-    from src.combat_resolver import _compute_hull_max_from_ship_state
+    from src.ship_assembler import assemble_ship, compute_hull_max_from_ship_state, get_slot_distribution
 
 
 TIER_WEIGHTS = {
@@ -227,7 +225,7 @@ def generate_npc_ship(
         "module_instances": list(module_instances),
         "degradation_state": dict(degradation_state),
     }
-    max_hull_integrity = _compute_hull_max_from_ship_state(ship_state)
+    max_hull_integrity = compute_hull_max_from_ship_state(ship_state)
     return {
         "hull_id": hull["hull_id"],
         "module_instances": list(module_instances),

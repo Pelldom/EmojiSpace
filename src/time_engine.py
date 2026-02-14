@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 
+from logger import Logger
+
 
 _current_turn = 0
 _player_action_context = False
 _hard_stop_player_dead = False
 _hard_stop_tier2_detention = False
+_shared_logger: Logger | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,9 @@ def _require_player_action_context() -> None:
 
 
 def _log_time_event(action: str, state_change: str) -> None:
+    if _shared_logger is not None:
+        _shared_logger.log(turn=_current_turn, action=action, state_change=state_change)
+        return
     print(f"[time_engine] action={action} change={state_change}")
 
 
@@ -149,8 +155,9 @@ def _reset_time_state_for_test() -> None:
 
 
 class TimeEngine:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, logger: Logger | None = None) -> None:
+        if logger is not None:
+            self.set_logger(logger)
 
     @property
     def current_turn(self) -> int:
@@ -163,3 +170,8 @@ class TimeEngine:
         finally:
             _set_player_action_context(False)
         return result.current_turn
+
+    @staticmethod
+    def set_logger(logger: Logger | None) -> None:
+        global _shared_logger
+        _shared_logger = logger

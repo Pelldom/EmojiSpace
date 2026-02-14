@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 _FRAMES = {"MIL", "CIV", "FRG", "XA", "XB", "XC", "ALN"}
 _TIER_BASELINE = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3}
+_TIER_HULL_BASELINE = {1: 8, 2: 10, 3: 12, 4: 15, 5: 18}
+_FRAME_HULL_BIAS = {"MIL": 2, "CIV": 0, "FRG": 3, "XA": 0, "XB": -2, "XC": 4, "ALN": 1}
 
 _SLOT_DISTRIBUTION = {
     (1, "MIL"): (2, 1, 1, 0, 4),
@@ -139,6 +141,33 @@ def _validate_primary_tag_vs_slot_type(slot_type: str, primary_tag: str, module_
     if slot_type == "utility":
         if not (primary_tag.startswith("combat:utility_") or primary_tag.startswith("ship:utility_")):
             raise ValueError(f"Module '{module_id}' has invalid primary_tag '{primary_tag}' for utility slot_type.")
+
+
+def compute_hull_max_from_ship_state(ship_state: dict[str, Any]) -> int:
+    hull = _hulls_by_id().get(ship_state.get("hull_id"))
+    if hull is None:
+        raise ValueError(f"Unknown hull_id '{ship_state.get('hull_id')}'.")
+    value = _TIER_HULL_BASELINE[hull["tier"]] + _FRAME_HULL_BIAS[hull["frame"]]
+    is_experimental_hull = "ship:trait_experimental" in hull.get("traits", [])
+    is_alien_hull = "ship:trait_alien" in hull.get("traits", [])
+    module_defs = _modules_by_id()
+    for module_instance in ship_state.get("module_instances", []):
+        module_id = module_instance.get("module_id")
+        if not isinstance(module_id, str):
+            continue
+        module_def = module_defs.get(module_id)
+        if module_def is None:
+            continue
+        secondary_tags = _normalized_secondary_tags(module_instance)
+        if _has_secondary(secondary_tags, "alien") and is_alien_hull:
+            value += 1
+        if _has_secondary(secondary_tags, "prototype") and is_experimental_hull:
+            value += 1
+        if module_def["primary_tag"] == "combat:defense_armored":
+            value += 1
+        if _has_secondary(secondary_tags, "unstable"):
+            value -= 1
+    return max(4, int(value))
 
 
 def assemble_ship(
@@ -330,10 +359,14 @@ def assemble_ship(
         else:
             effective[band] = max(0, pre_degradation[band] - state[band])
 
+    hull_max = compute_hull_max_from_ship_state(
+        {"hull_id": hull_id, "module_instances": module_instances}
+    )
     result = {
         "hull_id": hull_id,
         "frame": hull["frame"],
         "tier": hull["tier"],
+        "hull_max": int(hull_max),
         "fuel_capacity": int(hull["fuel_capacity_base"]) + fuel_bonus,
         "slots": dict(slots),
         "slot_assignment": slot_assignment,

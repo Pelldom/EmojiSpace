@@ -125,3 +125,14 @@ def test_red_override_when_degradation_meets_capacity() -> None:
     )
     assert degraded["bands"]["red"]["weapon"] is True
     assert degraded["bands"]["effective"]["weapon"] == 0
+
+
+def test_hull_max_output_matches_existing_rules() -> None:
+    baseline = assemble_ship(hull_id="civ_t1_midge", module_instances=[])
+    assert baseline["hull_max"] == 8
+
+    armored = assemble_ship(
+        hull_id="civ_t1_midge",
+        module_instances=[{"module_id": "defense_armored_mk1"}],
+    )
+    assert armored["hull_max"] == 9

@@ -233,4 +233,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    print("Deprecated harness entry point. Use src/cli_run.py.")

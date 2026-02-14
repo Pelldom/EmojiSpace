@@ -9,12 +9,12 @@ try:
     from data_loader import load_hulls, load_modules
     from pursuit_resolver import resolve_pursuit
     from salvage_resolver import resolve_salvage_modules
-    from ship_assembler import assemble_ship
+    from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
 except ModuleNotFoundError:
     from src.data_loader import load_hulls, load_modules
     from src.pursuit_resolver import resolve_pursuit
     from src.salvage_resolver import resolve_salvage_modules
-    from src.ship_assembler import assemble_ship
+    from src.ship_assembler import assemble_ship, compute_hull_max_from_ship_state
 
 ActionName = Literal[
     "Focus Fire",
@@ -29,8 +29,6 @@ ActionName = Literal[
 OutcomeName = Literal["destroyed", "escape", "surrender", "max_rounds"]
 SideName = Literal["player", "enemy"]
 
-TIER_HULL_BASELINE = {1: 8, 2: 10, 3: 12, 4: 15, 5: 18}
-FRAME_HULL_BIAS = {"MIL": 2, "CIV": 0, "FRG": 3, "XA": 0, "XB": -2, "XC": 4, "ALN": 1}
 RPS_MATRIX = {
     ("energy", "armored"): 1,
     ("energy", "shielded"): -1,
@@ -274,26 +272,6 @@ def _module_is_repair(module_instance: dict[str, Any]) -> bool:
     return bool(module and module["primary_tag"] == "combat:utility_repair_system")
 
 
-def _compute_hull_max_from_ship_state(ship_state: dict[str, Any]) -> int:
-    hull = _hulls_by_id()[ship_state["hull_id"]]
-    value = TIER_HULL_BASELINE[hull["tier"]] + FRAME_HULL_BIAS[hull["frame"]]
-    is_experimental = "ship:trait_experimental" in hull.get("traits", [])
-    module_defs = _modules_by_id()
-    for instance in ship_state["module_instances"]:
-        module = module_defs.get(instance["module_id"])
-        if not module:
-            continue
-        if _has_secondary(instance, "alien") and "ship:trait_alien" in hull.get("traits", []):
-            value += 1
-        if _has_secondary(instance, "prototype") and is_experimental:
-            value += 1
-        if module["primary_tag"] == "combat:defense_armored":
-            value += 1
-        if _has_secondary(instance, "unstable"):
-            value -= 1
-    return max(4, value)
-
-
 def _legacy_loadout_to_ship_state(loadout: ShipLoadout) -> dict[str, Any]:
     hulls = [
         entry["hull_id"]
@@ -350,7 +328,7 @@ def compute_rcp_and_tr(loadout: ShipLoadout) -> tuple[int, int]:
     w = assembled["bands"]["pre_degradation"]["weapon"]
     d = assembled["bands"]["pre_degradation"]["defense"]
     e = assembled["bands"]["pre_degradation"]["engine"]
-    h = _compute_hull_max_from_ship_state(ship_state)
+    h = int(assembled["hull_max"])
     repairs = sum(1 for instance in ship_state["module_instances"] if _module_is_repair(instance))
     rcp = w + d + (e // 2) + (h // 4) + (2 * repairs)
     return rcp, map_rcp_to_tr(rcp)
@@ -362,8 +340,8 @@ def create_initial_state(loadout: ShipLoadout) -> CombatState:
 
 
 def _create_initial_state_from_ship_state(ship_state: dict[str, Any]) -> CombatState:
-    hull_max = _compute_hull_max_from_ship_state(ship_state)
     assembled = assemble_ship(ship_state["hull_id"], ship_state["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
+    hull_max = int(assembled["hull_max"])
     repair_uses = {}
     for index, module_instance in enumerate(ship_state["module_instances"]):
         if _module_is_repair(module_instance):
@@ -666,7 +644,7 @@ def resolve_combat(
             assembled_player["bands"]["pre_degradation"]["weapon"]
             + assembled_player["bands"]["pre_degradation"]["defense"]
             + (assembled_player["bands"]["pre_degradation"]["engine"] // 2)
-            + (_compute_hull_max_from_ship_state(player_ship) // 4)
+            + (int(assembled_player["hull_max"]) // 4)
             + (2 * sum(1 for entry in player_ship["module_instances"] if _module_is_repair(entry)))
         )
         tr_player = map_rcp_to_tr(rcp_player)
@@ -678,7 +656,7 @@ def resolve_combat(
             assembled_enemy["bands"]["pre_degradation"]["weapon"]
             + assembled_enemy["bands"]["pre_degradation"]["defense"]
             + (assembled_enemy["bands"]["pre_degradation"]["engine"] // 2)
-            + (_compute_hull_max_from_ship_state(enemy_ship) // 4)
+            + (int(assembled_enemy["hull_max"]) // 4)
             + (2 * sum(1 for entry in enemy_ship["module_instances"] if _module_is_repair(entry)))
         )
         tr_enemy = map_rcp_to_tr(rcp_enemy)

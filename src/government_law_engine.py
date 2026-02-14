@@ -5,6 +5,7 @@ import random
 
 from government_registry import GovernmentRegistry
 from logger import Logger
+from tag_policy_engine import interpret_tags as interpret_policy_tags
 
 
 class LegalityStatus(str, Enum):
@@ -265,118 +266,8 @@ class GovernmentLawEngine:
         government: object,
         tags: Set[str],
     ) -> tuple[float, RiskTier, Set[str]]:
-        possible_tags = {
-            "luxury",
-            "weaponized",
-            "counterfeit",
-            "stolen",
-            "propaganda",
-            "hazardous",
-            "cybernetic",
-        }
-        bias = 0.0
-        risk = RiskTier.NONE
-        interpreted: Set[str] = set()
-        for tag in tags:
-            if tag not in possible_tags:
-                continue
-            tag_bias, tag_risk = self._tag_effect(government, tag)
-            bias += tag_bias
-            risk = self._combine_risk(risk, tag_risk)
-            interpreted.add(tag)
-        return bias, risk, interpreted
-
-    def _tag_effect(self, government: object, tag: str) -> tuple[float, RiskTier]:
-        favored_tags = set(getattr(government, "ideological_modifiers").get("favored_tags", []))
-        restricted_tags = set(getattr(government, "ideological_modifiers").get("restricted_tags", []))
-        gov_id = getattr(government, "id")
-        regulation = getattr(government, "regulation_level")
-        enforcement = getattr(government, "enforcement_strength")
-        tolerance = getattr(government, "tolerance_bias")
-        bribery = getattr(government, "bribery_susceptibility")
-
-        bias = 0.0
-        risk = RiskTier.NONE
-
-        if tag == "luxury":
-            if tolerance > 60:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.LOW)
-            if regulation > 70:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if tag in favored_tags:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.LOW)
-            if tag in restricted_tags:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-        elif tag == "weaponized":
-            if gov_id in {"military", "fascist", "dictatorship"}:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if gov_id in {"democracy", "collective_commune"}:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if gov_id == "anarchic":
-                risk = self._combine_risk(risk, RiskTier.LOW)
-            if tag in favored_tags:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if tag in restricted_tags:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-        elif tag == "counterfeit":
-            if bribery > 60:
-                bias += 0.10
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if enforcement > 70:
-                bias -= 0.30
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if regulation > 70:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if gov_id == "anarchic":
-                risk = self._combine_risk(risk, RiskTier.LOW)
-        elif tag == "stolen":
-            if bribery > 60:
-                bias += 0.10
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if enforcement > 70:
-                bias -= 0.30
-                risk = self._combine_risk(risk, RiskTier.SEVERE)
-            if tolerance > 70:
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-        elif tag == "propaganda":
-            if tag in favored_tags:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.LOW)
-            if tag in restricted_tags:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if regulation > 70:
-                bias -= 0.10
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-        elif tag == "hazardous":
-            if regulation > 70:
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if enforcement > 70:
-                bias -= 0.10
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if gov_id == "anarchic":
-                risk = self._combine_risk(risk, RiskTier.LOW)
-        elif tag == "cybernetic":
-            if "technological" in favored_tags:
-                bias += 0.20
-                risk = self._combine_risk(risk, RiskTier.MEDIUM)
-            if gov_id == "theocracy":
-                bias -= 0.20
-                risk = self._combine_risk(risk, RiskTier.HIGH)
-            if gov_id == "anarchic":
-                risk = self._combine_risk(risk, RiskTier.LOW)
-
-        return bias, risk
+        bias, risk, interpreted = interpret_policy_tags(government, tags)
+        return bias, RiskTier(risk), interpreted
 
     @staticmethod
     def _submit_outcome(government: object, legality: LegalityStatus) -> EnforcementOutcome:
