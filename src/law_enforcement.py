@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import random
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from types import MappingProxyType
 
@@ -81,6 +81,33 @@ class EnforcementOutcome:
     bribery_roll: int | None
     bribery_chance: int | None
     bribery_result: str | None
+    lawyer_used: bool
+    consumed_lawyer_id: str | None
+
+
+def maybe_downgrade_tier2_with_lawyer(player_state, ship, lawyer_id: str | None = None) -> tuple[bool, str | None]:
+    if ship is None:
+        return False, None
+
+    crew = getattr(ship, "crew", [])
+    lawyers = [
+        member
+        for member in crew
+        if bool(getattr(member, "is_crew", False)) and getattr(member, "crew_role_id", None) == "lawyer"
+    ]
+    if not lawyers:
+        return False, None
+
+    if lawyer_id is not None:
+        selected = next((member for member in lawyers if getattr(member, "npc_id", None) == lawyer_id), None)
+        if selected is None:
+            raise ValueError(f"lawyer_id '{lawyer_id}' was not found among ship lawyer crew.")
+    else:
+        selected = sorted(lawyers, key=lambda member: str(getattr(member, "npc_id", "")))[0]
+
+    consumed_id = getattr(selected, "npc_id", None)
+    ship.remove_crew(consumed_id)
+    return True, consumed_id
 def _load_consequences() -> MappingProxyType:
     path = Path(__file__).resolve().parents[1] / "data" / "consequences.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -364,6 +391,8 @@ def enforcement_checkpoint(
     logger,
     option: PlayerOption | None = None,
     bribe_tier: str = "SMALL",
+    ship: Any | None = None,
+    lawyer_id: str | None = None,
 ) -> EnforcementOutcome | None:
     rep_score = player.reputation_by_system.get(system_id, 50)
     heat_score = player.heat_by_system.get(system_id, 0)
@@ -431,6 +460,26 @@ def enforcement_checkpoint(
             percent=outcome.confiscation_percent,
         )
         outcome = replace(outcome, confiscated_amount=confiscated_amount)
+    if outcome.detention_tier == 2:
+        downgraded, consumed_lawyer_id = maybe_downgrade_tier2_with_lawyer(player, ship, lawyer_id)
+        if downgraded:
+            outcome = replace(
+                outcome,
+                detention_tier=1,
+                dead=False,
+                arrested=False,
+                lawyer_used=True,
+                consumed_lawyer_id=consumed_lawyer_id,
+            )
+            logger.log(
+                turn=turn,
+                action="detention_tier2_downgraded",
+                state_change=(
+                    f"system_id={system_id} lawyer_used=True consumed_lawyer_id={consumed_lawyer_id} "
+                    "downgrade=tier2_to_tier1"
+                ),
+            )
+
     if outcome.detention_tier == 1:
         _confiscate_all(player)
         player.active_ship_id = None
@@ -674,6 +723,8 @@ def _finalize_outcome(
         bribery_roll=bribery_roll,
         bribery_chance=bribery_chance,
         bribery_result=bribery_result,
+        lawyer_used=False,
+        consumed_lawyer_id=None,
     )
 
 
