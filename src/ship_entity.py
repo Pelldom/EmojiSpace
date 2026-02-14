@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any, Dict, List
 
 from entities import EntityType
+from npc_entity import NPCEntity, NPCPersistenceTier
 
 
 class OwnerType(str, Enum):
@@ -67,6 +68,7 @@ class ShipEntity:
     current_location_id: str | None = None
 
     # Cargo capacities
+    crew_capacity: int = 0
     physical_cargo_capacity: int = 0
     data_cargo_capacity: int = 0
     fuel_capacity: int = 0
@@ -79,10 +81,12 @@ class ShipEntity:
     # Condition
     condition_state: str = "operational"
     condition_emoji: str = "OP"
+    crew: List[NPCEntity] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.current_fuel is None:
             self.current_fuel = self.fuel_capacity
+        self._normalize_crew_members()
         self._validate_fuel_bounds()
 
     @classmethod
@@ -90,7 +94,10 @@ class ShipEntity:
         state = cls()
         for key, value in payload.items():
             if hasattr(state, key):
+                if key == "crew" and isinstance(value, list):
+                    value = [NPCEntity.from_dict(entry) if isinstance(entry, dict) else entry for entry in value]
                 setattr(state, key, value)
+        state._normalize_crew_members()
         state._validate_fuel_bounds()
         return state
 
@@ -119,6 +126,7 @@ class ShipEntity:
             "current_system_id": self.current_system_id,
             "current_destination_id": self.current_destination_id,
             "current_location_id": self.current_location_id,
+            "crew_capacity": self.crew_capacity,
             "physical_cargo_capacity": self.physical_cargo_capacity,
             "data_cargo_capacity": self.data_cargo_capacity,
             "fuel_capacity": self.fuel_capacity,
@@ -127,7 +135,53 @@ class ShipEntity:
             "data_cargo_manifest": list(self.data_cargo_manifest),
             "condition_state": _enum_to_str(self.condition_state),
             "condition_emoji": self.condition_emoji,
+            "crew": [member.to_dict() if isinstance(member, NPCEntity) else member for member in self.crew],
         }
+
+    def add_crew(self, npc: NPCEntity) -> None:
+        if not isinstance(npc, NPCEntity):
+            raise ValueError("npc must be an NPCEntity.")
+        if not npc.is_crew:
+            raise ValueError("Only NPCEntity marked as crew can be attached to a ship.")
+        if npc.persistence_tier != NPCPersistenceTier.TIER_2:
+            raise ValueError("Crew NPCs must have NPCPersistenceTier.TIER_2.")
+        if self.activity_state != ShipActivityState.ACTIVE:
+            raise ValueError("Crew can only be added while the ship is active.")
+        if len(self.crew) >= self.crew_capacity:
+            raise ValueError("Crew capacity exceeded.")
+        self.crew.append(npc)
+
+    def remove_crew(self, npc_id: str) -> None:
+        self.crew = [member for member in self.crew if getattr(member, "npc_id", None) != npc_id]
+
+    def get_total_daily_wages(self) -> int:
+        return sum(int(member.daily_wage) for member in self.crew if isinstance(member, NPCEntity))
+
+    def get_effective_physical_capacity(self) -> int:
+        from crew_modifiers import compute_crew_modifiers
+
+        physical_base = int(getattr(self, "physical_cargo_capacity", 0))
+        hull = getattr(self, "hull", None)
+        if isinstance(hull, dict):
+            cargo = hull.get("cargo", {})
+            if isinstance(cargo, dict) and isinstance(cargo.get("physical_base"), int):
+                physical_base = int(cargo["physical_base"])
+
+        crew_mods = compute_crew_modifiers(self)
+        return physical_base + int(crew_mods.cargo_delta)
+
+    def get_effective_data_capacity(self) -> int:
+        from crew_modifiers import compute_crew_modifiers
+
+        data_base = int(getattr(self, "data_cargo_capacity", 0))
+        hull = getattr(self, "hull", None)
+        if isinstance(hull, dict):
+            cargo = hull.get("cargo", {})
+            if isinstance(cargo, dict) and isinstance(cargo.get("data_base"), int):
+                data_base = int(cargo["data_base"])
+
+        crew_mods = compute_crew_modifiers(self)
+        return data_base + int(crew_mods.data_cargo_delta)
 
     def set_storage_context(self, value: str, logger=None, turn: int = 0) -> None:
         self.storage_context = _enum_to_str(value)
@@ -161,6 +215,18 @@ class ShipEntity:
             raise ValueError("current_fuel must be an integer.")
         if self.current_fuel < 0 or self.current_fuel > self.fuel_capacity:
             raise ValueError("Fuel invariant violated: 0 <= current_fuel <= fuel_capacity.")
+
+    def _normalize_crew_members(self) -> None:
+        normalized: List[NPCEntity] = []
+        for entry in self.crew:
+            if isinstance(entry, NPCEntity):
+                normalized.append(entry)
+                continue
+            if isinstance(entry, dict):
+                normalized.append(NPCEntity.from_dict(entry))
+                continue
+            raise ValueError("crew entries must be NPCEntity instances or serialized NPCEntity payloads.")
+        self.crew = normalized
 
 
 def _log_state_change(logger, turn: int, field: str, value: Any) -> None:
