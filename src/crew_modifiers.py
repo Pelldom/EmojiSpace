@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, List
 
 from ship_entity import ShipEntity
 
@@ -30,11 +30,18 @@ class CrewModifiers:
     mission_slot_bonus: int = 0
 
     daily_wage_total: int = 0
+    has_lawyer: bool = False
+    lawyer_ids: List[str] = None
+
+    def __post_init__(self) -> None:
+        if self.lawyer_ids is None:
+            self.lawyer_ids = []
 
 
 def compute_crew_modifiers(ship: ShipEntity) -> CrewModifiers:
     modifiers = CrewModifiers()
-    crew_members = getattr(ship, "crew", []) or []
+    crew_members = [_normalize_crew_member(entry) for entry in (getattr(ship, "crew", []) or [])]
+    crew_members = [entry for entry in crew_members if entry is not None]
     if not crew_members:
         return modifiers
 
@@ -46,6 +53,10 @@ def compute_crew_modifiers(ship: ShipEntity) -> CrewModifiers:
         alien_tag_count += sum(1 for tag in crew_tags if tag == "crew:alien")
         _apply_tag_effects(modifiers, crew_tags)
         modifiers.daily_wage_total += int(getattr(member, "daily_wage", 0))
+        if role_id == "lawyer":
+            npc_id = getattr(member, "npc_id", None)
+            if isinstance(npc_id, str) and npc_id:
+                modifiers.lawyer_ids.append(npc_id)
 
     aligned_alien_elements = _count_aligned_alien_elements(ship)
     synergy_points = aligned_alien_elements * alien_tag_count
@@ -55,7 +66,35 @@ def compute_crew_modifiers(ship: ShipEntity) -> CrewModifiers:
     modifiers.attack_band_bonus = _clamp_band(modifiers.attack_band_bonus)
     modifiers.defense_band_bonus = _clamp_band(modifiers.defense_band_bonus)
     modifiers.engine_band_bonus = _clamp_band(modifiers.engine_band_bonus)
+    modifiers.lawyer_ids = sorted(modifiers.lawyer_ids)
+    modifiers.has_lawyer = len(modifiers.lawyer_ids) > 0
     return modifiers
+
+
+def _normalize_crew_member(entry: Any) -> Any:
+    if entry is None:
+        return None
+    if isinstance(entry, dict):
+        return _CrewMemberProxy(
+            npc_id=entry.get("npc_id", ""),
+            role_id=entry.get("crew_role_id"),
+            tags=entry.get("crew_tags", []),
+            daily_wage=entry.get("daily_wage", 0),
+        )
+    return _CrewMemberProxy(
+        npc_id=getattr(entry, "npc_id", ""),
+        role_id=getattr(entry, "crew_role_id", None),
+        tags=getattr(entry, "crew_tags", []),
+        daily_wage=getattr(entry, "daily_wage", 0),
+    )
+
+
+class _CrewMemberProxy:
+    def __init__(self, *, npc_id: Any, role_id: Any, tags: Any, daily_wage: Any) -> None:
+        self.npc_id = str(npc_id) if npc_id is not None else ""
+        self.crew_role_id = role_id if isinstance(role_id, str) else None
+        self.crew_tags = list(tags) if isinstance(tags, list) else []
+        self.daily_wage = int(daily_wage or 0)
 
 
 def _apply_role_effects(modifiers: CrewModifiers, role_id: Any) -> None:

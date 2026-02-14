@@ -84,6 +84,7 @@ class SimulationController:
             inter_system=True,
             distance_ly=distance_ly,
             advance_time=None,
+            player_state=self._player,
         )
         events = [
             {

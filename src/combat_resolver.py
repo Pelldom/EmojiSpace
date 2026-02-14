@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import random
-from types import SimpleNamespace
 from typing import Any, Callable, Literal, Optional
 
 try:
@@ -134,23 +133,6 @@ def _modules_by_id() -> dict[str, dict[str, Any]]:
 
 
 def _crew_modifiers_for_ship_state(ship_state: dict[str, Any]) -> CrewModifiers:
-    raw_crew = ship_state.get("crew", [])
-    normalized_crew = []
-    if isinstance(raw_crew, list):
-        for entry in raw_crew:
-            if hasattr(entry, "crew_role_id") and hasattr(entry, "crew_tags"):
-                normalized_crew.append(entry)
-                continue
-            if isinstance(entry, dict):
-                tags = entry.get("crew_tags", [])
-                normalized_crew.append(
-                    SimpleNamespace(
-                        crew_role_id=entry.get("crew_role_id"),
-                        crew_tags=list(tags) if isinstance(tags, list) else [],
-                        daily_wage=int(entry.get("daily_wage", 0) or 0),
-                    )
-                )
-
     module_defs = _modules_by_id()
     normalized_modules = []
     for module_instance in ship_state.get("module_instances", []):
@@ -166,12 +148,14 @@ def _crew_modifiers_for_ship_state(ship_state: dict[str, Any]) -> CrewModifiers:
         )
 
     tags = ship_state.get("tags", [])
-    proxy_ship = SimpleNamespace(
-        crew=normalized_crew,
-        tags=list(tags) if isinstance(tags, list) else [],
-        modules=normalized_modules,
-        persistent_state={},
-    )
+    class _ProxyShip:
+        def __init__(self) -> None:
+            self.crew = list(ship_state.get("crew", [])) if isinstance(ship_state.get("crew", []), list) else []
+            self.tags = list(tags) if isinstance(tags, list) else []
+            self.modules = normalized_modules
+            self.persistent_state = {}
+
+    proxy_ship = _ProxyShip()
     return compute_crew_modifiers(proxy_ship)
 
 

@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Tuple
 
 from types import MappingProxyType
 
+try:
+    from crew_modifiers import compute_crew_modifiers
+except ModuleNotFoundError:
+    from src.crew_modifiers import compute_crew_modifiers
+
 from government_law_engine import GovernmentPolicyResult
 from government_type import GovernmentType
 from player_state import PlayerState
@@ -89,23 +94,18 @@ def maybe_downgrade_tier2_with_lawyer(player_state, ship, lawyer_id: str | None 
     if ship is None:
         return False, None
 
-    crew = getattr(ship, "crew", [])
-    lawyers = [
-        member
-        for member in crew
-        if bool(getattr(member, "is_crew", False)) and getattr(member, "crew_role_id", None) == "lawyer"
-    ]
-    if not lawyers:
+    crew_mods = compute_crew_modifiers(ship)
+    available_lawyer_ids = list(crew_mods.lawyer_ids)
+    if not available_lawyer_ids:
         return False, None
 
     if lawyer_id is not None:
-        selected = next((member for member in lawyers if getattr(member, "npc_id", None) == lawyer_id), None)
-        if selected is None:
+        if lawyer_id not in available_lawyer_ids:
             raise ValueError(f"lawyer_id '{lawyer_id}' was not found among ship lawyer crew.")
+        consumed_id = lawyer_id
     else:
-        selected = sorted(lawyers, key=lambda member: str(getattr(member, "npc_id", "")))[0]
+        consumed_id = available_lawyer_ids[0]
 
-    consumed_id = getattr(selected, "npc_id", None)
     ship.remove_crew(consumed_id)
     return True, consumed_id
 def _load_consequences() -> MappingProxyType:
