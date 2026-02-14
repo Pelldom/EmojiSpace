@@ -37,3 +37,4 @@ def test_simulation_controller_five_turn_scripted_is_deterministic() -> None:
         assert "travel_resolution" in event_types
         assert "encounter_generated" in event_types
         assert "reward_applied" in event_types
+
