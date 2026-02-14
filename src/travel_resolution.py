@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from crew_modifiers import compute_crew_modifiers
+
 
 @dataclass(frozen=True)
 class TravelResult:
@@ -40,7 +42,9 @@ def resolve_travel(
             reason="emergency_transport",
         )
 
-    fuel_cost = compute_fuel_cost(inter_system=inter_system, distance_ly=distance_ly)
+    base_fuel_cost = compute_fuel_cost(inter_system=inter_system, distance_ly=distance_ly)
+    crew_modifiers = compute_crew_modifiers(ship)
+    fuel_cost = max(1, base_fuel_cost + int(crew_modifiers.fuel_delta))
     if int(ship.current_fuel) < fuel_cost:
         return TravelResult(
             success=False,
