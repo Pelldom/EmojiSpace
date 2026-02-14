@@ -58,8 +58,10 @@ All expansion must originate here.
 | **Phase 4.11.1 (COMPLETED)** | **0.8.1** | **Stabilization and orchestration patch (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
 | **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
-| Phase 5 | 0.9.x | Emergent narrative |
-| Phase 6 | 0.9.x | Stabilization & balance |
+| Phase 5 | 0.9.x | Crew and Social Systems |
+| Phase 6 | 1.0.x | Events, Situations, and Mission Arcs |
+| Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
+| Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
 ---
 
@@ -603,43 +605,103 @@ Patch phase under 4.11. No new mechanics; boundary cleanup + orchestration wirin
 - Moved hull max authority into ship assembler output and removed combat-local duplicate.
 - Added deterministic SimulationController end-to-end coverage.
 
-## Phase 5 - Emergent Narrative
+## Phase 5 - Crew and Social Systems
 
 **Target:** 0.9.x
 
 ### Objective
-Allow stories to coalesce naturally from systems.
+Introduce deterministic crew as a simulation layer extension without adding narrative or UI dependencies.
 
-### Required Systems
-- Narrative triggers
-- Long-arc tracking
-- Optional player engagement
+### Scope
+- Implement hireable crew system.
+- Enforce crew_capacity usage in Ship Entity.
+- Define crew roles (mechanic, gunner, navigator, etc.).
+- Crew provide additive deterministic stat modifiers only.
+- Crew recruitment sources:
+  - Bar locations.
+  - Encounter locations.
+  - Rare random encounters.
+- Crew persist attached to player ship.
+- Deterministic crew generation required.
 
-### Benchmark to Advance
-- Distinct stories can be described after a run
-- Player absence matters
+### Explicit Exclusions
+- No loyalty or morale system yet.
+- No crew betrayal system.
+- No crew death mechanics.
+- No narrative arcs tied to crew (deferred to Phase 6).
+- No UI implementation.
 
 ---
 
-## Phase 6 - Stabilization & Balance
+## Phase 6 - Events, Situations, and Mission Arcs
 
-**Target:** 0.9.x
+**Target:** 1.0.x
 
 ### Objective
-Turn a complex simulation into a playable game.
+Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
 
-### Focus Areas
-- Balance tuning
-- Information surfacing
-- Failure fairness
-- Performance
-- Save compatibility
+### Scope
+- Situational system (system-wide conditions).
+- Event engine with triggers.
+- Multi-stage mission arcs.
+- Branching encounter chains.
+- Persistent narrative consequences.
+- Faction evolution.
+- NPC promotions/demotions.
+- Reputation ripple effects.
 
-### Benchmark for 1.0 Consideration
-- Multiple viable playstyles
-- No dominant strategy
-- Bugs are reproducible
-- Design intent matches behavior
+### Explicit Exclusions
+- No UI framework.
+- No monetization systems.
+
+---
+
+## Phase 7 - UI Framework (Android + Emoji Integration)
+
+**Target:** 1.1.x
+
+### Objective
+Add a deterministic presentation and interaction layer that consumes simulation authority without introducing mechanics.
+
+### Scope
+- Presentation adapter layer.
+- Emoji metadata integration into schema:
+  - Ship frames.
+  - Modules.
+  - SKUs.
+  - Tags.
+  - Destination types.
+  - Location types.
+- Touch interaction routing.
+- Android wrapper.
+- Deterministic action/result interface boundary.
+
+### Constraints
+- No simulation mechanics in UI layer.
+- No RNG in UI layer.
+- UI consumes SimulationController only.
+
+---
+
+## Phase 8 - Monetization and Play Store Deployment
+
+**Target:** 1.2.x
+
+### Objective
+Prepare commercial packaging and monetization with strict isolation from simulation outcomes.
+
+### Scope
+- Banner ad integration.
+- Premium no-ads purchase option.
+- Premium flag stored in Player Entity.
+- Ads must not affect simulation outcomes.
+- Ads must not alter RNG, pricing, enforcement, or rewards.
+- Build preparation for Play Store.
+- Release packaging and version gating.
+
+### Constraints
+- Monetization strictly isolated to UI layer.
+- No gameplay advantage tied to purchase.
 
 ---
 
