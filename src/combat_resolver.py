@@ -3,14 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import random
+from types import SimpleNamespace
 from typing import Any, Callable, Literal, Optional
 
 try:
+    from crew_modifiers import CrewModifiers, compute_crew_modifiers
     from data_loader import load_hulls, load_modules
     from pursuit_resolver import resolve_pursuit
     from salvage_resolver import resolve_salvage_modules
     from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
 except ModuleNotFoundError:
+    from src.crew_modifiers import CrewModifiers, compute_crew_modifiers
     from src.data_loader import load_hulls, load_modules
     from src.pursuit_resolver import resolve_pursuit
     from src.salvage_resolver import resolve_salvage_modules
@@ -78,6 +81,7 @@ class CombatState:
     scanned: bool = False
     ship_state: Optional[dict[str, Any]] = None
     subsystem_capacity: dict[str, int] = field(default_factory=lambda: {"weapon": 1, "defense": 1, "engine": 1})
+    repair_amount_bonus: int = 0
 
 
 @dataclass
@@ -127,6 +131,48 @@ def _hulls_by_id() -> dict[str, dict[str, Any]]:
 
 def _modules_by_id() -> dict[str, dict[str, Any]]:
     return {entry["module_id"]: entry for entry in load_modules()["modules"]}
+
+
+def _crew_modifiers_for_ship_state(ship_state: dict[str, Any]) -> CrewModifiers:
+    raw_crew = ship_state.get("crew", [])
+    normalized_crew = []
+    if isinstance(raw_crew, list):
+        for entry in raw_crew:
+            if hasattr(entry, "crew_role_id") and hasattr(entry, "crew_tags"):
+                normalized_crew.append(entry)
+                continue
+            if isinstance(entry, dict):
+                tags = entry.get("crew_tags", [])
+                normalized_crew.append(
+                    SimpleNamespace(
+                        crew_role_id=entry.get("crew_role_id"),
+                        crew_tags=list(tags) if isinstance(tags, list) else [],
+                        daily_wage=int(entry.get("daily_wage", 0) or 0),
+                    )
+                )
+
+    module_defs = _modules_by_id()
+    normalized_modules = []
+    for module_instance in ship_state.get("module_instances", []):
+        if not isinstance(module_instance, dict):
+            continue
+        module_def = module_defs.get(module_instance.get("module_id"))
+        primary_tag = module_def.get("primary_tag") if module_def else ""
+        normalized_modules.append(
+            {
+                "primary_tag": primary_tag,
+                "secondary_tags": list(module_instance.get("secondary_tags", [])),
+            }
+        )
+
+    tags = ship_state.get("tags", [])
+    proxy_ship = SimpleNamespace(
+        crew=normalized_crew,
+        tags=list(tags) if isinstance(tags, list) else [],
+        modules=normalized_modules,
+        persistent_state={},
+    )
+    return compute_crew_modifiers(proxy_ship)
 
 
 def _normalize_secondary_list(raw: Any) -> list[str]:
@@ -342,10 +388,14 @@ def create_initial_state(loadout: ShipLoadout) -> CombatState:
 def _create_initial_state_from_ship_state(ship_state: dict[str, Any]) -> CombatState:
     assembled = assemble_ship(ship_state["hull_id"], ship_state["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
     hull_max = int(assembled["hull_max"])
+    crew_modifiers = _crew_modifiers_for_ship_state(ship_state)
     repair_uses = {}
     for index, module_instance in enumerate(ship_state["module_instances"]):
         if _module_is_repair(module_instance):
             repair_uses[str(index)] = 2
+    if repair_uses and int(crew_modifiers.repair_uses_bonus) != 0:
+        first_key = sorted(repair_uses.keys())[0]
+        repair_uses[first_key] = max(0, repair_uses[first_key] + int(crew_modifiers.repair_uses_bonus))
     return CombatState(
         hull_max=hull_max,
         hull_current=hull_max,
@@ -358,6 +408,7 @@ def _create_initial_state_from_ship_state(ship_state: dict[str, Any]) -> CombatS
             "degradation_state": dict(ship_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})),
         },
         subsystem_capacity=dict(assembled["degradation"]["capacity"]),
+        repair_amount_bonus=int(crew_modifiers.repair_amount_bonus),
     )
 
 
@@ -409,7 +460,7 @@ def _default_selector(
     return "Focus Fire"
 
 
-def _repair_once(ship_state: ShipLoadout | dict[str, Any], state: CombatState) -> Optional[dict]:
+def _repair_once(ship_state: ShipLoadout | dict[str, Any], state: CombatState, action_repair_bonus: int = 0) -> Optional[dict]:
     if isinstance(ship_state, ShipLoadout):
         ship_state = _legacy_loadout_to_ship_state(ship_state)
     if not state.repair_uses_remaining:
@@ -436,6 +487,8 @@ def _repair_once(ship_state: ShipLoadout | dict[str, Any], state: CombatState) -
     hull_traits = _hulls_by_id()[ship_state["hull_id"]].get("traits", [])
     if _has_secondary(instance, "alien") and "ship:trait_alien" in hull_traits:
         magnitude += 1
+    magnitude += int(state.repair_amount_bonus)
+    magnitude += int(action_repair_bonus)
 
     old_hull = state.hull_current
     state.hull_current = min(state.hull_max, state.hull_current + magnitude)
@@ -577,10 +630,14 @@ def _effective_from_assembled(
     action: ActionName,
     subsystem: str,
     rps_bias: int = 0,
+    crew_band_bonus: int = 0,
+    action_bonus: int = 0,
 ) -> int:
     value = assembled["bands"]["effective"][subsystem]
+    value += int(crew_band_bonus)
     if _focus_target(action) == subsystem:
         value += 1
+    value += int(action_bonus)
     if subsystem == "weapon":
         value = max(0, value + rps_bias)
     return max(0, value)
@@ -588,11 +645,16 @@ def _effective_from_assembled(
 
 def _to_ship_state(loadout: Optional[ShipLoadout], ship_state: Optional[dict[str, Any]], role: str) -> dict[str, Any]:
     if ship_state is not None:
-        return {
+        normalized = {
             "hull_id": ship_state["hull_id"],
             "module_instances": list(ship_state["module_instances"]),
             "degradation_state": dict(ship_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})),
         }
+        if "crew" in ship_state:
+            normalized["crew"] = list(ship_state.get("crew", []))
+        if "tags" in ship_state:
+            normalized["tags"] = list(ship_state.get("tags", []))
+        return normalized
     if loadout is not None:
         return _legacy_loadout_to_ship_state(loadout)
     raise ValueError(f"Missing {role} ship input.")
@@ -665,6 +727,8 @@ def resolve_combat(
     enemy_state = _create_initial_state_from_ship_state(enemy_ship)
     player_state.degradation.update(player_ship.get("degradation_state", {}))
     enemy_state.degradation.update(enemy_ship.get("degradation_state", {}))
+    player_crew_mods = _crew_modifiers_for_ship_state(player_ship)
+    enemy_crew_mods = _crew_modifiers_for_ship_state(enemy_ship)
 
     rng = CombatRng(world_seed=world_seed, salt=f"{combat_id}_combat")
     log: list[dict] = []
@@ -732,9 +796,17 @@ def resolve_combat(
             )
 
         if player_action == "Repair Systems":
-            round_log["repair"]["player"] = _repair_once(player_ship, player_state)
+            round_log["repair"]["player"] = _repair_once(
+                player_ship,
+                player_state,
+                action_repair_bonus=int(player_crew_mods.repair_focus_bonus),
+            )
         if enemy_action == "Repair Systems":
-            round_log["repair"]["enemy"] = _repair_once(enemy_ship, enemy_state)
+            round_log["repair"]["enemy"] = _repair_once(
+                enemy_ship,
+                enemy_state,
+                action_repair_bonus=int(enemy_crew_mods.repair_focus_bonus),
+            )
 
         module_defs = _modules_by_id()
         if player_action == "Scan" and any(module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_probe_array" for entry in player_ship["module_instances"]):
@@ -774,12 +846,50 @@ def resolve_combat(
         if own_weapon_e is not None and opp_def_p is not None:
             enemy_rps = RPS_MATRIX.get((own_weapon_e, opp_def_p), 0)
 
-        player_weapon = _effective_from_assembled(assembled_player, player_action, "weapon", player_rps)
-        player_defense = _effective_from_assembled(assembled_player, player_action, "defense")
-        player_engine = _effective_from_assembled(assembled_player, player_action, "engine")
-        enemy_weapon = _effective_from_assembled(assembled_enemy, enemy_action, "weapon", enemy_rps)
-        enemy_defense = _effective_from_assembled(assembled_enemy, enemy_action, "defense")
-        enemy_engine = _effective_from_assembled(assembled_enemy, enemy_action, "engine")
+        player_weapon = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "weapon",
+            player_rps,
+            crew_band_bonus=int(player_crew_mods.attack_band_bonus),
+            action_bonus=int(player_crew_mods.focus_fire_bonus if player_action == "Focus Fire" else 0),
+        )
+        player_defense = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "defense",
+            crew_band_bonus=int(player_crew_mods.defense_band_bonus),
+            action_bonus=int(player_crew_mods.reinforce_shields_bonus if player_action == "Reinforce Shields" else 0),
+        )
+        player_engine = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "engine",
+            crew_band_bonus=int(player_crew_mods.engine_band_bonus),
+            action_bonus=int(player_crew_mods.evasive_bonus if player_action == "Evasive Maneuvers" else 0),
+        )
+        enemy_weapon = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "weapon",
+            enemy_rps,
+            crew_band_bonus=int(enemy_crew_mods.attack_band_bonus),
+            action_bonus=int(enemy_crew_mods.focus_fire_bonus if enemy_action == "Focus Fire" else 0),
+        )
+        enemy_defense = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "defense",
+            crew_band_bonus=int(enemy_crew_mods.defense_band_bonus),
+            action_bonus=int(enemy_crew_mods.reinforce_shields_bonus if enemy_action == "Reinforce Shields" else 0),
+        )
+        enemy_engine = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "engine",
+            crew_band_bonus=int(enemy_crew_mods.engine_band_bonus),
+            action_bonus=int(enemy_crew_mods.evasive_bonus if enemy_action == "Evasive Maneuvers" else 0),
+        )
 
         round_log["bands"] = {
             "player": {"weapon": player_weapon, "defense": player_defense, "engine": player_engine},
