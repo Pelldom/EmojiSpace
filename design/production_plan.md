@@ -58,7 +58,7 @@ All expansion must originate here.
 | **Phase 4.11.1 (COMPLETED)** | **0.8.1** | **Stabilization and orchestration patch (boundary cleanup + single-authority consolidation + playable CLI wiring)** |
 | **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
-| Phase 5 | 0.9.x | Crew and Social Systems |
+| Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
 | Phase 6 | 1.0.x | Events, Situations, and Mission Arcs |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
@@ -631,6 +631,29 @@ Introduce deterministic crew as a simulation layer extension without adding narr
 - No narrative arcs tied to crew (deferred to Phase 6).
 - No UI implementation.
 
+## Phase 5 - Crew and Social Systems (COMPLETED)
+
+Completion Summary:
+
+- Hireable crew system implemented.
+- Crew stored as Tier 2 NPCs attached to ships.
+- Crew capacity enforced via hull crew_capacity.
+- Roles and tags defined and centralized.
+- Deterministic Crew Modifier Aggregation Engine implemented.
+- Crew effects integrated into:
+  - Travel fuel consumption.
+  - Cargo and data capacity.
+  - Combat bands and focus actions.
+  - Market pricing.
+  - Mission slot availability.
+  - Law enforcement (lawyer Tier 2 downgrade).
+  - Pre-travel wage enforcement.
+- All crew mechanical effects centralized through compute_crew_modifiers().
+- No system layers directly inspect crew roles or tags.
+- Determinism preserved across all integrations.
+- Full structural compliance audit passed.
+- Full test suite passing (145 tests).
+
 ---
 
 ## Phase 6 - Events, Situations, and Mission Arcs
@@ -704,6 +727,9 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 - No gameplay advantage tied to purchase.
 
 ---
+
+Current Development Version: 0.9.10
+Phase 5 Complete.
 
 ## Authority Statement
 
