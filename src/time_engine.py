@@ -218,6 +218,10 @@ class TimeEngine:
         data_root = Path(__file__).resolve().parents[1] / "data"
         engine.load_situation_catalog(data_root / "situations.json")
         engine.load_event_catalog(data_root / "events.json")
+        engine.configure_runtime_context(
+            sector=sector,
+            npc_registry=getattr(player_state, "npc_registry", None),
+        )
         _world_state_engine = engine
         _world_state_seed = int(world_seed)
         _world_state_sector = sector

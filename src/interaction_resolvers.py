@@ -50,6 +50,9 @@ def destination_has_shipdock_service(destination) -> bool:
 
 def destination_actions(destination, base_actions=None):
     actions = list(base_actions or [])
+    if destination_has_tag(destination, "destroyed"):
+        # Destroyed destinations remain travel-reachable but expose no normal local actions.
+        return sorted(actions, key=lambda value: value)
     if destination_has_datanet_service(destination) and "refuel" not in actions:
         actions.append("refuel")
     if destination_has_shipdock_service(destination):
@@ -63,6 +66,15 @@ def destination_actions(destination, base_actions=None):
             if action not in actions:
                 actions.append(action)
     return sorted(actions, key=lambda value: value)
+
+
+def destination_has_tag(destination, tag: str) -> bool:
+    tags = []
+    if isinstance(destination, dict):
+        tags = destination.get("tags", [])
+    elif hasattr(destination, "tags"):
+        tags = list(getattr(destination, "tags", []))
+    return isinstance(tags, list) and tag in tags
 
 
 def execute_refuel(*, ship, player_credits: int, requested_units: int | None = None, player=None) -> dict:

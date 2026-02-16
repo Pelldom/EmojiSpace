@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import hashlib
@@ -32,6 +32,7 @@ class Destination:
     secondary_economy_ids: List[str]
     locations: List[Location]
     market: Market | None
+    tags: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -388,6 +389,7 @@ def _assign_locations_and_markets(
                 secondary_economy_ids=list(destination.secondary_economy_ids),
                 locations=list(destination.locations),
                 market=market,
+                tags=list(destination.tags),
             )
         )
     return updated_destinations

@@ -1,9 +1,11 @@
 import hashlib
 import json
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Optional
+
+from npc_entity import NPCPersistenceTier
 
 
 @dataclass
@@ -71,6 +73,9 @@ class WorldStateEngine:
     last_structural_mutation_day_by_system: dict[str, Optional[int]] = field(
         default_factory=dict
     )
+    _sector_ref: Any = None
+    _npc_registry_ref: Any = None
+    _valid_government_ids: set[str] = field(default_factory=set)
     _situation_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     _event_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     _scheduled_insertion_counter: int = 0
@@ -86,6 +91,18 @@ class WorldStateEngine:
             self.active_modifiers_by_system[system_id] = []
         if system_id not in self.last_structural_mutation_day_by_system:
             self.last_structural_mutation_day_by_system[system_id] = None
+
+    def configure_runtime_context(
+        self,
+        *,
+        sector: Any = None,
+        npc_registry: Any = None,
+        government_ids: Optional[set[str]] = None,
+    ) -> None:
+        self._sector_ref = sector
+        self._npc_registry_ref = npc_registry
+        if government_ids is not None:
+            self._valid_government_ids = set(government_ids)
 
     def get_active_situations(self, system_id: str) -> list[ActiveSituation]:
         self.register_system(system_id)
@@ -174,6 +191,8 @@ class WorldStateEngine:
             for item in loaded
             if item.get("event_id")
         }
+        if not self._valid_government_ids:
+            self._valid_government_ids = _load_valid_government_ids()
 
     def evaluate_spawn_gate(
         self,
@@ -287,11 +306,15 @@ class WorldStateEngine:
                     continue
                 situation_def = self._situation_catalog_by_id.get(situation_id)
                 if situation_def is None:
-                    raise ValueError(f"Situation definition not found for situation_id={situation_id}")
+                    raise ValueError(
+                        f"Situation definition not found for situation_id={situation_id}"
+                    )
                 scope = item.get("scope_type")
                 if scope not in {"system", "destination"}:
                     scope = str(situation_def.get("allowed_scope") or "system")
-                remaining_days = _roll_duration_days(situation_def.get("duration_days"), rng, default_days=3)
+                remaining_days = _roll_duration_days(
+                    situation_def.get("duration_days"), rng, default_days=3
+                )
                 self.add_situation(
                     ActiveSituation(
                         situation_id=situation_id,
@@ -301,6 +324,85 @@ class WorldStateEngine:
                         remaining_days=max(0, remaining_days),
                     )
                 )
+
+        flags_add = effects.get("system_flag_add", [])
+        if isinstance(flags_add, list):
+            for value in flags_add:
+                if isinstance(value, str):
+                    already_present = value in self.system_flags[target_system_id]
+                    self.system_flags[target_system_id].add(value)
+                    print(
+                        "System flag add: "
+                        f"system_id={target_system_id} event_id={event_id} "
+                        f"flag={value} already_present={already_present}"
+                    )
+
+        flags_remove = effects.get("system_flag_remove", [])
+        if isinstance(flags_remove, list):
+            for value in flags_remove:
+                if isinstance(value, str):
+                    was_present = value in self.system_flags[target_system_id]
+                    self.system_flags[target_system_id].discard(value)
+                    print(
+                        "System flag remove: "
+                        f"system_id={target_system_id} event_id={event_id} "
+                        f"flag={value} was_present={was_present}"
+                    )
+
+        npc_mutations = effects.get("npc_mutations", [])
+        if isinstance(npc_mutations, list):
+            self._apply_npc_mutations(
+                target_system_id=target_system_id,
+                event_id=event_id,
+                npc_mutations=npc_mutations,
+            )
+
+        modifiers = effects.get("modifiers", [])
+        if isinstance(modifiers, list):
+            self._add_modifier_entries(
+                system_id=target_system_id,
+                source_type="event",
+                source_id=event_id,
+                modifiers=modifiers,
+            )
+
+        structural_payload: dict[str, Any] = {}
+        destroy_destination_ids = effects.get("destroy_destination_ids")
+        if isinstance(destroy_destination_ids, list) and destroy_destination_ids:
+            structural_payload["destroy_destination_ids"] = list(destroy_destination_ids)
+            self._apply_destroy_destination_tags(
+                target_system_id=target_system_id,
+                event_id=event_id,
+                destroy_destination_ids=destroy_destination_ids,
+            )
+
+        population_delta = effects.get("population_delta")
+        if isinstance(population_delta, int) and population_delta != 0:
+            structural_payload["population_delta"] = int(population_delta)
+            self._apply_population_delta(
+                target_system_id=target_system_id,
+                event_id=event_id,
+                population_delta=int(population_delta),
+            )
+
+        government_change = effects.get("government_change")
+        if government_change not in (None, "", []):
+            structural_payload["government_change"] = government_change
+            self._apply_government_change(
+                target_system_id=target_system_id,
+                event_id=event_id,
+                government_change=government_change,
+            )
+
+        if structural_payload:
+            self.pending_structural_mutations.append(
+                {
+                    "system_id": target_system_id,
+                    "source_event_id": event_id,
+                    "mutation_payload": structural_payload,
+                    "day_applied": current_day,
+                }
+            )
 
         scheduled = effects.get("scheduled_events", [])
         if isinstance(scheduled, list):
@@ -320,54 +422,6 @@ class WorldStateEngine:
                         trigger_day=current_day + delay_days,
                     )
                 )
-
-        flags_add = effects.get("system_flag_add", [])
-        if isinstance(flags_add, list):
-            for value in flags_add:
-                if isinstance(value, str):
-                    self.system_flags[target_system_id].add(value)
-
-        flags_remove = effects.get("system_flag_remove", [])
-        if isinstance(flags_remove, list):
-            for value in flags_remove:
-                if isinstance(value, str):
-                    self.system_flags[target_system_id].discard(value)
-
-        modifiers = effects.get("modifiers", [])
-        if isinstance(modifiers, list):
-            self._add_modifier_entries(
-                system_id=target_system_id,
-                source_type="event",
-                source_id=event_id,
-                modifiers=modifiers,
-            )
-
-        structural_keys = [
-            "government_change",
-            "population_delta",
-            "destroy_destination_ids",
-            "asset_destruction",
-        ]
-        structural_payload: dict[str, Any] = {}
-        for key in structural_keys:
-            value = effects.get(key)
-            if key == "population_delta" and isinstance(value, int) and value != 0:
-                structural_payload[key] = value
-            elif key == "government_change" and value not in (None, "", []):
-                structural_payload[key] = value
-            elif key == "destroy_destination_ids" and isinstance(value, list) and value:
-                structural_payload[key] = list(value)
-            elif key == "asset_destruction" and isinstance(value, dict) and value:
-                structural_payload[key] = dict(value)
-        if structural_payload:
-            self.pending_structural_mutations.append(
-                {
-                    "system_id": target_system_id,
-                    "source_event_id": event_id,
-                    "mutation_payload": structural_payload,
-                    "day_applied": None,
-                }
-            )
         return True
 
     def process_scheduled_events(self, world_seed: int, current_day: int) -> int:
@@ -828,6 +882,215 @@ class WorldStateEngine:
         )
         return True
 
+    def _apply_destroy_destination_tags(
+        self,
+        *,
+        target_system_id: str,
+        event_id: str,
+        destroy_destination_ids: list[Any],
+    ) -> None:
+        if self._sector_ref is None:
+            for destination_id in destroy_destination_ids:
+                print(
+                    "Destination destruction skipped: "
+                    f"system_id={target_system_id} event_id={event_id} "
+                    f"destination_id={destination_id} reason=missing_sector_context"
+                )
+            return
+        system = self._sector_ref.get_system(target_system_id)
+        if system is None:
+            return
+        for destination_id in destroy_destination_ids:
+            if not isinstance(destination_id, str) or not destination_id:
+                continue
+            destination = next(
+                (
+                    row
+                    for row in getattr(system, "destinations", [])
+                    if getattr(row, "destination_id", None) == destination_id
+                ),
+                None,
+            )
+            if destination is None:
+                print(
+                    "Destination destruction ignored: "
+                    f"system_id={target_system_id} event_id={event_id} "
+                    f"destination_id={destination_id} reason=missing_destination"
+                )
+                continue
+            tags = _ensure_destination_tags(destination)
+            already_destroyed = "destroyed" in tags
+            if not already_destroyed:
+                tags.append("destroyed")
+            print(
+                "Destination destroyed tag update: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"destination_id={destination_id} tag_added={not already_destroyed} "
+                f"already_destroyed={already_destroyed}"
+            )
+
+    def _apply_population_delta(
+        self,
+        *,
+        target_system_id: str,
+        event_id: str,
+        population_delta: int,
+    ) -> None:
+        if self._sector_ref is None:
+            print(
+                "Population mutation skipped: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"delta={population_delta} reason=missing_sector_context"
+            )
+            return
+        system = self._sector_ref.get_system(target_system_id)
+        if system is None:
+            return
+        old_pop = int(getattr(system, "population", 0))
+        new_pop = max(0, old_pop + int(population_delta))
+        if new_pop == old_pop:
+            print(
+                "Population mutation applied: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"old_pop={old_pop} delta={population_delta} new_pop={new_pop}"
+            )
+            return
+        attributes = dict(getattr(system, "attributes", {}) or {})
+        attributes["population_level"] = new_pop
+        updated = replace(system, population=new_pop, attributes=attributes)
+        _replace_system_in_sector(self._sector_ref, updated)
+        print(
+            "Population mutation applied: "
+            f"system_id={target_system_id} event_id={event_id} "
+            f"old_pop={old_pop} delta={population_delta} new_pop={new_pop}"
+        )
+
+    def _apply_government_change(
+        self,
+        *,
+        target_system_id: str,
+        event_id: str,
+        government_change: Any,
+    ) -> None:
+        if not isinstance(government_change, str) or not government_change:
+            return
+        if self._valid_government_ids and government_change not in self._valid_government_ids:
+            print(
+                "Government change ignored: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"new_government_id={government_change} reason=unknown_government_id"
+            )
+            return
+        if self._sector_ref is None:
+            print(
+                "Government change skipped: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"new_government_id={government_change} reason=missing_sector_context"
+            )
+            return
+        system = self._sector_ref.get_system(target_system_id)
+        if system is None:
+            return
+        old_government_id = str(getattr(system, "government_id", ""))
+        attributes = dict(getattr(system, "attributes", {}) or {})
+        attributes["government_id"] = government_change
+        updated = replace(system, government_id=government_change, attributes=attributes)
+        _replace_system_in_sector(self._sector_ref, updated)
+        print(
+            "Government mutation applied: "
+            f"system_id={target_system_id} event_id={event_id} "
+            f"old_government_id={old_government_id} new_government_id={government_change}"
+        )
+
+    def _apply_npc_mutations(
+        self,
+        *,
+        target_system_id: str,
+        event_id: str,
+        npc_mutations: list[Any],
+    ) -> None:
+        registry = self._npc_registry_ref
+        if registry is None:
+            for row in npc_mutations:
+                if isinstance(row, dict):
+                    print(
+                        "NPC mutation ignored: "
+                        f"system_id={target_system_id} event_id={event_id} "
+                        f"npc_id={row.get('npc_id')} mutation_type={row.get('mutation_type')} "
+                        "applied_or_ignored=ignored reason=missing_npc_registry"
+                    )
+            return
+        for row in npc_mutations:
+            if not isinstance(row, dict):
+                continue
+            npc_id = row.get("npc_id")
+            mutation_type = row.get("mutation_type")
+            new_value = row.get("new_value")
+            if not isinstance(npc_id, str) or not npc_id:
+                continue
+            if not isinstance(mutation_type, str) or not mutation_type:
+                continue
+            npc = registry.get(npc_id)
+            if npc is None:
+                print(
+                    "NPC mutation ignored: "
+                    f"system_id={target_system_id} event_id={event_id} "
+                    f"npc_id={npc_id} mutation_type={mutation_type} "
+                    "applied_or_ignored=ignored reason=npc_not_found"
+                )
+                continue
+
+            if mutation_type == "remove":
+                if npc.persistence_tier == NPCPersistenceTier.TIER_3:
+                    print(
+                        "NPC mutation ignored: "
+                        f"system_id={target_system_id} event_id={event_id} "
+                        f"npc_id={npc_id} mutation_type={mutation_type} "
+                        "applied_or_ignored=ignored reason=persistence_tier_locked"
+                    )
+                    continue
+                registry.remove(npc_id)
+                print(
+                    "NPC mutation applied: "
+                    f"system_id={target_system_id} event_id={event_id} "
+                    f"npc_id={npc_id} mutation_type={mutation_type} "
+                    "applied_or_ignored=applied reason=ok"
+                )
+                continue
+
+            updated_npc = npc
+            if mutation_type == "faction_change":
+                if not isinstance(new_value, str) or not new_value:
+                    print(
+                        "NPC mutation ignored: "
+                        f"system_id={target_system_id} event_id={event_id} "
+                        f"npc_id={npc_id} mutation_type={mutation_type} "
+                        "applied_or_ignored=ignored reason=invalid_new_value"
+                    )
+                    continue
+                updated_npc = _clone_npc(npc)
+                updated_npc.affiliation_ids = [new_value]
+            elif mutation_type == "hostility_flag":
+                updated_npc = _clone_npc(npc)
+                updated_npc.memory_flags = dict(updated_npc.memory_flags)
+                updated_npc.memory_flags["hostile"] = bool(new_value)
+            else:
+                print(
+                    "NPC mutation ignored: "
+                    f"system_id={target_system_id} event_id={event_id} "
+                    f"npc_id={npc_id} mutation_type={mutation_type} "
+                    "applied_or_ignored=ignored reason=unsupported_mutation_type"
+                )
+                continue
+
+            registry.update(updated_npc)
+            print(
+                "NPC mutation applied: "
+                f"system_id={target_system_id} event_id={event_id} "
+                f"npc_id={npc_id} mutation_type={mutation_type} "
+                "applied_or_ignored=applied reason=ok"
+            )
+
     def _remove_active_event_instance(
         self,
         *,
@@ -913,6 +1176,56 @@ def _coerce_non_negative_int(value: Any, default: int) -> int:
     if number < 0:
         return default
     return number
+
+
+def _load_valid_government_ids() -> set[str]:
+    path = Path(__file__).resolve().parents[1] / "data" / "governments.json"
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    entries = payload.get("governments", []) if isinstance(payload, dict) else []
+    result: set[str] = set()
+    for row in entries:
+        if isinstance(row, dict):
+            government_id = row.get("id")
+            if isinstance(government_id, str) and government_id:
+                result.add(government_id)
+    return result
+
+
+def _replace_system_in_sector(sector: Any, updated_system: Any) -> None:
+    systems = getattr(sector, "systems", None)
+    if not isinstance(systems, list):
+        return
+    for index, row in enumerate(systems):
+        if getattr(row, "system_id", None) == getattr(updated_system, "system_id", None):
+            systems[index] = updated_system
+            return
+
+
+def _ensure_destination_tags(destination: Any) -> list[str]:
+    if isinstance(destination, dict):
+        tags = destination.get("tags")
+        if not isinstance(tags, list):
+            destination["tags"] = []
+            tags = destination["tags"]
+        return tags
+    tags = getattr(destination, "tags", None)
+    if isinstance(tags, list):
+        return tags
+    try:
+        object.__setattr__(destination, "tags", [])
+        return getattr(destination, "tags")
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _clone_npc(npc: Any) -> Any:
+    if hasattr(npc, "to_dict") and callable(npc.to_dict) and hasattr(type(npc), "from_dict"):
+        return type(npc).from_dict(npc.to_dict())
+    return npc
 
 
 def _is_structural_event_effects(effects: dict[str, Any]) -> bool:

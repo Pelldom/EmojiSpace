@@ -15,6 +15,57 @@ from world_state_engine import (  # noqa: E402
     ScheduledEvent,
     WorldStateEngine,
 )
+from interaction_resolvers import destination_actions  # noqa: E402
+from npc_entity import NPCEntity, NPCPersistenceTier  # noqa: E402
+from npc_registry import NPCRegistry  # noqa: E402
+from world_generator import Destination, Galaxy, Location, System  # noqa: E402
+
+
+def _build_sector_with_destination(
+    *,
+    system_id: str = "SYS-0",
+    destination_id: str = "DST-1",
+    population: int = 2,
+    government_id: str = "dictatorship",
+) -> Galaxy:
+    destination = Destination(
+        destination_id=destination_id,
+        system_id=system_id,
+        destination_type="planet",
+        display_name="Test Destination",
+        population=population,
+        primary_economy_id="MINING",
+        secondary_economy_ids=[],
+        locations=[
+            Location(
+                location_id=f"{destination_id}-LOC-datanet",
+                destination_id=destination_id,
+                location_type="datanet",
+                enabled=True,
+                notes=None,
+            ),
+            Location(
+                location_id=f"{destination_id}-LOC-shipdock",
+                destination_id=destination_id,
+                location_type="shipdock",
+                enabled=True,
+                notes=None,
+            ),
+        ],
+        market=None,
+        tags=[],
+    )
+    system = System(
+        system_id=system_id,
+        name="Test",
+        position=(0, 0),
+        population=population,
+        government_id=government_id,
+        destinations=[destination],
+        attributes={"government_id": government_id, "population_level": population},
+        neighbors=[],
+    )
+    return Galaxy(systems=[system])
 
 
 def test_register_system_initializes_containers() -> None:
@@ -1076,6 +1127,329 @@ def test_structural_rate_limiter_is_deterministic_across_repeated_runs(tmp_path:
         )
 
     assert _run_once() == _run_once()
+
+
+def test_destroy_destination_adds_destroyed_tag_and_keeps_registry_entry(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-DESTROY",
+                        "event_family_id": "F-DESTROY",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "destroy_destination_ids": ["DST-1"],
+                            "population_delta": 0,
+                            "government_change": None,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sector = _build_sector_with_destination()
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.configure_runtime_context(sector=sector)
+    assert engine.apply_event_effects(
+        world_seed=42,
+        current_day=10,
+        target_system_id="SYS-0",
+        event_id="E-DESTROY",
+        rng=random.Random(1),
+    )
+    system = sector.get_system("SYS-0")
+    assert system is not None
+    assert len(system.destinations) == 1
+    assert system.destinations[0].destination_id == "DST-1"
+    assert "destroyed" in system.destinations[0].tags
+
+
+def test_destroyed_destination_unavailable_for_interaction_but_still_present() -> None:
+    sector = _build_sector_with_destination()
+    destination = sector.systems[0].destinations[0]
+    destination.tags.append("destroyed")
+    actions = destination_actions(destination, base_actions=["ignore"])
+    assert actions == ["ignore"]
+    assert any(row.destination_id == "DST-1" for row in sector.systems[0].destinations)
+
+
+def test_population_delta_executes_with_floor_zero(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-POP",
+                        "event_family_id": "F-POP",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "destroy_destination_ids": [],
+                            "population_delta": -1,
+                            "government_change": None,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sector = _build_sector_with_destination(population=0)
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.configure_runtime_context(sector=sector)
+    assert engine.apply_event_effects(
+        world_seed=5,
+        current_day=1,
+        target_system_id="SYS-0",
+        event_id="E-POP",
+        rng=random.Random(5),
+    )
+    assert sector.get_system("SYS-0").population == 0
+
+
+def test_government_change_swaps_archetype_id(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-GOV",
+                        "event_family_id": "F-GOV",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "destroy_destination_ids": [],
+                            "population_delta": 0,
+                            "government_change": "anarchic",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sector = _build_sector_with_destination(government_id="dictatorship")
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.configure_runtime_context(sector=sector)
+    assert engine.apply_event_effects(
+        world_seed=7,
+        current_day=2,
+        target_system_id="SYS-0",
+        event_id="E-GOV",
+        rng=random.Random(7),
+    )
+    system = sector.get_system("SYS-0")
+    assert system.government_id == "anarchic"
+    assert system.attributes["government_id"] == "anarchic"
+
+
+def test_structural_defer_skips_all_effect_steps_on_original_day(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-X",
+                        "random_allowed": False,
+                        "event_only": True,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 3, "max": 3},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-DEFER-ALL",
+                        "event_family_id": "F-DEFER",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [{"situation_id": "S-X"}],
+                            "scheduled_events": [{"event_id": "E-DEFER-ALL", "delay_days": 2}],
+                            "system_flag_add": ["alpha"],
+                            "system_flag_remove": [],
+                            "npc_mutations": [],
+                            "modifiers": [
+                                {
+                                    "domain": "travel",
+                                    "target_type": "ALL",
+                                    "target_id": None,
+                                    "modifier_type": "risk_bias_delta",
+                                    "modifier_value": 1,
+                                }
+                            ],
+                            "destroy_destination_ids": ["DST-1"],
+                            "population_delta": -1,
+                            "government_change": "anarchic",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sector = _build_sector_with_destination(population=2, government_id="dictatorship")
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.configure_runtime_context(sector=sector)
+
+    assert engine.apply_event_effects(
+        world_seed=9,
+        current_day=1,
+        target_system_id="SYS-0",
+        event_id="E-DEFER-ALL",
+        rng=random.Random(9),
+    )
+    system_after_first = sector.get_system("SYS-0")
+    assert system_after_first is not None
+    expected_population = system_after_first.population
+    expected_government = system_after_first.government_id
+    expected_destroyed = "destroyed" in system_after_first.destinations[0].tags
+    expected_situation_count = len(engine.get_active_situations("SYS-0"))
+    expected_modifier_count = len(engine.get_active_modifiers("SYS-0"))
+    expected_alpha_flag = "alpha" in engine.get_system_flags("SYS-0")
+    expected_pending_count = len(engine.pending_structural_mutations)
+    expected_scheduled_before_defer = [
+        (row.event_id, row.trigger_day) for row in engine.scheduled_events
+    ]
+    assert not engine.apply_event_effects(
+        world_seed=9,
+        current_day=3,
+        target_system_id="SYS-0",
+        event_id="E-DEFER-ALL",
+        rng=random.Random(9),
+    )
+    system = sector.get_system("SYS-0")
+    assert system.population == expected_population
+    assert system.government_id == expected_government
+    assert ("destroyed" in system.destinations[0].tags) == expected_destroyed
+    assert len(engine.get_active_situations("SYS-0")) == expected_situation_count
+    assert len(engine.get_active_modifiers("SYS-0")) == expected_modifier_count
+    assert ("alpha" in engine.get_system_flags("SYS-0")) == expected_alpha_flag
+    assert len(engine.pending_structural_mutations) == expected_pending_count
+    scheduled_after_defer = [(row.event_id, row.trigger_day) for row in engine.scheduled_events]
+    assert len(scheduled_after_defer) == len(expected_scheduled_before_defer) + 1
+    assert scheduled_after_defer[:-1] == expected_scheduled_before_defer
+    assert scheduled_after_defer[-1] == ("E-DEFER-ALL", 11)
+
+
+def test_npc_mutations_use_registry_api_and_respect_tier_lock(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-NPC",
+                        "event_family_id": "F-NPC",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "population_delta": 0,
+                            "government_change": None,
+                            "destroy_destination_ids": [],
+                            "npc_mutations": [
+                                {"npc_id": "NPC-T2", "mutation_type": "faction_change", "new_value": "faction_new"},
+                                {"npc_id": "NPC-T2", "mutation_type": "hostility_flag", "new_value": True},
+                                {"npc_id": "NPC-T2", "mutation_type": "remove", "new_value": None},
+                                {"npc_id": "NPC-T3", "mutation_type": "remove", "new_value": None},
+                            ],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = NPCRegistry()
+    npc_t2 = NPCEntity(
+        npc_id="NPC-T2",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Tier2",
+        memory_flags={},
+        affiliation_ids=["faction_old"],
+    )
+    npc_t3 = NPCEntity(
+        npc_id="NPC-T3",
+        persistence_tier=NPCPersistenceTier.TIER_3,
+        display_name="Tier3",
+        memory_flags={},
+        affiliation_ids=["faction_old"],
+    )
+    registry.add(npc_t2)
+    registry.add(npc_t3)
+
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.configure_runtime_context(sector=_build_sector_with_destination(), npc_registry=registry)
+    assert engine.apply_event_effects(
+        world_seed=11,
+        current_day=4,
+        target_system_id="SYS-0",
+        event_id="E-NPC",
+        rng=random.Random(11),
+    )
+    assert registry.get("NPC-T2") is None
+    npc_after_t3 = registry.get("NPC-T3")
+    assert npc_after_t3 is not None
+    assert npc_after_t3.npc_id == "NPC-T3"
 
 
 def test_apply_event_effects_raises_when_event_missing() -> None:
