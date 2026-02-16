@@ -676,6 +676,7 @@ Event and Situation architecture finalized.
 Implementation pending.
 Phase 6 - Slice 1 Core WorldStateEngine (COMPLETED)
 Phase 6 - Slice 2 Random Situation Spawn (COMPLETED)
+Patch: unified spawn gate implements 70/30 Situation vs Event outcome split per contract.
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.

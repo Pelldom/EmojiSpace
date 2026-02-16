@@ -36,6 +36,7 @@ class WorldStateEngine:
     active_events: dict[str, list[ActiveEvent]] = field(default_factory=dict)
     scheduled_events: list[ScheduledEvent] = field(default_factory=list)
     situation_catalog: list[dict[str, Any]] = field(default_factory=list)
+    event_catalog: list[dict[str, Any]] = field(default_factory=list)
 
     def register_system(self, system_id: str) -> None:
         if system_id not in self.active_situations:
@@ -95,12 +96,34 @@ class WorldStateEngine:
             )
         self.situation_catalog = loaded
 
-    def evaluate_situation_spawn(
+    def load_event_catalog(self, catalog_path: str | Path | None = None) -> None:
+        path = Path(catalog_path) if catalog_path is not None else Path(__file__).resolve().parents[1] / "data" / "events.json"
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+
+        loaded: list[dict[str, Any]] = []
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
+            loaded.append(
+                {
+                    "event_id": entry.get("event_id"),
+                    "event_family_id": entry.get("event_family_id"),
+                    "display_name": entry.get("display_name"),
+                    "severity_tier": entry.get("severity_tier"),
+                    "duration_days": entry.get("duration_days"),
+                }
+            )
+        self.event_catalog = loaded
+
+    def evaluate_spawn_gate(
         self,
         current_system_id: str,
         neighbor_system_ids: list[str],
         current_day: int,
         world_seed: int,
+        spawn_probability: float = 0.08,
+        situation_weight: float = 0.70,
     ) -> None:
         # Evaluate only R=0,1 systems: current + direct neighbors provided by caller.
         eligible_systems: list[str] = []
@@ -111,7 +134,7 @@ class WorldStateEngine:
             seen.add(system_id)
             eligible_systems.append(system_id)
 
-        spawnable = [
+        spawnable_situations = [
             item
             for item in self.situation_catalog
             if bool(item.get("random_allowed"))
@@ -119,30 +142,22 @@ class WorldStateEngine:
             and not bool(item.get("recovery_only"))
         ]
 
-        if not spawnable:
-            return
-
         for system_id in eligible_systems:
             self.register_system(system_id)
-            if len(self.active_situations[system_id]) >= 3:
-                continue
 
-            rng_seed = _deterministic_seed(world_seed, system_id, current_day, "situation")
+            rng_seed = _deterministic_seed(world_seed, system_id, current_day, "spawn_gate")
             rng = random.Random(rng_seed)
-            if rng.random() >= 0.08:
+            if rng.random() >= spawn_probability:
                 continue
 
-            selected = rng.choice(spawnable)
-            duration = selected.get("duration_days")
-            remaining_days = int(duration) if isinstance(duration, int) else 3
-            active = ActiveSituation(
-                situation_id=str(selected.get("situation_id")),
-                system_id=system_id,
-                scope=str(selected.get("allowed_scope") or "system"),
-                target_id=None,
-                remaining_days=max(0, remaining_days),
-            )
-            self.add_situation(active)
+            choose_situation = rng.random() < situation_weight
+            if choose_situation:
+                if not self._try_spawn_situation(system_id, spawnable_situations, rng):
+                    self._try_spawn_event(system_id, rng)
+                continue
+
+            if not self._try_spawn_event(system_id, rng):
+                self._try_spawn_situation(system_id, spawnable_situations, rng)
 
     def decrement_durations(self) -> None:
         for system_id in sorted(self.active_situations.keys()):
@@ -177,6 +192,39 @@ class WorldStateEngine:
                     continue
                 kept_events.append(entry)
             self.active_events[system_id] = kept_events
+
+    def _try_spawn_situation(self, system_id: str, spawnable_situations: list[dict[str, Any]], rng: random.Random) -> bool:
+        if len(self.active_situations[system_id]) >= 3:
+            return False
+        if not spawnable_situations:
+            return False
+        selected = rng.choice(spawnable_situations)
+        duration = selected.get("duration_days")
+        remaining_days = int(duration) if isinstance(duration, int) else 3
+        active = ActiveSituation(
+            situation_id=str(selected.get("situation_id")),
+            system_id=system_id,
+            scope=str(selected.get("allowed_scope") or "system"),
+            target_id=None,
+            remaining_days=max(0, remaining_days),
+        )
+        self.add_situation(active)
+        return True
+
+    def _try_spawn_event(self, system_id: str, rng: random.Random) -> bool:
+        if not self.event_catalog:
+            return False
+        selected = rng.choice(self.event_catalog)
+        duration = selected.get("duration_days")
+        remaining_days = int(duration) if isinstance(duration, int) else 1
+        active = ActiveEvent(
+            event_id=str(selected.get("event_id")),
+            event_family_id=selected.get("event_family_id"),
+            system_id=system_id,
+            remaining_days=max(0, remaining_days),
+        )
+        self.add_event(active)
+        return True
 
 
 def _deterministic_seed(world_seed: int, system_id: str, current_day: int, channel: str) -> int:

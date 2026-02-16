@@ -163,8 +163,9 @@ def test_events_and_situations_tracked_separately_and_schedule_list_kept() -> No
 
 
 def test_deterministic_spawn_behavior_is_identical_across_two_runs(tmp_path: Path) -> None:
-    catalog_path = tmp_path / "situations.json"
-    catalog_path.write_text(
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
         json.dumps(
             [
                 {
@@ -179,57 +180,50 @@ def test_deterministic_spawn_behavior_is_identical_across_two_runs(tmp_path: Pat
         ),
         encoding="utf-8",
     )
+    events_path.write_text(
+        json.dumps(
+            [
+                {
+                    "event_id": "E-RANDOM",
+                    "event_family_id": "FAMILY-1",
+                    "duration_days": 2,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
 
-    def _run() -> dict[str, list[str]]:
+    def _run() -> dict[str, dict[str, list[str]]]:
         engine = WorldStateEngine()
-        engine.load_situation_catalog(catalog_path)
-        engine.evaluate_situation_spawn(
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.evaluate_spawn_gate(
             current_system_id="SYS-0",
             neighbor_system_ids=["SYS-1", "SYS-2"],
             current_day=10,
             world_seed=1234,
+            spawn_probability=1.0,
         )
         return {
-            "SYS-0": [s.situation_id for s in engine.get_active_situations("SYS-0")],
-            "SYS-1": [s.situation_id for s in engine.get_active_situations("SYS-1")],
-            "SYS-2": [s.situation_id for s in engine.get_active_situations("SYS-2")],
+            "situations": {
+                "SYS-0": [s.situation_id for s in engine.get_active_situations("SYS-0")],
+                "SYS-1": [s.situation_id for s in engine.get_active_situations("SYS-1")],
+                "SYS-2": [s.situation_id for s in engine.get_active_situations("SYS-2")],
+            },
+            "events": {
+                "SYS-0": [e.event_id for e in engine.get_active_events("SYS-0")],
+                "SYS-1": [e.event_id for e in engine.get_active_events("SYS-1")],
+                "SYS-2": [e.event_id for e in engine.get_active_events("SYS-2")],
+            },
         }
 
     assert _run() == _run()
 
 
-def test_no_spawn_when_random_allowed_empty(tmp_path: Path) -> None:
-    catalog_path = tmp_path / "situations.json"
-    catalog_path.write_text(
-        json.dumps(
-            [
-                {
-                    "situation_id": "S-NONRANDOM",
-                    "random_allowed": False,
-                    "event_only": False,
-                    "recovery_only": False,
-                    "allowed_scope": "system",
-                    "duration_days": 4,
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    engine = WorldStateEngine()
-    engine.load_situation_catalog(catalog_path)
-    engine.evaluate_situation_spawn(
-        current_system_id="SYS-0",
-        neighbor_system_ids=["SYS-1"],
-        current_day=10,
-        world_seed=1234,
-    )
-    assert engine.get_active_situations("SYS-0") == []
-    assert engine.get_active_situations("SYS-1") == []
-
-
-def test_no_spawn_when_system_is_at_cap(tmp_path: Path) -> None:
-    catalog_path = tmp_path / "situations.json"
-    catalog_path.write_text(
+def test_outcome_split_can_select_event_with_fixed_seed_and_day(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
         json.dumps(
             [
                 {
@@ -244,24 +238,72 @@ def test_no_spawn_when_system_is_at_cap(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    engine = WorldStateEngine()
-    engine.load_situation_catalog(catalog_path)
-    engine.add_situation(ActiveSituation("A", "SYS-0", "system", None, 5))
-    engine.add_situation(ActiveSituation("B", "SYS-0", "system", None, 5))
-    engine.add_situation(ActiveSituation("C", "SYS-0", "destination", "DST-1", 5))
+    events_path.write_text(
+        json.dumps(
+            [
+                {
+                    "event_id": "E-RANDOM",
+                    "event_family_id": "FAMILY-1",
+                    "duration_days": 2,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
 
-    engine.evaluate_situation_spawn(
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.evaluate_spawn_gate(
         current_system_id="SYS-0",
         neighbor_system_ids=[],
-        current_day=10,
-        world_seed=1234,
+        current_day=1,
+        world_seed=1,
+        spawn_probability=1.0,
+        situation_weight=0.70,
     )
-    assert len(engine.get_active_situations("SYS-0")) == 3
+    assert [e.event_id for e in engine.get_active_events("SYS-0")] == ["E-RANDOM"]
+    assert engine.get_active_situations("SYS-0") == []
+
+
+def test_event_selected_with_empty_event_catalog_falls_back_to_situation(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            [
+                {
+                    "situation_id": "S-RANDOM",
+                    "random_allowed": True,
+                    "event_only": False,
+                    "recovery_only": False,
+                    "allowed_scope": "system",
+                    "duration_days": 4,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(json.dumps([]), encoding="utf-8")
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.evaluate_spawn_gate(
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=5,
+        world_seed=99,
+        spawn_probability=1.0,
+        situation_weight=0.0,
+    )
+    assert [s.situation_id for s in engine.get_active_situations("SYS-0")] == ["S-RANDOM"]
+    assert engine.get_active_events("SYS-0") == []
 
 
 def test_only_current_and_neighbors_are_evaluated(tmp_path: Path) -> None:
-    catalog_path = tmp_path / "situations.json"
-    catalog_path.write_text(
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
         json.dumps(
             [
                 {
@@ -276,13 +318,16 @@ def test_only_current_and_neighbors_are_evaluated(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    events_path.write_text(json.dumps([]), encoding="utf-8")
     engine = WorldStateEngine()
-    engine.load_situation_catalog(catalog_path)
-    engine.evaluate_situation_spawn(
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.evaluate_spawn_gate(
         current_system_id="SYS-0",
         neighbor_system_ids=["SYS-1"],
         current_day=10,
         world_seed=1234,
+        spawn_probability=0.0,
     )
     assert "SYS-0" in engine.active_situations
     assert "SYS-1" in engine.active_situations
@@ -290,8 +335,9 @@ def test_only_current_and_neighbors_are_evaluated(tmp_path: Path) -> None:
 
 
 def test_event_only_situations_never_spawn_randomly(tmp_path: Path) -> None:
-    catalog_path = tmp_path / "situations.json"
-    catalog_path.write_text(
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
         json.dumps(
             [
                 {
@@ -306,13 +352,66 @@ def test_event_only_situations_never_spawn_randomly(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    events_path.write_text(json.dumps([]), encoding="utf-8")
     engine = WorldStateEngine()
-    engine.load_situation_catalog(catalog_path)
-    engine.evaluate_situation_spawn(
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.evaluate_spawn_gate(
         current_system_id="SYS-0",
         neighbor_system_ids=["SYS-1"],
         current_day=10,
         world_seed=1234,
+        spawn_probability=1.0,
+        situation_weight=1.0,
     )
     assert engine.get_active_situations("SYS-0") == []
     assert engine.get_active_situations("SYS-1") == []
+
+
+def test_situation_cap_blocks_situation_but_still_allows_event(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            [
+                {
+                    "situation_id": "S-RANDOM",
+                    "random_allowed": True,
+                    "event_only": False,
+                    "recovery_only": False,
+                    "allowed_scope": "system",
+                    "duration_days": 4,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            [
+                {
+                    "event_id": "E-RANDOM",
+                    "event_family_id": "FAMILY-1",
+                    "duration_days": 2,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.add_situation(ActiveSituation("A", "SYS-0", "system", None, 5))
+    engine.add_situation(ActiveSituation("B", "SYS-0", "system", None, 5))
+    engine.add_situation(ActiveSituation("C", "SYS-0", "destination", "DST-1", 5))
+
+    engine.evaluate_spawn_gate(
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=7,
+        world_seed=77,
+        spawn_probability=1.0,
+        situation_weight=1.0,
+    )
+    assert len(engine.get_active_situations("SYS-0")) == 3
+    assert [e.event_id for e in engine.get_active_events("SYS-0")] == ["E-RANDOM"]
