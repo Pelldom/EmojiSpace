@@ -933,5 +933,290 @@
     "emoji_id": "defeat_death",
     "glyph": "💀",
     "description": "Defeat by destruction. Ship destroyed with no recovery."
+  },
+  {
+    "emoji_id": "event_alien_artifact_discovery",
+    "glyph": "🛸",
+    "description": "Alien artifact discovery."
+  },
+  {
+    "emoji_id": "event_alien_bounty_hunters",
+    "glyph": "👽",
+    "description": "Alien bounty hunters emerge."
+  },
+  {
+    "emoji_id": "event_alien_cultural_exchange",
+    "glyph": "🤝",
+    "description": "Alien cultural exchange."
+  },
+  {
+    "emoji_id": "event_alien_cultural_exhibition",
+    "glyph": "🎭",
+    "description": "Alien cultural exhibition."
+  },
+  {
+    "emoji_id": "event_alien_delegation",
+    "glyph": "📜",
+    "description": "Alien delegation arrives."
+  },
+  {
+    "emoji_id": "event_alien_incident",
+    "glyph": "👾",
+    "description": "Alien incident."
+  },
+  {
+    "emoji_id": "event_alien_science_defector",
+    "glyph": "🔬",
+    "description": "Alien science defector."
+  },
+  {
+    "emoji_id": "event_alien_trade_pact",
+    "glyph": "💱",
+    "description": "Alien trade pact."
+  },
+  {
+    "emoji_id": "event_corporate_audit",
+    "glyph": "📋",
+    "description": "Corporate audit."
+  },
+  {
+    "emoji_id": "event_corporate_takeover",
+    "glyph": "💼",
+    "description": "Corporate takeover."
+  },
+  {
+    "emoji_id": "event_diplomatic_incident",
+    "glyph": "🕊️",
+    "description": "Diplomatic incident."
+  },
+  {
+    "emoji_id": "event_economic_collapse",
+    "glyph": "💥",
+    "description": "Economic collapse."
+  },
+  {
+    "emoji_id": "event_economic_crisis",
+    "glyph": "📉",
+    "description": "Economic crisis."
+  },
+  {
+    "emoji_id": "event_economic_shock",
+    "glyph": "💹",
+    "description": "Economic shock."
+  },
+  {
+    "emoji_id": "event_infrastructure_collapse",
+    "glyph": "🏗️",
+    "description": "Infrastructure collapse."
+  },
+  {
+    "emoji_id": "event_interstellar_incident",
+    "glyph": "🌌",
+    "description": "Interstellar incident."
+  },
+  {
+    "emoji_id": "event_major_discovery",
+    "glyph": "✨",
+    "description": "Major discovery."
+  },
+  {
+    "emoji_id": "event_mass_migration",
+    "glyph": "👪",
+    "description": "Mass migration."
+  },
+  {
+    "emoji_id": "event_merchant_convoy_arrival",
+    "glyph": "🚚",
+    "description": "Merchant convoy arrival."
+  },
+  {
+    "emoji_id": "event_micro_singularity_event",
+    "glyph": "🌀",
+    "description": "Micro singularity event."
+  },
+  {
+    "emoji_id": "event_pirate_warlord_emerges",
+    "glyph": "☠️",
+    "description": "Pirate warlord emerges."
+  },
+  {
+    "emoji_id": "event_plague_outbreak",
+    "glyph": "☣️",
+    "description": "Plague outbreak."
+  },
+  {
+    "emoji_id": "event_political_assassination",
+    "glyph": "🗡️",
+    "description": "Political assassination."
+  },
+  {
+    "emoji_id": "event_religious_schism",
+    "glyph": "⛪",
+    "description": "Religious schism."
+  },
+  {
+    "emoji_id": "event_resource_discovery",
+    "glyph": "⛏️",
+    "description": "Resource discovery."
+  },
+  {
+    "emoji_id": "event_scientific_breakthrough",
+    "glyph": "🔬",
+    "description": "Scientific breakthrough."
+  },
+  {
+    "emoji_id": "event_smuggler_amnesty",
+    "glyph": "📜",
+    "description": "Smuggler amnesty."
+  },
+  {
+    "emoji_id": "event_solar_flare_surge",
+    "glyph": "☀️",
+    "description": "Solar flare surge."
+  },
+  {
+    "emoji_id": "event_stellar_instability",
+    "glyph": "⭐",
+    "description": "Stellar instability."
+  },
+  {
+    "emoji_id": "event_strategic_blockade",
+    "glyph": "🚧",
+    "description": "Strategic blockade."
+  },
+  {
+    "emoji_id": "event_trade_treaty_signed",
+    "glyph": "🤝",
+    "description": "Trade treaty signed."
+  },
+  {
+    "emoji_id": "event_war",
+    "glyph": "⚔️",
+    "description": "War."
+  },
+  {
+    "emoji_id": "situation_black_market_expansion",
+    "glyph": "🕶️",
+    "description": "Black market expansion."
+  },
+  {
+    "emoji_id": "situation_border_tensions",
+    "glyph": "🛂",
+    "description": "Border tensions."
+  },
+  {
+    "emoji_id": "situation_cultural_festival",
+    "glyph": "🎉",
+    "description": "Cultural festival."
+  },
+  {
+    "emoji_id": "situation_economic_recession",
+    "glyph": "📉",
+    "description": "Economic recession."
+  },
+  {
+    "emoji_id": "situation_energy_crisis",
+    "glyph": "🔌",
+    "description": "Energy crisis."
+  },
+  {
+    "emoji_id": "situation_exploration_craze",
+    "glyph": "🧭",
+    "description": "Exploration craze."
+  },
+  {
+    "emoji_id": "situation_food_shortage",
+    "glyph": "🍞",
+    "description": "Food shortage."
+  },
+  {
+    "emoji_id": "situation_industrial_expansion",
+    "glyph": "🏭",
+    "description": "Industrial expansion."
+  },
+  {
+    "emoji_id": "situation_industrial_parts_shortage",
+    "glyph": "⚙️",
+    "description": "Industrial parts shortage."
+  },
+  {
+    "emoji_id": "situation_infrastructure_expansion",
+    "glyph": "🏗️",
+    "description": "Infrastructure expansion."
+  },
+  {
+    "emoji_id": "situation_infrastructure_strain",
+    "glyph": "⚠️",
+    "description": "Infrastructure strain."
+  },
+  {
+    "emoji_id": "situation_labor_strike",
+    "glyph": "✊",
+    "description": "Labor strike."
+  },
+  {
+    "emoji_id": "situation_luxury_goods_demand",
+    "glyph": "💎",
+    "description": "Luxury goods demand."
+  },
+  {
+    "emoji_id": "situation_medical_shortage",
+    "glyph": "💉",
+    "description": "Medical shortage."
+  },
+  {
+    "emoji_id": "situation_military_mobilization",
+    "glyph": "🪖",
+    "description": "Military mobilization."
+  },
+  {
+    "emoji_id": "situation_pirate_surge",
+    "glyph": "🏴‍☠️",
+    "description": "Pirate surge."
+  },
+  {
+    "emoji_id": "situation_population_drain",
+    "glyph": "🚶",
+    "description": "Population drain."
+  },
+  {
+    "emoji_id": "situation_public_panic",
+    "glyph": "😨",
+    "description": "Public panic."
+  },
+  {
+    "emoji_id": "situation_quarantine",
+    "glyph": "⛔",
+    "description": "Quarantine."
+  },
+  {
+    "emoji_id": "situation_reconstruction",
+    "glyph": "🛠️",
+    "description": "Reconstruction."
+  },
+  {
+    "emoji_id": "situation_refugee_strain",
+    "glyph": "🧳",
+    "description": "Refugee strain."
+  },
+  {
+    "emoji_id": "situation_religious_revival",
+    "glyph": "⛪",
+    "description": "Religious revival."
+  },
+  {
+    "emoji_id": "situation_smuggling_crackdown",
+    "glyph": "🔍",
+    "description": "Smuggling crackdown."
+  },
+  {
+    "emoji_id": "situation_supply_chain_failure",
+    "glyph": "📦",
+    "description": "Supply chain failure."
+  },
+  {
+    "emoji_id": "situation_trade_boom",
+    "glyph": "📈",
+    "description": "Trade boom."
   }
 ]
