@@ -23,7 +23,7 @@ def _seed_from_parts(world_seed: int, system_id: str, stream: str) -> int:
     return int(digest[:16], 16)
 
 
-def _weighted_pick_index(weights: list[int], rng: random.Random) -> int:
+def _weighted_pick_index(weights: list[float], rng: random.Random) -> int:
     total = sum(weights)
     if total <= 0:
         raise ValueError("Weights must sum to a positive value.")
@@ -38,7 +38,7 @@ def _weighted_pick_index(weights: list[int], rng: random.Random) -> int:
 
 def _weighted_sample_without_replacement(
     candidates: list[dict[str, Any]],
-    weights: list[int],
+    weights: list[float],
     count: int,
     rng: random.Random,
 ) -> list[dict[str, Any]]:
@@ -93,7 +93,12 @@ def _eligible_hulls() -> list[dict[str, Any]]:
     return eligible
 
 
-def generate_shipdock_inventory(world_seed: int, system_id: str, system_population: int) -> dict:
+def generate_shipdock_inventory(
+    world_seed: int,
+    system_id: str,
+    system_population: int,
+    world_state_engine: Any | None = None,
+) -> dict:
     if not isinstance(world_seed, int):
         raise ValueError("world_seed must be int.")
     if not isinstance(system_id, str) or not system_id:
@@ -107,10 +112,41 @@ def generate_shipdock_inventory(world_seed: int, system_id: str, system_populati
     module_inventory: list[dict[str, Any]] = []
     hull_inventory: list[dict[str, Any]] = []
 
+    def _resolved_weight_percents(domain: str, entity_views: list[dict[str, Any]], key: str) -> dict[str, int]:
+        if world_state_engine is None:
+            return {}
+        resolved = world_state_engine.resolve_modifiers_for_entities(
+            system_id=system_id,
+            domain=domain,
+            entity_views=entity_views,
+        )
+        by_id = resolved.get("resolved", {})
+        mapped: dict[str, int] = {}
+        for entity in entity_views:
+            entity_id = str(entity.get("entity_id", ""))
+            row = by_id.get(entity_id, {})
+            mapped[entity_id] = int(row.get(key, row.get("availability_delta", 0)))
+        return mapped
+
     if module_rng.random() <= MODULE_STOCK_CHANCE[system_population]:
         module_count = module_rng.randint(0, MODULE_MAX_COUNT[system_population])
         module_candidates = _eligible_modules()
-        module_weights = [int(module.get("rarity_weight", 1)) for module in module_candidates]
+        module_entity_views = [
+            {
+                "entity_id": str(module.get("module_id", "")),
+                "category_id": None,
+                "tags": _module_tags(module),
+            }
+            for module in module_candidates
+        ]
+        module_weight_percents = _resolved_weight_percents("modules", module_entity_views, "module_weight_percent")
+        module_weights = []
+        for module in module_candidates:
+            module_id = str(module.get("module_id", ""))
+            base_weight = float(module.get("rarity_weight", 1))
+            weight_percent = float(module_weight_percents.get(module_id, 0))
+            adjusted_weight = max(0.0, base_weight * (1.0 + (weight_percent / 100.0)))
+            module_weights.append(adjusted_weight)
         selected_modules = _weighted_sample_without_replacement(module_candidates, module_weights, module_count, module_rng)
 
         rare_cap = MODULE_RARE_CAP[system_population]
@@ -126,7 +162,13 @@ def generate_shipdock_inventory(world_seed: int, system_id: str, system_populati
                 for entry in module_candidates
                 if entry["rarity_tier"] == "common" and entry["module_id"] not in selected_ids
             ]
-            common_weights = [int(entry.get("rarity_weight", 1)) for entry in common_pool]
+            common_weights = []
+            for entry in common_pool:
+                module_id = str(entry.get("module_id", ""))
+                base_weight = float(entry.get("rarity_weight", 1))
+                weight_percent = float(module_weight_percents.get(module_id, 0))
+                adjusted_weight = max(0.0, base_weight * (1.0 + (weight_percent / 100.0)))
+                common_weights.append(adjusted_weight)
             replacements = _weighted_sample_without_replacement(common_pool, common_weights, excess, module_rng)
             selected_modules.extend(replacements)
 
@@ -138,7 +180,22 @@ def generate_shipdock_inventory(world_seed: int, system_id: str, system_populati
     if hull_rng.random() <= HULL_STOCK_CHANCE[system_population]:
         hull_count = hull_rng.randint(0, HULL_MAX_COUNT[system_population])
         hull_candidates = _eligible_hulls()
-        hull_weights = [int(entry.get("rarity_weight", 1)) for entry in hull_candidates]
+        hull_entity_views = [
+            {
+                "entity_id": str(entry.get("hull_id", "")),
+                "category_id": None,
+                "tags": _hull_tags(entry),
+            }
+            for entry in hull_candidates
+        ]
+        hull_weight_percents = _resolved_weight_percents("ships", hull_entity_views, "ship_weight_percent")
+        hull_weights = []
+        for entry in hull_candidates:
+            hull_id = str(entry.get("hull_id", ""))
+            base_weight = float(entry.get("rarity_weight", 1))
+            weight_percent = float(hull_weight_percents.get(hull_id, 0))
+            adjusted_weight = max(0.0, base_weight * (1.0 + (weight_percent / 100.0)))
+            hull_weights.append(adjusted_weight)
         selected_hulls = _weighted_sample_without_replacement(hull_candidates, hull_weights, hull_count, hull_rng)
         hull_inventory = [
             {"hull_id": entry["hull_id"], "base_price_credits": int(entry["base_price_credits"])}
@@ -146,3 +203,30 @@ def generate_shipdock_inventory(world_seed: int, system_id: str, system_populati
         ]
 
     return {"modules": module_inventory, "hulls": hull_inventory}
+
+
+def _hull_tags(hull: dict[str, Any]) -> list[str]:
+    tags = []
+    for value in hull.get("traits", []):
+        if isinstance(value, str):
+            tags.append(value)
+    return tags
+
+
+def _module_tags(module: dict[str, Any]) -> list[str]:
+    tags: list[str] = []
+    primary = module.get("primary_tag")
+    if isinstance(primary, str):
+        tags.append(primary)
+    secondary_policy = module.get("secondary_policy")
+    if isinstance(secondary_policy, dict):
+        default_secondary = secondary_policy.get("default_secondary")
+        if isinstance(default_secondary, str):
+            tags.append(default_secondary)
+    for key in ("secondary_tags", "secondaries", "secondary_defaults"):
+        raw = module.get(key)
+        if isinstance(raw, list):
+            tags.extend(str(entry) for entry in raw)
+        elif isinstance(raw, str):
+            tags.append(raw)
+    return tags
