@@ -444,6 +444,21 @@ class WorldStateEngine:
         self.register_system(system_id)
         return sorted(self.system_flags[system_id])
 
+    def drain_structural_mutations(self) -> list[dict]:
+        if not self.pending_structural_mutations:
+            return []
+        drained = sorted(
+            list(self.pending_structural_mutations),
+            key=lambda row: (
+                str(row.get("system_id", "")),
+                str(row.get("event_id", row.get("source_event_id", ""))),
+                str(row.get("mutation_type", "")),
+                int(row.get("insertion_index", 0)),
+            ),
+        )
+        self.pending_structural_mutations = []
+        return drained
+
     def get_active_modifiers(self, system_id: str, domain: Optional[str] = None) -> list[dict[str, Any]]:
         self.register_system(system_id)
         rows = list(self.active_modifiers_by_system[system_id])

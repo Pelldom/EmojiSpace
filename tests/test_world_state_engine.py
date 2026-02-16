@@ -1373,3 +1373,63 @@ def test_resolver_output_ordering_is_deterministic() -> None:
     )
     assert list(resolved["resolved"].keys()) == ["A-1", "B-2"]
     assert list(resolved["resolved"]["A-1"].keys()) == ["availability_delta", "demand_bias_percent"]
+
+
+def test_drain_structural_mutations_empty_returns_empty_list() -> None:
+    engine = WorldStateEngine()
+    assert engine.drain_structural_mutations() == []
+
+
+def test_drain_structural_mutations_returns_deterministically_sorted_order() -> None:
+    engine = WorldStateEngine()
+    engine.pending_structural_mutations = [
+        {"system_id": "SYS-B", "event_id": "E-2", "mutation_type": "population_delta", "insertion_index": 2},
+        {"system_id": "SYS-A", "event_id": "E-3", "mutation_type": "government_change", "insertion_index": 1},
+        {"system_id": "SYS-A", "event_id": "E-1", "mutation_type": "government_change", "insertion_index": 9},
+        {"system_id": "SYS-A", "event_id": "E-1", "mutation_type": "asset_destruction"},
+    ]
+    drained = engine.drain_structural_mutations()
+    keys = [
+        (
+            row.get("system_id"),
+            row.get("event_id"),
+            row.get("mutation_type"),
+            row.get("insertion_index", 0),
+        )
+        for row in drained
+    ]
+    assert keys == [
+        ("SYS-A", "E-1", "asset_destruction", 0),
+        ("SYS-A", "E-1", "government_change", 9),
+        ("SYS-A", "E-3", "government_change", 1),
+        ("SYS-B", "E-2", "population_delta", 2),
+    ]
+
+
+def test_drain_structural_mutations_clears_internal_list() -> None:
+    engine = WorldStateEngine()
+    engine.pending_structural_mutations = [{"system_id": "SYS-1", "event_id": "E-1", "mutation_type": "x"}]
+    drained = engine.drain_structural_mutations()
+    assert len(drained) == 1
+    assert engine.pending_structural_mutations == []
+
+
+def test_repeated_drain_after_clear_returns_empty_list() -> None:
+    engine = WorldStateEngine()
+    engine.pending_structural_mutations = [{"system_id": "SYS-1", "event_id": "E-1", "mutation_type": "x"}]
+    first = engine.drain_structural_mutations()
+    second = engine.drain_structural_mutations()
+    assert len(first) == 1
+    assert second == []
+
+
+def test_drain_structural_mutations_does_not_change_rng_state() -> None:
+    import random
+
+    engine = WorldStateEngine()
+    engine.pending_structural_mutations = [{"system_id": "SYS-1", "event_id": "E-1", "mutation_type": "x"}]
+    rng = random.Random(12345)
+    state_before = rng.getstate()
+    _ = engine.drain_structural_mutations()
+    state_after = rng.getstate()
+    assert state_before == state_after
