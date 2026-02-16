@@ -323,5 +323,17 @@
     "tag_id": "weaponized",
     "emoji_id": "goods_weaponized",
     "description": "Goods that are weapons or weapon components."
+  },
+  {
+    "tag_id": "destroyed",
+    "description": "Destination is destroyed and unavailable for normal interaction.",
+    "category": "structural",
+    "applies_to": ["destination"]
+  },
+  {
+    "tag_id": "salvage_site",
+    "description": "Location contains salvageable debris or remains.",
+    "category": "structural",
+    "applies_to": ["destination"]
   }
 ]
