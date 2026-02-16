@@ -273,6 +273,8 @@ def select_subtype(
     system_government_id,
     active_situations,
     travel_context=None,
+    world_state_engine=None,
+    current_system_id=None,
 ):
     encounter_types = load_encounter_types()
     governments = load_governments()
@@ -292,6 +294,24 @@ def select_subtype(
     normalized_situations = active_situations or []
     weighted_candidates = []
     candidate_logs = []
+
+    world_state_resolved = {}
+    if world_state_engine is not None and current_system_id:
+        entity_views = []
+        for encounter_type in encounter_types:
+            entity_views.append(
+                {
+                    "entity_id": encounter_type["subtype_id"],
+                    "category_id": encounter_type.get("encounter_category"),
+                    "tags": _encounter_tags(encounter_type),
+                }
+            )
+        resolved = world_state_engine.resolve_modifiers_for_entities(
+            current_system_id,
+            "encounters",
+            entity_views,
+        )
+        world_state_resolved = resolved.get("resolved", {})
 
     for encounter_type in encounter_types:
         subtype_id = encounter_type["subtype_id"]
@@ -334,22 +354,97 @@ def select_subtype(
                         }
                     )
 
+        encounter_tags = _encounter_tags(encounter_type)
+        ws_row = world_state_resolved.get(subtype_id, {})
+        encounter_weight_percent = int(ws_row.get("encounter_weight_percent", 0))
+        pirate_encounter_percent = int(ws_row.get("pirate_encounter_percent", 0))
+        military_encounter_percent = int(ws_row.get("military_encounter_percent", 0))
+        alien_encounter_percent = int(ws_row.get("alien_encounter_percent", 0))
+        hostile_bias_percent = int(ws_row.get("hostile_bias_percent", 0))
+        encounter_risk_percent = int(ws_row.get("encounter_risk_percent", 0))
+        special = ws_row.get("special", None)
+
+        total_percent = encounter_weight_percent
+        if "pirate" in encounter_tags:
+            total_percent += pirate_encounter_percent
+        if "military" in encounter_tags:
+            total_percent += military_encounter_percent
+        if "alien" in encounter_tags:
+            total_percent += alien_encounter_percent
+        if "hostile" in encounter_tags:
+            total_percent += hostile_bias_percent
+
+        if total_percent != 0:
+            percent_adjusted = float(base_weight) * (1.0 + (float(total_percent) / 100.0))
+            effective_weight = max(0.0, percent_adjusted)
+            modifiers.append(
+                {
+                    "kind": "world_state_weight_percent",
+                    "total_percent": total_percent,
+                    "encounter_weight_percent": encounter_weight_percent,
+                    "pirate_encounter_percent": pirate_encounter_percent,
+                    "military_encounter_percent": military_encounter_percent,
+                    "alien_encounter_percent": alien_encounter_percent,
+                    "hostile_bias_percent": hostile_bias_percent,
+                }
+            )
+        if encounter_risk_percent != 0:
+            modifiers.append(
+                {
+                    "kind": "world_state_encounter_risk_percent",
+                    "value": encounter_risk_percent,
+                }
+            )
+        if special == "alien_surge":
+            modifiers.append(
+                {
+                    "kind": "world_state_special",
+                    "value": "alien_surge",
+                }
+            )
+
         clamped_weight = max(effective_weight, 0)
+        clamped_weight_int = int(round(clamped_weight))
         candidate_log = {
             "subtype_id": subtype_id,
             "base_weight": base_weight,
+            "encounter_tags": encounter_tags,
             "modifiers": modifiers,
             "enforcement_strength": enforcement_strength,
             "travel_context_mode": travel_context_mode,
             "authority_enforcement_applied": authority_enforcement_applied,
             "arrival_enforcement_applied": arrival_enforcement_applied,
             "effective_weight_before_clamp": effective_weight,
-            "final_weight": clamped_weight,
+            "final_weight": clamped_weight_int,
         }
         candidate_logs.append(candidate_log)
 
-        if clamped_weight > 0:
-            weighted_candidates.append((subtype_id, encounter_type, clamped_weight))
+        if clamped_weight_int > 0:
+            weighted_candidates.append((subtype_id, encounter_type, clamped_weight_int))
+
+    if not weighted_candidates:
+        for encounter_type in encounter_types:
+            base_weight = int(encounter_type["base_weight"])
+            if base_weight > 0:
+                weighted_candidates.append((encounter_type["subtype_id"], encounter_type, base_weight))
+        weighted_candidates.sort(key=lambda row: row[0])
+        items = [row[1] for row in weighted_candidates]
+        weights = [row[2] for row in weighted_candidates]
+        seed_string = f"{world_seed}{encounter_id}subtype"
+        selected_subtype = deterministic_weighted_choice(items, weights, seed_string)
+        selection_log = {
+            "candidate_weights": candidate_logs,
+            "enforcement_strength": enforcement_strength,
+            "travel_context_mode": travel_context_mode,
+            "eligible_subtype_ids_ascii": [row[0] for row in weighted_candidates],
+            "eligible_weights": weights,
+            "seed_string": seed_string,
+            "selected_subtype_id": None if selected_subtype is None else selected_subtype["subtype_id"],
+            "zero_adjusted_fallback_to_baseline": True,
+        }
+        if selected_subtype is None:
+            raise ValueError("No eligible encounter subtype after deterministic weighting.")
+        return selected_subtype, selection_log
 
     weighted_candidates.sort(key=lambda row: row[0])
     items = [row[1] for row in weighted_candidates]
@@ -365,6 +460,7 @@ def select_subtype(
         "eligible_weights": weights,
         "seed_string": seed_string,
         "selected_subtype_id": None if selected_subtype is None else selected_subtype["subtype_id"],
+        "zero_adjusted_fallback_to_baseline": False,
     }
 
     if selected_subtype is None:
@@ -430,6 +526,8 @@ def generate_encounter(
     system_government_id,
     active_situations,
     travel_context=None,
+    world_state_engine=None,
+    current_system_id=None,
 ):
     selection_log = {}
 
@@ -439,6 +537,8 @@ def generate_encounter(
         system_government_id,
         active_situations,
         travel_context,
+        world_state_engine,
+        current_system_id,
     )
     selection_log["subtype_selection"] = subtype_log
 
@@ -486,6 +586,8 @@ def generate_travel_encounters(
     system_government_id,
     active_situations,
     travel_context=None,
+    world_state_engine=None,
+    current_system_id=None,
 ):
     if population < 0:
         raise ValueError("population must be >= 0 for travel encounter generation.")
@@ -510,6 +612,8 @@ def generate_travel_encounters(
                 system_government_id=system_government_id,
                 active_situations=active_situations,
                 travel_context=travel_context,
+                world_state_engine=world_state_engine,
+                current_system_id=current_system_id,
             )
             spec.selection_log["travel_roll"] = {
                 "travel_id": travel_id,
@@ -626,3 +730,28 @@ def _smoke_test_travel_loop():
         raise ValueError("Smoke test failed: system_arrival should not reduce authority encounter frequency.")
 
     return first, arrival
+
+
+def _encounter_tags(encounter_type: dict[str, Any]) -> list[str]:
+    tags = set()
+    explicit_tags = encounter_type.get("encounter_tags", [])
+    if isinstance(explicit_tags, list):
+        for tag in explicit_tags:
+            if isinstance(tag, str):
+                tags.add(tag)
+    subtype_id = str(encounter_type.get("subtype_id", ""))
+    default_flags = encounter_type.get("default_flags", [])
+    if isinstance(default_flags, list):
+        for flag in default_flags:
+            if isinstance(flag, str):
+                tags.add(flag)
+    posture = str(encounter_type.get("posture", ""))
+    if posture == "hostile":
+        tags.add("hostile")
+    if "pirate" in subtype_id or "piracy_context" in tags:
+        tags.add("pirate")
+    if "authority_actor" in tags or "military" in subtype_id:
+        tags.add("military")
+    if "alien" in subtype_id:
+        tags.add("alien")
+    return sorted(tags)

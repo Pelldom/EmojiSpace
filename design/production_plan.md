@@ -688,6 +688,7 @@ Phase 6 - Slice 9 Mission Weight Consumption (COMPLETED)
 Phase 6 - Slice 10 Shipdock Inventory Consumption (COMPLETED)
 Phase 6 - Slice 11 Crew Domain Consumption (COMPLETED)
 Phase 6 - Slice 12 Travel Domain Consumption (COMPLETED)
+Phase 6 - Slice 13 Encounter Domain Consumption (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
