@@ -59,7 +59,7 @@ All expansion must originate here.
 | **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
-| Phase 6 | 1.0.x | Events, Situations, and Mission Arcs |
+| Phase 6 | 0.10.x | Situations, Events, and Dynamic World State |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -660,6 +660,18 @@ Completion Summary:
 
 **Target:** 1.0.x
 
+## Phase 6 - Situations, Events, and Dynamic World State (IN PROGRESS)
+
+- Introduces deterministic World State layer
+- Adds Situations (persistent modifiers)
+- Adds Events (discrete mutations)
+- Adds domain-typed ModifierEntry system
+- Adds severity tier model (1-5)
+- Adds spawn gate with configurable frequency (Low 5%, Normal 8%, High 10%)
+- Enforces Worldgen Lock structural persistence
+- Integrates with Time Engine via daily evaluation
+- Maintains strict authority boundaries (Government, Pricing, Population, Travel, Ship Systems)
+
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
 
@@ -728,8 +740,8 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.9.10
-Phase 5 Complete.
+Current Development Version: 0.10.0-dev
+Phase 6 in progress.
 
 ## Authority Statement
 
