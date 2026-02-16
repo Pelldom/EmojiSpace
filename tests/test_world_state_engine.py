@@ -13,6 +13,7 @@ from world_state_engine import (  # noqa: E402
     ActiveEvent,
     ActiveSituation,
     ScheduledEvent,
+    ScheduledSituation,
     WorldStateEngine,
 )
 from interaction_resolvers import destination_actions  # noqa: E402
@@ -1615,6 +1616,179 @@ def test_scheduled_events_do_not_consume_spawn_gate(tmp_path: Path) -> None:
     assert scheduled_count == 1
     assert len(engine.get_active_situations("SYS-0")) == 1
     assert any(row.event_id == "E-SCHEDULED" for row in engine.get_active_events("SYS-0"))
+
+
+def test_spawn_gate_cooldown_blocks_days_d_plus_1_to_d_plus_5_and_unlocks_d_plus_6(
+    monkeypatch,
+) -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-0")
+
+    call_count = {"spawn": 0}
+
+    def _spawn_situation(_system_id: str, _rng: random.Random) -> bool:
+        call_count["spawn"] += 1
+        return True
+
+    def _spawn_event(_system_id: str, _rng: random.Random, current_day: int) -> ActiveEvent:
+        call_count["spawn"] += 1
+        return ActiveEvent(
+            event_id=f"E-{current_day}",
+            event_family_id="F",
+            system_id="SYS-0",
+            remaining_days=1,
+            trigger_day=current_day,
+        )
+
+    monkeypatch.setattr(engine, "_spawn_random_situation", _spawn_situation)
+    monkeypatch.setattr(engine, "_spawn_random_event", _spawn_event)
+    monkeypatch.setattr(engine, "apply_event_effects", lambda **_kwargs: True)
+
+    engine.evaluate_spawn_gate(
+        world_seed=10,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=1,
+        event_frequency_percent=100,
+    )
+    assert engine.cooldown_until_day_by_system["SYS-0"] == 6
+    first_calls = call_count["spawn"]
+    assert first_calls >= 1
+
+    for day in range(2, 7):
+        engine.evaluate_spawn_gate(
+            world_seed=10,
+            current_system_id="SYS-0",
+            neighbor_system_ids=[],
+            current_day=day,
+            event_frequency_percent=100,
+        )
+    assert call_count["spawn"] == first_calls
+    assert engine.cooldown_until_day_by_system["SYS-0"] == 6
+
+    engine.evaluate_spawn_gate(
+        world_seed=10,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=7,
+        event_frequency_percent=100,
+    )
+    assert call_count["spawn"] > first_calls
+    assert engine.cooldown_until_day_by_system["SYS-0"] == 12
+
+
+def test_scheduled_events_bypass_spawn_gate_cooldown(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-S",
+                        "event_family_id": "F",
+                        "severity_tier": 1,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.register_system("SYS-0")
+    engine.cooldown_until_day_by_system["SYS-0"] = 20
+    engine.schedule_event(ScheduledEvent(event_id="E-S", system_id="SYS-0", trigger_day=5))
+    executed = engine.process_scheduled_events(world_seed=1, current_day=5)
+    assert executed == 1
+    assert any(row.event_id == "E-S" for row in engine.get_active_events("SYS-0"))
+
+
+def test_scheduled_situations_bypass_spawn_gate_cooldown(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-S",
+                        "random_allowed": False,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 2, "max": 2},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(json.dumps({"events": []}), encoding="utf-8")
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.register_system("SYS-0")
+    engine.cooldown_until_day_by_system["SYS-0"] = 20
+    engine.schedule_situation(
+        ScheduledSituation(
+            situation_id="S-S",
+            system_id="SYS-0",
+            trigger_day=5,
+        )
+    )
+    executed = engine.process_scheduled_events(world_seed=1, current_day=5)
+    assert executed == 1
+    assert any(row.situation_id == "S-S" for row in engine.get_active_situations("SYS-0"))
+
+
+def test_spawn_gate_cooldown_behavior_is_deterministic_under_repeated_runs(monkeypatch) -> None:
+    def _run_once() -> tuple[int | None, int]:
+        engine = WorldStateEngine()
+        engine.register_system("SYS-0")
+        calls = {"spawn": 0}
+
+        def _spawn_situation(_system_id: str, _rng: random.Random) -> bool:
+            calls["spawn"] += 1
+            return True
+
+        def _spawn_event(_system_id: str, _rng: random.Random, current_day: int) -> ActiveEvent:
+            calls["spawn"] += 1
+            return ActiveEvent(
+                event_id=f"E-{current_day}",
+                event_family_id="F",
+                system_id="SYS-0",
+                remaining_days=1,
+                trigger_day=current_day,
+            )
+
+        monkeypatch.setattr(engine, "_spawn_random_situation", _spawn_situation)
+        monkeypatch.setattr(engine, "_spawn_random_event", _spawn_event)
+        monkeypatch.setattr(engine, "apply_event_effects", lambda **_kwargs: True)
+
+        for day in range(1, 8):
+            engine.evaluate_spawn_gate(
+                world_seed=77,
+                current_system_id="SYS-0",
+                neighbor_system_ids=[],
+                current_day=day,
+                event_frequency_percent=100,
+            )
+        return engine.cooldown_until_day_by_system["SYS-0"], calls["spawn"]
+
+    assert _run_once() == _run_once()
 
 
 def test_scheduled_event_duration_roll_is_deterministic(tmp_path: Path) -> None:

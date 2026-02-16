@@ -73,6 +73,7 @@ class WorldStateEngine:
     last_structural_mutation_day_by_system: dict[str, Optional[int]] = field(
         default_factory=dict
     )
+    cooldown_until_day_by_system: dict[str, Optional[int]] = field(default_factory=dict)
     _sector_ref: Any = None
     _npc_registry_ref: Any = None
     _valid_government_ids: set[str] = field(default_factory=set)
@@ -91,6 +92,8 @@ class WorldStateEngine:
             self.active_modifiers_by_system[system_id] = []
         if system_id not in self.last_structural_mutation_day_by_system:
             self.last_structural_mutation_day_by_system[system_id] = None
+        if system_id not in self.cooldown_until_day_by_system:
+            self.cooldown_until_day_by_system[system_id] = None
 
     def configure_runtime_context(
         self,
@@ -213,30 +216,69 @@ class WorldStateEngine:
         for system_id in sorted(eligible_systems):
             self.register_system(system_id)
 
+        cooldown_until = self.cooldown_until_day_by_system.get(current_system_id)
+        if cooldown_until is not None and current_day <= cooldown_until:
+            print(
+                "Spawn gate cooldown check: "
+                f"system_id={current_system_id} current_day={current_day} "
+                f"cooldown_until={cooldown_until} skipped=true reason=cooldown_active"
+            )
+            return
+        print(
+            "Spawn gate cooldown check: "
+            f"system_id={current_system_id} current_day={current_day} "
+            f"cooldown_until={cooldown_until} skipped=false reason=cooldown_clear"
+        )
+
         rng_seed = _deterministic_seed(world_seed, current_day, "spawn_gate")
         rng = random.Random(rng_seed)
         spawn_probability = max(0.0, min(1.0, float(event_frequency_percent) / 100.0))
         if rng.random() >= spawn_probability:
+            print(
+                "Spawn gate cooldown not set: "
+                f"system_id={current_system_id} current_day={current_day} "
+                f"cooldown_until={self.cooldown_until_day_by_system.get(current_system_id)} "
+                "reason=spawn_gate_roll_failed"
+            )
             return
 
+        generated_any = False
         if rng.random() < 0.70:
-            self._spawn_random_situation(current_system_id, rng)
-            return
-        active_event = self._spawn_random_event(current_system_id, rng, current_day)
-        if active_event is not None:
-            applied = self.apply_event_effects(
-                world_seed=world_seed,
-                current_day=current_day,
-                target_system_id=current_system_id,
-                event_id=active_event.event_id,
-                rng=rng,
-            )
-            if not applied:
-                self._remove_active_event_instance(
-                    system_id=current_system_id,
+            generated_any = bool(self._spawn_random_situation(current_system_id, rng))
+        else:
+            active_event = self._spawn_random_event(current_system_id, rng, current_day)
+            if active_event is not None:
+                generated_any = True
+                applied = self.apply_event_effects(
+                    world_seed=world_seed,
+                    current_day=current_day,
+                    target_system_id=current_system_id,
                     event_id=active_event.event_id,
-                    trigger_day=current_day,
+                    rng=rng,
                 )
+                if not applied:
+                    self._remove_active_event_instance(
+                        system_id=current_system_id,
+                        event_id=active_event.event_id,
+                        trigger_day=current_day,
+                    )
+
+        if generated_any:
+            cooldown_until = current_day + 5
+            self.cooldown_until_day_by_system[current_system_id] = cooldown_until
+            print(
+                "Spawn gate cooldown set: "
+                f"system_id={current_system_id} current_day={current_day} "
+                f"cooldown_until={cooldown_until} generated_any=true reason=spawn_gate_generation"
+            )
+            return
+
+        print(
+            "Spawn gate cooldown not set: "
+            f"system_id={current_system_id} current_day={current_day} "
+            f"cooldown_until={self.cooldown_until_day_by_system.get(current_system_id)} "
+            "reason=no_generation_created"
+        )
 
     def apply_event_effects(
         self,
