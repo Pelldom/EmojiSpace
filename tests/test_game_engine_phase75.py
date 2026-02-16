@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import math
 
 import pytest
 
@@ -29,8 +30,6 @@ def test_phase75_game_engine_determinism_scripted_steps() -> None:
             "type": "travel_to_destination",
             "target_system_id": target_system_id,
             "target_destination_id": target_destination_id,
-            "inter_system": True,
-            "distance_ly": 1,
         },
         {"type": "wait", "days": 2},
     ]
@@ -57,3 +56,67 @@ def test_phase75_location_action_does_not_advance_time() -> None:
         pytest.skip("No safe location action available in current deterministic start state.")
     assert result["turn_before"] == turn_before
     assert result["turn_after"] == turn_before
+
+
+def test_phase751_system_coordinates_are_deterministic() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    coords_a = sorted((system.system_id, float(system.x), float(system.y)) for system in engine_a.sector.systems)
+    coords_b = sorted((system.system_id, float(system.x), float(system.y)) for system in engine_b.sector.systems)
+    assert coords_a == coords_b
+
+
+def test_phase751_warp_range_exceeded_has_no_mutation_or_time_advance() -> None:
+    engine = GameEngine(world_seed=12345)
+    if len(engine.sector.systems) < 2:
+        pytest.skip("Need at least two systems for inter-system warp test.")
+    current = engine.sector.get_system(engine.player_state.current_system_id)
+    target = sorted(
+        [system for system in engine.sector.systems if system.system_id != current.system_id],
+        key=lambda system: system.system_id,
+    )[0]
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    ship.fuel_capacity = 1
+    ship.current_fuel = 1
+    before_turn = engine.execute({"type": "wait", "days": 1})["turn_after"]
+    before_system_id = engine.player_state.current_system_id
+    before_destination_id = engine.player_state.current_destination_id
+    before_fuel = ship.current_fuel
+
+    result = engine.execute({"type": "travel_to_destination", "target_system_id": target.system_id})
+    assert result["ok"] is False
+    assert result["error"] == "warp_range_exceeded"
+    assert result["turn_before"] == before_turn
+    assert result["turn_after"] == before_turn
+    assert engine.player_state.current_system_id == before_system_id
+    assert engine.player_state.current_destination_id == before_destination_id
+    assert ship.current_fuel == before_fuel
+
+
+def test_phase751_successful_warp_uses_ceil_distance_for_time_and_fuel() -> None:
+    engine = GameEngine(world_seed=12345)
+    if len(engine.sector.systems) < 2:
+        pytest.skip("Need at least two systems for inter-system warp test.")
+
+    current = engine.sector.get_system(engine.player_state.current_system_id)
+    candidates = [system for system in engine.sector.systems if system.system_id != current.system_id]
+    candidates.sort(
+        key=lambda system: (
+            math.sqrt(((float(system.x) - float(current.x)) ** 2) + ((float(system.y) - float(current.y)) ** 2)),
+            system.system_id,
+        )
+    )
+    target = candidates[0]
+    distance = math.sqrt(((float(target.x) - float(current.x)) ** 2) + ((float(target.y) - float(current.y)) ** 2))
+    distance_ceil = int(math.ceil(distance))
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    ship.fuel_capacity = max(5, distance_ceil + 1)
+    ship.current_fuel = ship.fuel_capacity
+    fuel_before = int(ship.current_fuel)
+    turn_before = engine.execute({"type": "wait", "days": 1})["turn_after"]
+
+    result = engine.execute({"type": "travel_to_destination", "target_system_id": target.system_id})
+    assert result["ok"] is True
+    assert result["turn_before"] == turn_before
+    assert result["turn_after"] == turn_before + distance_ceil
+    assert int(ship.current_fuel) == fuel_before - distance_ceil

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-import hashlib
 import json
-import random
+import math
 from typing import Any
 
 from combat_resolver import resolve_combat
@@ -39,7 +38,6 @@ from time_engine import (
     advance_time,
     get_current_turn,
 )
-from travel_resolution import resolve_travel
 from world_generator import Destination, System, WorldGenerator
 
 
@@ -161,6 +159,9 @@ class GameEngine:
         return self._build_step_result(context=context, ok=True, error=None)
 
     def _execute_travel_to_destination(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        current_system = self.sector.get_system(self.player_state.current_system_id)
+        if current_system is None:
+            raise ValueError("Current system not found.")
         target_system_id = payload.get("target_system_id")
         if not isinstance(target_system_id, str) or not target_system_id:
             raise ValueError("travel_to_destination requires target_system_id.")
@@ -168,11 +169,11 @@ class GameEngine:
         if system is None:
             raise ValueError(f"Unknown target_system_id: {target_system_id}")
 
-        inter_system = bool(payload.get("inter_system", True))
-        distance_ly = self._coerce_distance(payload.get("distance_ly", 1 if inter_system else 0), inter_system)
+        inter_system = current_system.system_id != system.system_id
+        distance_ly = self._warp_distance_ly(origin=current_system, target=system) if inter_system else 0.0
+        distance_ly_ceiled = int(math.ceil(distance_ly)) if inter_system else 0
         target_destination_id = self._resolve_destination_id(system, payload.get("target_destination_id"))
         route_id = payload.get("route_id")
-        route_tags = payload.get("route_tags")
         travel_id = self._travel_id(
             origin_system_id=self.player_state.current_system_id,
             target_system_id=target_system_id,
@@ -190,38 +191,34 @@ class GameEngine:
                 "target_system_id": target_system_id,
                 "target_destination_id": target_destination_id,
                 "inter_system": inter_system,
-                "distance_ly": distance_ly,
+                "distance_ly": float(distance_ly),
+                "distance_ly_ceiled": int(distance_ly_ceiled),
             },
         )
 
         active_ship = self._active_ship()
-        travel_rng = self._rng_for_stable_id(stable_id=travel_id, stream_name=ENGINE_STREAM_NAME)
-        travel_result = resolve_travel(
-            ship=active_ship,
-            inter_system=inter_system,
-            distance_ly=distance_ly,
-            advance_time=None,
-            player_state=self.player_state,
-            world_state_engine=self._world_state_engine(),
-            current_system_id=self.player_state.current_system_id,
-            route_id=route_id,
-            route_tags=list(route_tags) if isinstance(route_tags, list) else None,
-            rng=travel_rng,
-        )
+        fuel_capacity = int(getattr(active_ship, "fuel_capacity", 0) or 5)
+        current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
+        fuel_cost = int(distance_ly_ceiled)
+        if inter_system and float(distance_ly) > float(fuel_capacity):
+            raise ValueError("warp_range_exceeded")
+        if current_fuel < fuel_cost:
+            raise ValueError("insufficient_fuel")
+
+        active_ship.current_fuel = current_fuel - fuel_cost
         self._event(
             context,
             stage="travel",
             subsystem="travel_resolution",
             detail={
                 "travel_id": travel_id,
-                "success": bool(travel_result.success),
-                "reason": travel_result.reason,
-                "fuel_cost": int(travel_result.fuel_cost),
-                "current_fuel": int(travel_result.current_fuel),
+                "success": True,
+                "reason": "ok",
+                "fuel_cost": int(fuel_cost),
+                "current_fuel": int(active_ship.current_fuel),
+                "fuel_capacity": int(fuel_capacity),
             },
         )
-        if not travel_result.success:
-            return
 
         self.player_state.current_system_id = target_system_id
         self.player_state.current_destination_id = target_destination_id
@@ -231,8 +228,8 @@ class GameEngine:
         active_ship.current_location_id = target_destination_id
         active_ship.location_id = target_destination_id
 
-        days = self._travel_days(inter_system=inter_system, distance_ly=distance_ly)
-        time_result = self._advance_time(days=days, reason=f"travel:{travel_id}")
+        days = int(math.ceil(distance_ly)) if inter_system else 1
+        time_result = self._advance_time_in_chunks(days=days, reason=f"travel:{travel_id}")
         self._event(
             context,
             stage="time_advance",
@@ -240,14 +237,14 @@ class GameEngine:
             detail={
                 "travel_id": travel_id,
                 "days_requested": int(days),
-                "days_completed": int(time_result.days_completed),
-                "hard_stop_reason": time_result.hard_stop_reason,
+                "days_completed": int(time_result["days_completed"]),
+                "hard_stop_reason": time_result["hard_stop_reason"],
             },
         )
 
-        if time_result.hard_stop_reason is not None:
+        if time_result["hard_stop_reason"] is not None:
             context.hard_stop = True
-            context.hard_stop_reason = time_result.hard_stop_reason
+            context.hard_stop_reason = str(time_result["hard_stop_reason"])
             return
 
         border_outcome = self._run_law_checkpoint(context, trigger_type=TriggerType.BORDER)
@@ -671,6 +668,22 @@ class GameEngine:
         finally:
             _set_player_action_context(False)
 
+    def _advance_time_in_chunks(self, *, days: int, reason: str) -> dict[str, Any]:
+        remaining = int(days)
+        completed = 0
+        hard_stop_reason = None
+        while remaining > 0:
+            chunk = min(10, remaining)
+            result = self._advance_time(days=chunk, reason=reason)
+            completed += int(result.days_completed)
+            remaining -= int(result.days_completed)
+            if result.hard_stop_reason is not None:
+                hard_stop_reason = str(result.hard_stop_reason)
+                break
+            if int(result.days_completed) < chunk:
+                break
+        return {"days_requested": int(days), "days_completed": int(completed), "hard_stop_reason": hard_stop_reason}
+
     def _apply_default_start_location(self) -> None:
         system = self.sector.systems[0]
         destination_id = None
@@ -712,20 +725,6 @@ class GameEngine:
 
         return getattr(time_engine_module, "_world_state_engine", None)
 
-    def _travel_days(self, *, inter_system: bool, distance_ly: int) -> int:
-        if inter_system:
-            return max(1, int(distance_ly))
-        return 1
-
-    def _coerce_distance(self, value: Any, inter_system: bool) -> int:
-        if not inter_system:
-            return 0
-        if not isinstance(value, (int, float)):
-            raise ValueError("travel_to_destination.distance_ly must be a number for inter-system travel.")
-        if value < 0:
-            raise ValueError("travel_to_destination.distance_ly must be >= 0.")
-        return int(value)
-
     def _resolve_destination_id(self, system: System, destination_id: Any) -> str | None:
         if isinstance(destination_id, str) and destination_id:
             for destination in system.destinations:
@@ -750,10 +749,10 @@ class GameEngine:
         token = f"{origin_system_id}:{target_system_id}:{destination_part}:{turn}:{route_part}"
         return f"TRAVEL-{token}"
 
-    def _rng_for_stable_id(self, *, stable_id: str, stream_name: str) -> random.Random:
-        token = f"{self.world_seed}|{stable_id}|{stream_name}"
-        digest = hashlib.sha256(token.encode("ascii")).hexdigest()
-        return random.Random(int(digest[:16], 16))
+    def _warp_distance_ly(self, *, origin: System, target: System) -> float:
+        dx = float(target.x) - float(origin.x)
+        dy = float(target.y) - float(origin.y)
+        return math.sqrt((dx * dx) + (dy * dy))
 
     def _active_situation_ids_for_current_system(self) -> list[str]:
         engine = self._world_state_engine()

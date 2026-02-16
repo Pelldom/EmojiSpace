@@ -780,6 +780,24 @@ Implement a single authoritative `GameEngine` orchestration layer that unifies c
 - 100+ CLI turns execute without crash.
 - Determinism tests pass for repeated seed + command script runs.
 
+## Phase 7.5.1 - Deterministic Warp Spatial Model (IN PROGRESS)
+
+**Target:** 0.10.3
+
+### Objective
+Add deterministic spatial coordinates to systems and make GameEngine-owned warp distance authoritative for travel cost and travel time.
+
+### Includes
+- Deterministic `(x, y)` coordinates for all generated systems.
+- Engine-owned inter-system distance calculation from system coordinates.
+- Fuel-capacity range check before warp travel.
+- CLI travel flow without manual `distance_ly` input.
+
+### Excludes
+- No new gameplay systems.
+- No legacy orchestrator reuse.
+- No subsystem-wide refactor.
+
 ## Phase 8 - Monetization and Play Store Deployment
 
 **Target:** 1.1.x
@@ -802,7 +820,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.2
+Current Development Version: 0.10.3
 Phase 6 complete.
 
 ## Authority Statement

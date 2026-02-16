@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import hashlib
 import json
+import math
 import random
 
 from economy_data import PROFILE_IDS
@@ -47,6 +48,8 @@ class System:
     # These are not authoritative and should not be used by new logic.
     attributes: dict
     neighbors: List[str]
+    x: float = 0.0
+    y: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,8 @@ class Sector(Galaxy):
 
 
 class WorldGenerator:
+    GALAXY_RADIUS = 100.0
+
     def __init__(
         self,
         seed: int,
@@ -163,8 +168,11 @@ class WorldGenerator:
                 destinations=system.destinations,
                 attributes=system.attributes,
                 neighbors=neighbors,
+                x=system.x,
+                y=system.y,
             )
 
+        systems = self._assign_spatial_coordinates(systems)
         return Galaxy(systems=systems)
 
     def _choose_government_id(self, rng: random.Random) -> str:
@@ -193,6 +201,31 @@ class WorldGenerator:
         if chosen not in weights:
             raise ValueError(f"Invalid population level: {chosen}")
         return chosen
+
+    def _assign_spatial_coordinates(self, systems: List[System]) -> List[System]:
+        by_id = {system.system_id: system for system in systems}
+        updated: Dict[str, System] = {}
+        for system_id in sorted(by_id):
+            system = by_id[system_id]
+            x, y = _deterministic_system_coordinates(
+                world_seed=self._seed,
+                system_id=system_id,
+                stream_name="world_spatial_coordinates",
+                radius=float(self.GALAXY_RADIUS),
+            )
+            updated[system_id] = System(
+                system_id=system.system_id,
+                name=system.name,
+                position=system.position,
+                population=system.population,
+                government_id=system.government_id,
+                destinations=system.destinations,
+                attributes=system.attributes,
+                neighbors=system.neighbors,
+                x=float(x),
+                y=float(y),
+            )
+        return [updated[system.system_id] for system in systems]
 
 
 def _load_location_availability() -> Dict[str, dict]:
@@ -514,6 +547,21 @@ def _destination_population(
 def _seeded_rng(seed: int, *parts: str) -> random.Random:
     digest = hashlib.md5((f"{seed}|" + "|".join(parts)).encode("utf-8")).hexdigest()
     return random.Random(int(digest[:8], 16))
+
+
+def _deterministic_system_coordinates(
+    *,
+    world_seed: int,
+    system_id: str,
+    stream_name: str,
+    radius: float,
+) -> tuple[float, float]:
+    seed_token = f"{world_seed}|{system_id}|{stream_name}"
+    digest = hashlib.sha256(seed_token.encode("ascii")).hexdigest()
+    rng = random.Random(int(digest[:16], 16))
+    angle = rng.random() * (2.0 * math.pi)
+    radial = math.sqrt(rng.random()) * float(radius)
+    return radial * math.cos(angle), radial * math.sin(angle)
 
 
 def _first_destination_market(destinations: List[Destination]) -> Market | None:
