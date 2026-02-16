@@ -24,6 +24,9 @@ class PricingBreakdown:
     tag_bias: float
     government_bias: float
     scarcity_modifier: float
+    world_state_price_bias_percent: int
+    world_state_demand_bias_percent: int
+    world_state_availability_delta: int
     final_price: float
     tags: List[str]
     skipped_tags: List[str]
@@ -64,6 +67,7 @@ def price_transaction(
     logger: Logger | None = None,
     turn: int = 0,
     ship: Any | None = None,
+    world_state_engine: Any | None = None,
 ) -> PricingResult:
     market_good, _ = _find_market_good(market, sku)
     try:
@@ -93,11 +97,36 @@ def price_transaction(
     base_price = float(market_good.base_price) if market_good is not None else float(good.base_price)
     price = base_price
 
+    world_state_price_bias_percent = 0
+    world_state_demand_bias_percent = 0
+    world_state_availability_delta = 0
+    if world_state_engine is not None and system_id:
+        entity_views = [
+            {
+                "entity_id": good.sku,
+                "category_id": good.category,
+                "tags": _resolved_tags(good, market_good),
+            }
+        ]
+        resolved = world_state_engine.resolve_modifiers_for_entities(
+            system_id=system_id,
+            domain="goods",
+            entity_views=entity_views,
+        )
+        by_entity = resolved.get("resolved", {})
+        row = by_entity.get(good.sku, {})
+        world_state_price_bias_percent = int(row.get("price_bias_percent", 0))
+        world_state_demand_bias_percent = int(row.get("demand_bias_percent", 0))
+        world_state_availability_delta = int(row.get("availability_delta", 0))
+
     # Step 2: category pressure (produced / neutral / consumed)
     price *= _category_pressure_multiplier(category_role)
 
     # Step 3: scarcity modifier (from Phase 1 economy availability)
-    price *= scarcity_modifier
+    effective_scarcity_modifier = float(scarcity_modifier) + float(world_state_availability_delta)
+    price *= effective_scarcity_modifier
+    demand_multiplier = 1.0 + (float(world_state_demand_bias_percent) / 100.0)
+    price *= demand_multiplier
 
     # Step 4: substitute discount (selling only)
     substitute_discount = 0.0
@@ -117,18 +146,13 @@ def price_transaction(
     # Step 6: government price bias (coarse and capped)
     government_bias = 0.0  # TODO(Phase 2.6): Government bias is derived from tag interpretation only.
     price *= 1.0 + government_bias
+    world_state_price_bias = float(world_state_price_bias_percent) / 100.0
+    price *= 1.0 + world_state_price_bias
 
-    # Step 7: clamp final price
-    price = max(price, _salvage_floor(base_price))
-    if action == "sell" and substitute:
-        ideal_price = _ideal_price_without_substitute(
-            base_price=base_price,
-            category_role=category_role,
-            scarcity_modifier=scarcity_modifier,
-            tag_bias=tag_bias,
-            government_bias=government_bias,
-        )
-        price = min(price, ideal_price)
+    # Step 7: clamp final multiplier to non-negative only (no upper clamp)
+    final_multiplier = 0.0 if base_price == 0 else (price / base_price)
+    final_multiplier = max(0.0, final_multiplier)
+    price = base_price * final_multiplier
 
     # Phase 5.6: apply crew multipliers at pricing source of truth only.
     multiplier = 1.0
@@ -148,7 +172,10 @@ def price_transaction(
         substitute_discount=substitute_discount,
         tag_bias=tag_bias,
         government_bias=government_bias,
-        scarcity_modifier=scarcity_modifier,
+        scarcity_modifier=effective_scarcity_modifier,
+        world_state_price_bias_percent=world_state_price_bias_percent,
+        world_state_demand_bias_percent=world_state_demand_bias_percent,
+        world_state_availability_delta=world_state_availability_delta,
         final_price=price,
         tags=tags,
         skipped_tags=skipped_tags,
@@ -268,6 +295,9 @@ def _log_pricing(
             f"tags={breakdown.tags} tag_bias={breakdown.tag_bias:.2f} "
             f"skipped_tags={breakdown.skipped_tags} interpreted_tags={breakdown.interpreted_tags} "
             f"gov_bias={breakdown.government_bias:.2f} scarcity={breakdown.scarcity_modifier:.2f} "
+            f"ws_price_bias={breakdown.world_state_price_bias_percent} "
+            f"ws_demand_bias={breakdown.world_state_demand_bias_percent} "
+            f"ws_availability_delta={breakdown.world_state_availability_delta} "
             f"final={breakdown.final_price:.2f} legality={breakdown.legality.value} "
             f"risk={breakdown.risk_tier.value}"
         ),

@@ -683,6 +683,7 @@ Phase 6 - Slice 4 Scheduled Event Execution (COMPLETED)
 Phase 6 - Slice 5 Propagation Execution (COMPLETED)
 Phase 6 - Slice 6 TimeEngine Integration (COMPLETED)
 Phase 6 - Slice 7 Shared Modifier Resolver (COMPLETED)
+Phase 6 - Slice 8 Goods Pricing Consumption (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
