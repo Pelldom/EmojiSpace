@@ -68,6 +68,9 @@ class WorldStateEngine:
     system_flags: dict[str, set[str]] = field(default_factory=dict)
     pending_structural_mutations: list[dict[str, Any]] = field(default_factory=list)
     active_modifiers_by_system: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    last_structural_mutation_day_by_system: dict[str, Optional[int]] = field(
+        default_factory=dict
+    )
     _situation_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     _event_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     _scheduled_insertion_counter: int = 0
@@ -81,6 +84,8 @@ class WorldStateEngine:
             self.system_flags[system_id] = set()
         if system_id not in self.active_modifiers_by_system:
             self.active_modifiers_by_system[system_id] = []
+        if system_id not in self.last_structural_mutation_day_by_system:
+            self.last_structural_mutation_day_by_system[system_id] = None
 
     def get_active_situations(self, system_id: str) -> list[ActiveSituation]:
         self.register_system(system_id)
@@ -200,13 +205,19 @@ class WorldStateEngine:
             return
         active_event = self._spawn_random_event(current_system_id, rng, current_day)
         if active_event is not None:
-            self.apply_event_effects(
+            applied = self.apply_event_effects(
                 world_seed=world_seed,
                 current_day=current_day,
                 target_system_id=current_system_id,
                 event_id=active_event.event_id,
                 rng=rng,
             )
+            if not applied:
+                self._remove_active_event_instance(
+                    system_id=current_system_id,
+                    event_id=active_event.event_id,
+                    trigger_day=current_day,
+                )
 
     def apply_event_effects(
         self,
@@ -215,7 +226,7 @@ class WorldStateEngine:
         target_system_id: str,
         event_id: str,
         rng: random.Random,
-    ) -> None:
+    ) -> bool:
         del world_seed  # Reserved for future deterministic channels.
         self.register_system(target_system_id)
         event_def = self._event_catalog_by_id.get(event_id)
@@ -225,6 +236,44 @@ class WorldStateEngine:
         effects = event_def.get("effects", {})
         if not isinstance(effects, dict):
             effects = {}
+
+        is_structural = _is_structural_event_effects(effects)
+        print(
+            "Structural detection: "
+            f"origin_system_id={target_system_id} event_id={event_id} "
+            f"current_day={current_day} is_structural={is_structural}"
+        )
+        if is_structural:
+            last_day = self.last_structural_mutation_day_by_system.get(target_system_id)
+            if (
+                last_day is not None
+                and isinstance(last_day, int)
+                and (current_day - last_day) < 10
+            ):
+                deferred_day = last_day + 10
+                if deferred_day <= current_day:
+                    deferred_day = current_day + 1
+                self.schedule_event(
+                    ScheduledEvent(
+                        event_id=event_id,
+                        system_id=target_system_id,
+                        trigger_day=deferred_day,
+                    )
+                )
+                print(
+                    "Structural rate-limiter defer: "
+                    f"origin_system_id={target_system_id} event_id={event_id} "
+                    f"original_day={current_day} deferred_day={deferred_day} "
+                    f"last_structural_mutation_day={last_day}"
+                )
+                return False
+            self.last_structural_mutation_day_by_system[target_system_id] = current_day
+            print(
+                "Structural rate-limiter allow: "
+                f"origin_system_id={target_system_id} event_id={event_id} "
+                f"current_day={current_day} "
+                f"last_structural_mutation_day={current_day}"
+            )
 
         created = effects.get("create_situations", [])
         if isinstance(created, list):
@@ -319,6 +368,7 @@ class WorldStateEngine:
                     "day_applied": None,
                 }
             )
+        return True
 
     def process_scheduled_events(self, world_seed: int, current_day: int) -> int:
         due_situations: list[ScheduledSituation] = []
@@ -389,14 +439,21 @@ class WorldStateEngine:
                     trigger_day=current_day,
                 )
             )
-            self.apply_event_effects(
+            applied = self.apply_event_effects(
                 world_seed=world_seed,
                 current_day=current_day,
                 target_system_id=row.system_id,
                 event_id=row.event_id,
                 rng=rng,
             )
-            executed += 1
+            if applied:
+                executed += 1
+            else:
+                self._remove_active_event_instance(
+                    system_id=row.system_id,
+                    event_id=row.event_id,
+                    trigger_day=current_day,
+                )
 
         self.scheduled_situations = pending_situations
         self.scheduled_events = pending
@@ -771,6 +828,23 @@ class WorldStateEngine:
         )
         return True
 
+    def _remove_active_event_instance(
+        self,
+        *,
+        system_id: str,
+        event_id: str,
+        trigger_day: int,
+    ) -> None:
+        rows = self.active_events.get(system_id, [])
+        for index in range(len(rows) - 1, -1, -1):
+            row = rows[index]
+            if (
+                row.event_id == event_id
+                and int(getattr(row, "trigger_day", 0)) == trigger_day
+            ):
+                rows.pop(index)
+                return
+
     def _add_situation_modifiers(self, active_situation: ActiveSituation) -> None:
         definition = self._situation_catalog_by_id.get(active_situation.situation_id)
         if definition is None:
@@ -839,6 +913,19 @@ def _coerce_non_negative_int(value: Any, default: int) -> int:
     if number < 0:
         return default
     return number
+
+
+def _is_structural_event_effects(effects: dict[str, Any]) -> bool:
+    population_delta = effects.get("population_delta")
+    if isinstance(population_delta, int) and population_delta != 0:
+        return True
+    government_change = effects.get("government_change")
+    if government_change not in (None, "", []):
+        return True
+    destroy_destination_ids = effects.get("destroy_destination_ids")
+    if isinstance(destroy_destination_ids, list) and len(destroy_destination_ids) > 0:
+        return True
+    return False
 
 
 def _roll_duration_days(duration_spec: Any, rng: random.Random, default_days: int) -> int:

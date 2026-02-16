@@ -812,6 +812,272 @@ def test_pending_structural_mutations_are_recorded_not_applied(tmp_path: Path) -
     assert record["mutation_payload"]["government_change"] == "gov_new"
 
 
+def test_structural_rate_limiter_first_structural_event_is_allowed(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-STRUCT-ONE",
+                        "event_family_id": "F-STRUCT",
+                        "severity_tier": 4,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "population_delta": 1,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    applied = engine.apply_event_effects(
+        world_seed=1,
+        current_day=5,
+        target_system_id="SYS-0",
+        event_id="E-STRUCT-ONE",
+        rng=random.Random(1),
+    )
+    assert applied is True
+    assert engine.last_structural_mutation_day_by_system["SYS-0"] == 5
+    assert len(engine.pending_structural_mutations) == 1
+    assert engine.scheduled_events == []
+
+
+def test_structural_rate_limiter_defers_second_event_within_10_days(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-STRUCT-TWO",
+                        "event_family_id": "F-STRUCT",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "government_change": "gov_new",
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+
+    first = engine.apply_event_effects(
+        world_seed=1,
+        current_day=5,
+        target_system_id="SYS-0",
+        event_id="E-STRUCT-TWO",
+        rng=random.Random(1),
+    )
+    second = engine.apply_event_effects(
+        world_seed=1,
+        current_day=12,
+        target_system_id="SYS-0",
+        event_id="E-STRUCT-TWO",
+        rng=random.Random(1),
+    )
+    assert first is True
+    assert second is False
+    assert engine.last_structural_mutation_day_by_system["SYS-0"] == 5
+    assert len(engine.pending_structural_mutations) == 1
+    assert len(engine.scheduled_events) == 1
+    assert engine.scheduled_events[0].event_id == "E-STRUCT-TWO"
+    assert engine.scheduled_events[0].trigger_day == 15
+
+
+def test_structural_rate_limiter_deferred_event_executes_on_eligible_day(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-STRUCT-SCHED",
+                        "event_family_id": "F-STRUCT",
+                        "severity_tier": 4,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "destroy_destination_ids": ["DST-1"],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    assert engine.apply_event_effects(
+        world_seed=1,
+        current_day=5,
+        target_system_id="SYS-0",
+        event_id="E-STRUCT-SCHED",
+        rng=random.Random(1),
+    )
+    assert not engine.apply_event_effects(
+        world_seed=1,
+        current_day=12,
+        target_system_id="SYS-0",
+        event_id="E-STRUCT-SCHED",
+        rng=random.Random(1),
+    )
+    assert engine.process_scheduled_events(world_seed=1, current_day=14) == 0
+    assert engine.process_scheduled_events(world_seed=1, current_day=15) == 1
+    assert engine.last_structural_mutation_day_by_system["SYS-0"] == 15
+    assert len(engine.pending_structural_mutations) == 2
+
+
+def test_non_structural_events_bypass_rate_limiter(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-NON-STRUCT",
+                        "event_family_id": "F-NON",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": ["alpha"],
+                            "system_flag_remove": [],
+                            "modifiers": [
+                                {
+                                    "domain": "travel",
+                                    "target_type": "ALL",
+                                    "target_id": None,
+                                    "modifier_type": "risk_bias_delta",
+                                    "modifier_value": 1,
+                                }
+                            ],
+                            "population_delta": 0,
+                            "government_change": None,
+                            "destroy_destination_ids": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    assert engine.apply_event_effects(
+        world_seed=1,
+        current_day=2,
+        target_system_id="SYS-1",
+        event_id="E-NON-STRUCT",
+        rng=random.Random(1),
+    )
+    assert engine.apply_event_effects(
+        world_seed=1,
+        current_day=3,
+        target_system_id="SYS-1",
+        event_id="E-NON-STRUCT",
+        rng=random.Random(1),
+    )
+    assert engine.last_structural_mutation_day_by_system["SYS-1"] is None
+    assert engine.scheduled_events == []
+    assert engine.pending_structural_mutations == []
+
+
+def test_structural_rate_limiter_is_deterministic_across_repeated_runs(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-STRUCT-DET",
+                        "event_family_id": "F-DET",
+                        "severity_tier": 5,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                            "population_delta": -1,
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> tuple[int | None, int, list[tuple[str, int]]]:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        assert engine.apply_event_effects(
+            world_seed=91,
+            current_day=10,
+            target_system_id="SYS-X",
+            event_id="E-STRUCT-DET",
+            rng=random.Random(7),
+        )
+        assert not engine.apply_event_effects(
+            world_seed=91,
+            current_day=14,
+            target_system_id="SYS-X",
+            event_id="E-STRUCT-DET",
+            rng=random.Random(7),
+        )
+        return (
+            engine.last_structural_mutation_day_by_system["SYS-X"],
+            len(engine.pending_structural_mutations),
+            [(row.event_id, row.trigger_day) for row in engine.scheduled_events],
+        )
+
+    assert _run_once() == _run_once()
+
+
 def test_apply_event_effects_raises_when_event_missing() -> None:
     engine = WorldStateEngine()
     engine.load_situation_catalog(catalog_path=Path(__file__).resolve().parents[1] / "data" / "situations.json")
