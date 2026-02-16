@@ -60,6 +60,7 @@ All expansion must originate here.
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
 | Phase 6 - World State, Situations, and Events Execution (COMPLETED) | 0.10.1 | World State, Situations, and Events Execution |
+| Phase 7.5 | 0.10.2 | Game Engine Unification (Authoritative Orchestration Layer) |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -755,6 +756,30 @@ For future addtion of adventure packages, or theme packs and general additions t
   - new/expanded Events
 ---
 
+## Phase 7.5 - Game Engine Unification (IN PROGRESS)
+
+**Target:** 0.10.2
+
+### Objective
+Implement a single authoritative `GameEngine` orchestration layer that unifies command execution ordering across travel, time, world state, law, encounters, interaction, resolver routing, and gated rewards.
+
+### Includes
+- Authoritative orchestration class and step execution boundary.
+- Deterministic command processing and StepResult logging.
+- Hard-stop propagation and immediate abort behavior.
+- Minimal CLI validation path for pass-level verification.
+- Determinism tests for repeated seeded command sequences.
+
+### Excludes
+- No new mechanics.
+- No subsystem refactors.
+- No dependency on legacy orchestrators as runtime authority.
+- No UI framework work.
+
+### Benchmark to Advance
+- 100+ CLI turns execute without crash.
+- Determinism tests pass for repeated seed + command script runs.
+
 ## Phase 8 - Monetization and Play Store Deployment
 
 **Target:** 1.1.x
@@ -777,7 +802,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.1
+Current Development Version: 0.10.2
 Phase 6 complete.
 
 ## Authority Statement
