@@ -1256,3 +1256,120 @@ def test_propagation_target_selection_is_deterministic_and_respects_constraints(
     second = _run_once()
     assert first == second
     assert first == "SYS-C"
+
+
+def test_aggregated_modifier_map_is_order_independent_and_deterministic() -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-1")
+    rows = [
+        {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": None,
+            "modifier_type": "price_bias_percent",
+            "modifier_value": 5,
+            "source_type": "event",
+            "source_id": "E-1",
+        },
+        {
+            "domain": "goods",
+            "target_type": "tag",
+            "target_id": "medical",
+            "modifier_type": "price_bias_percent",
+            "modifier_value": 3,
+            "source_type": "situation",
+            "source_id": "S-1",
+        },
+        {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": None,
+            "modifier_type": "price_bias_percent",
+            "modifier_value": -2,
+            "source_type": "event",
+            "source_id": "E-2",
+        },
+    ]
+    engine.active_modifiers_by_system["SYS-1"] = list(rows)
+    first = engine.get_aggregated_modifier_map("SYS-1", "goods")
+    engine.active_modifiers_by_system["SYS-1"] = list(reversed(rows))
+    second = engine.get_aggregated_modifier_map("SYS-1", "goods")
+    assert first == second
+    assert first[("ALL", None, "price_bias_percent")] == 3
+    assert first[("tag", "medical", "price_bias_percent")] == 3
+
+
+def test_resolver_stacks_all_tag_category_and_id_with_caps() -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-1")
+    engine.active_modifiers_by_system["SYS-1"] = [
+        {"domain": "goods", "target_type": "ALL", "target_id": None, "modifier_type": "price_bias_percent", "modifier_value": 20, "source_type": "event", "source_id": "E1"},
+        {"domain": "goods", "target_type": "category", "target_id": "MED", "modifier_type": "price_bias_percent", "modifier_value": 20, "source_type": "event", "source_id": "E2"},
+        {"domain": "goods", "target_type": "tag", "target_id": "medical", "modifier_type": "price_bias_percent", "modifier_value": 20, "source_type": "situation", "source_id": "S1"},
+        {"domain": "goods", "target_type": "sku", "target_id": "SKU-1", "modifier_type": "price_bias_percent", "modifier_value": 20, "source_type": "event", "source_id": "E3"},
+        {"domain": "goods", "target_type": "ALL", "target_id": None, "modifier_type": "availability_delta", "modifier_value": 10, "source_type": "event", "source_id": "E4"},
+    ]
+    resolved = engine.resolve_modifiers_for_entities(
+        system_id="SYS-1",
+        domain="goods",
+        entity_views=[
+            {"entity_id": "SKU-1", "category_id": "MED", "tags": ["medical", "essential"]},
+            {"entity_id": "SKU-2", "category_id": "MED", "tags": ["medical"]},
+        ],
+    )
+    assert resolved["resolved"]["SKU-1"]["price_bias_percent"] == 40
+    assert resolved["resolved"]["SKU-1"]["availability_delta"] == 3
+    assert resolved["resolved"]["SKU-2"]["price_bias_percent"] == 40
+
+
+def test_resolver_supports_destination_id_targeting() -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-1")
+    engine.active_modifiers_by_system["SYS-1"] = [
+        {"domain": "travel", "target_type": "destination_id", "target_id": "DST-1", "modifier_type": "risk_bias_delta", "modifier_value": 2, "source_type": "event", "source_id": "E1"},
+        {"domain": "travel", "target_type": "destination_id", "target_id": "DST-2", "modifier_type": "risk_bias_delta", "modifier_value": -1, "source_type": "event", "source_id": "E2"},
+    ]
+    resolved = engine.resolve_modifiers_for_entities(
+        system_id="SYS-1",
+        domain="travel",
+        entity_views=[
+            {"entity_id": "DST-1", "category_id": None, "tags": []},
+            {"entity_id": "DST-3", "category_id": None, "tags": []},
+        ],
+    )
+    assert resolved["resolved"]["DST-1"]["risk_bias_delta"] == 2
+    assert resolved["resolved"]["DST-3"] == {}
+
+
+def test_caps_are_applied_after_sum() -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-1")
+    engine.active_modifiers_by_system["SYS-1"] = [
+        {"domain": "travel", "target_type": "ALL", "target_id": None, "modifier_type": "risk_bias_delta", "modifier_value": 5, "source_type": "event", "source_id": "E1"},
+        {"domain": "travel", "target_type": "ALL", "target_id": None, "modifier_type": "risk_bias_delta", "modifier_value": 5, "source_type": "event", "source_id": "E2"},
+    ]
+    resolved = engine.resolve_modifiers_for_entities(
+        system_id="SYS-1",
+        domain="travel",
+        entity_views=[{"entity_id": "R-1", "category_id": None, "tags": []}],
+    )
+    assert resolved["resolved"]["R-1"]["risk_bias_delta"] == 2
+
+
+def test_resolver_output_ordering_is_deterministic() -> None:
+    engine = WorldStateEngine()
+    engine.register_system("SYS-1")
+    engine.active_modifiers_by_system["SYS-1"] = [
+        {"domain": "goods", "target_type": "ALL", "target_id": None, "modifier_type": "demand_bias_percent", "modifier_value": 1, "source_type": "event", "source_id": "E1"},
+        {"domain": "goods", "target_type": "ALL", "target_id": None, "modifier_type": "availability_delta", "modifier_value": 1, "source_type": "event", "source_id": "E1"},
+    ]
+    resolved = engine.resolve_modifiers_for_entities(
+        system_id="SYS-1",
+        domain="goods",
+        entity_views=[
+            {"entity_id": "B-2", "category_id": "X", "tags": []},
+            {"entity_id": "A-1", "category_id": "X", "tags": []},
+        ],
+    )
+    assert list(resolved["resolved"].keys()) == ["A-1", "B-2"]
+    assert list(resolved["resolved"]["A-1"].keys()) == ["availability_delta", "demand_bias_percent"]

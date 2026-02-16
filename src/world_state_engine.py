@@ -3,7 +3,7 @@ import json
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, ClassVar, Optional
 
 
 @dataclass
@@ -33,6 +33,23 @@ class ScheduledEvent:
 
 @dataclass
 class WorldStateEngine:
+    _MODIFIER_CAPS: ClassVar[dict[tuple[str, str], tuple[int | None, int | None]]] = {
+        ("goods", "price_bias_percent"): (-50, 40),
+        ("goods", "demand_bias_percent"): (-50, 50),
+        ("goods", "availability_delta"): (-3, 3),
+        ("missions", "spawn_weight_delta"): (-100, 100),
+        ("missions", "payout_bias_percent"): (-50, 50),
+        ("ships", "availability_delta"): (-3, 3),
+        ("ships", "price_bias_percent"): (-40, 40),
+        ("modules", "availability_delta"): (-3, 3),
+        ("modules", "price_bias_percent"): (-40, 40),
+        ("crew", "hire_weight_delta"): (-100, 100),
+        ("crew", "wage_bias_percent"): (-50, 50),
+        ("travel", "travel_time_delta"): (-2, 2),
+        ("travel", "risk_bias_delta"): (-2, 2),
+        ("travel", "special_flag"): (0, 1),
+    }
+
     active_situations: dict[str, list[ActiveSituation]] = field(default_factory=dict)
     active_events: dict[str, list[ActiveEvent]] = field(default_factory=dict)
     scheduled_events: list[ScheduledEvent] = field(default_factory=list)
@@ -444,6 +461,89 @@ class WorldStateEngine:
             ),
         )
 
+    def get_aggregated_modifier_map(self, system_id: str, domain: str) -> dict[tuple[str, str | None, str], int]:
+        self.register_system(system_id)
+        aggregated: dict[tuple[str, str | None, str], int] = {}
+        rows = [
+            row
+            for row in self.active_modifiers_by_system[system_id]
+            if str(row.get("domain", "")) == domain
+        ]
+        rows_sorted = sorted(
+            rows,
+            key=lambda row: (
+                str(row.get("source_type", "")),
+                str(row.get("source_id", "")),
+                str(row.get("domain", "")),
+                str(row.get("target_type", "")),
+                "" if row.get("target_id") is None else str(row.get("target_id")),
+                str(row.get("modifier_type", "")),
+                int(row.get("modifier_value", 0)),
+            ),
+        )
+        for row in rows_sorted:
+            modifier_type = str(row.get("modifier_type", ""))
+            if not modifier_type:
+                continue
+            canonical_target_type = _canonical_target_type(str(row.get("target_type", "")))
+            target_id = row.get("target_id")
+            if target_id is not None:
+                target_id = str(target_id)
+            key = (canonical_target_type, target_id, modifier_type)
+            aggregated[key] = aggregated.get(key, 0) + int(row.get("modifier_value", 0))
+        return aggregated
+
+    def resolve_modifiers_for_entities(
+        self,
+        system_id: str,
+        domain: str,
+        entity_views: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        aggregated = self.get_aggregated_modifier_map(system_id=system_id, domain=domain)
+        resolved: dict[str, dict[str, int]] = {}
+        for entity in sorted(entity_views, key=lambda row: str(row.get("entity_id", ""))):
+            entity_id = str(entity.get("entity_id", ""))
+            if not entity_id:
+                continue
+            category_id = entity.get("category_id")
+            category_id = str(category_id) if category_id is not None else None
+            tags_raw = entity.get("tags", [])
+            tags = {str(tag) for tag in tags_raw if isinstance(tag, str)}
+            totals: dict[str, int] = {}
+            for (target_type, target_id, modifier_type), value in aggregated.items():
+                applies = False
+                if target_type == "ALL":
+                    applies = True
+                elif target_type == "category" and category_id is not None and target_id == category_id:
+                    applies = True
+                elif target_type == "tag" and target_id in tags:
+                    applies = True
+                elif target_type == "id" and target_id == entity_id:
+                    applies = True
+                elif target_type == "destination_id" and target_id == entity_id:
+                    applies = True
+                if applies:
+                    totals[modifier_type] = totals.get(modifier_type, 0) + int(value)
+            capped: dict[str, int] = {}
+            for modifier_type, value in sorted(totals.items(), key=lambda row: row[0]):
+                clamped = _apply_modifier_cap(domain, modifier_type, value, self._MODIFIER_CAPS)
+                if clamped != 0:
+                    capped[modifier_type] = clamped
+            resolved[entity_id] = capped
+
+        ordered_resolved = {
+            entity_id: {
+                modifier_type: value
+                for modifier_type, value in sorted(mods.items(), key=lambda row: row[0])
+            }
+            for entity_id, mods in sorted(resolved.items(), key=lambda row: row[0])
+        }
+        return {
+            "domain": domain,
+            "system_id": system_id,
+            "resolved": ordered_resolved,
+        }
+
     def decrement_durations(self) -> None:
         for system_id in sorted(self.active_situations.keys()):
             for entry in self.active_situations[system_id]:
@@ -625,3 +725,32 @@ def _select_weighted_tier(candidates: list[dict[str, Any]], tier_weights: dict[i
         if pick <= running:
             return tier
     return available_tiers[-1]
+
+
+def _canonical_target_type(target_type: str) -> str:
+    token = target_type.strip()
+    if token == "ALL":
+        return "ALL"
+    if token in {"category", "tag", "id", "destination_id"}:
+        return token
+    if token in {"sku", "hull_id", "module_type", "crew_role", "mission_type", "route_id", "system_id", "special"}:
+        return "id"
+    return token or "id"
+
+
+def _apply_modifier_cap(
+    domain: str,
+    modifier_type: str,
+    value: int,
+    caps: dict[tuple[str, str], tuple[int | None, int | None]],
+) -> int:
+    bounds = caps.get((domain, modifier_type))
+    if bounds is None:
+        return value
+    lower, upper = bounds
+    clamped = value
+    if lower is not None:
+        clamped = max(lower, clamped)
+    if upper is not None:
+        clamped = min(upper, clamped)
+    return clamped
