@@ -59,7 +59,7 @@ All expansion must originate here.
 | **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
-| Phase 6 - Situations, Events, and Dynamic World State (IN DESIGN) | 0.10.0 | Situations, Events, and Dynamic World State |
+| Phase 6 - World State, Situations, and Events Execution (COMPLETED) | 0.10.1 | World State, Situations, and Events Execution |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -660,7 +660,7 @@ Completion Summary:
 
 **Target:** 0.10.0
 
-## Phase 6 - Situations, Events, and Dynamic World State (IN DESIGN)
+## Phase 6 - World State, Situations, and Events Execution (COMPLETED)
 
 - Introduces deterministic World State layer
 - Adds Situations (persistent modifiers)
@@ -672,8 +672,17 @@ Completion Summary:
 - Integrates with Time Engine via daily evaluation
 - Maintains strict authority boundaries (Government, Pricing, Population, Travel, Ship Systems)
 
-Event and Situation architecture finalized.
-Implementation pending.
+### Completion Summary
+- Deterministic spawn-gate with 70/30 type split and weighted severity tiers
+- Spawn cooldown model (5-day lockout, scheduled bypass)
+- Structural mutation rate limiter (1 per system per 10 days)
+- Structural executor (destroyed tag, population delta, government swap)
+- Tag-only structural mutation (no deletion)
+- Contract-correct propagation (situation-only, deterministic neighbor selection)
+- Scheduled event handling with deterministic deferral
+- Ownership boundaries enforced (Government, NPC, Pricing separation)
+- Long-horizon deterministic audit (300-day simulation test)
+- All tests passing
 Phase 6 - Slice 1 Core WorldStateEngine (COMPLETED)
 Phase 6 - Slice 2 Random Situation Spawn (COMPLETED)
 Patch: unified spawn gate implements 70/30 Situation vs Event outcome split per contract.
@@ -768,9 +777,8 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.0
-Event and Situation architecture finalized.
-Implementation pending.
+Current Development Version: 0.10.1
+Phase 6 complete.
 
 ## Authority Statement
 
