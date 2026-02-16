@@ -110,6 +110,16 @@
     "description": "Alien origin or non-human design."
   },
   {
+    "emoji_id": "tag_destroyed",
+    "glyph": "🏚️",
+    "description": "Structural destruction or ruin"
+  },
+  {
+    "emoji_id": "tag_salvage_site",
+    "glyph": "♻️",
+    "description": "Salvageable or recoverable site"
+  },
+  {
     "emoji_id": "location_bar",
     "glyph": "🍺",
     "description": "Bar."

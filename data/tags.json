@@ -326,12 +326,14 @@
   },
   {
     "tag_id": "destroyed",
+    "emoji_id": "tag_destroyed",
     "description": "Destination is destroyed and unavailable for normal interaction.",
     "category": "structural",
     "applies_to": ["destination"]
   },
   {
     "tag_id": "salvage_site",
+    "emoji_id": "tag_salvage_site",
     "description": "Location contains salvageable debris or remains.",
     "category": "structural",
     "applies_to": ["destination"]
