@@ -162,6 +162,8 @@ class WorldStateEngine:
             loaded.append(
                 {
                     "situation_id": entry.get("situation_id"),
+                    "severity_tier": entry.get("severity_tier"),
+                    "spawn_weight": entry.get("spawn_weight", 1),
                     "random_allowed": bool(entry.get("random_allowed", False)),
                     "event_only": bool(entry.get("event_only", False)),
                     "recovery_only": bool(entry.get("recovery_only", False)),
@@ -230,23 +232,85 @@ class WorldStateEngine:
             f"cooldown_until={cooldown_until} skipped=false reason=cooldown_clear"
         )
 
-        rng_seed = _deterministic_seed(world_seed, current_day, "spawn_gate")
-        rng = random.Random(rng_seed)
         spawn_probability = max(0.0, min(1.0, float(event_frequency_percent) / 100.0))
-        if rng.random() >= spawn_probability:
+        spawn_gate_roll = _rng_u01(
+            _deterministic_seed_with_parts(
+                world_seed,
+                current_system_id,
+                current_day,
+                "spawn_gate",
+            )
+        )
+        if spawn_gate_roll >= spawn_probability:
             print(
                 "Spawn gate cooldown not set: "
                 f"system_id={current_system_id} current_day={current_day} "
                 f"cooldown_until={self.cooldown_until_day_by_system.get(current_system_id)} "
-                "reason=spawn_gate_roll_failed"
+                f"reason=spawn_gate_roll_failed spawn_gate_roll={spawn_gate_roll}"
             )
             return
 
+        spawn_type_roll = _rng_u01(
+            _deterministic_seed_with_parts(
+                world_seed,
+                current_system_id,
+                current_day,
+                "spawn_type",
+            )
+        )
+        selected_type = "situation" if spawn_type_roll < 0.70 else "event"
+        severity_roll = _rng_u01(
+            _deterministic_seed_with_parts(
+                world_seed,
+                current_system_id,
+                current_day,
+                "spawn_severity",
+            )
+        )
+        selected_tier = _select_spawn_severity_tier(severity_roll)
+        print(
+            "Spawn gate type+tier selected: "
+            f"system_id={current_system_id} current_day={current_day} "
+            f"selected_type={selected_type} selected_tier={selected_tier} "
+            f"spawn_type_roll={spawn_type_roll} severity_roll={severity_roll}"
+        )
+
         generated_any = False
-        if rng.random() < 0.70:
-            generated_any = bool(self._spawn_random_situation(current_system_id, rng))
+        if selected_type == "situation":
+            situation_rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_system_id,
+                    current_day,
+                    "spawn_select",
+                    "situation",
+                    selected_tier,
+                )
+            )
+            generated_any = bool(
+                self._spawn_random_situation_for_tier(
+                    current_system_id,
+                    selected_tier,
+                    situation_rng,
+                )
+            )
         else:
-            active_event = self._spawn_random_event(current_system_id, rng, current_day)
+            event_rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_system_id,
+                    current_day,
+                    "spawn_select",
+                    "event",
+                    selected_tier,
+                )
+            )
+            active_event = self._spawn_random_event_for_tier(
+                current_system_id,
+                selected_tier,
+                event_rng,
+                current_day,
+            )
             if active_event is not None:
                 generated_any = True
                 applied = self.apply_event_effects(
@@ -254,7 +318,7 @@ class WorldStateEngine:
                     current_day=current_day,
                     target_system_id=current_system_id,
                     event_id=active_event.event_id,
-                    rng=rng,
+                    rng=event_rng,
                 )
                 if not applied:
                     self._remove_active_event_instance(
@@ -277,7 +341,8 @@ class WorldStateEngine:
             "Spawn gate cooldown not set: "
             f"system_id={current_system_id} current_day={current_day} "
             f"cooldown_until={self.cooldown_until_day_by_system.get(current_system_id)} "
-            "reason=no_generation_created"
+            f"reason=no_generation_created selected_type={selected_type} "
+            f"selected_tier={selected_tier} candidates_found=0"
         )
 
     def apply_event_effects(
@@ -850,6 +915,14 @@ class WorldStateEngine:
             self.active_events[system_id] = kept_events
 
     def _spawn_random_situation(self, system_id: str, rng: random.Random) -> bool:
+        return self._spawn_random_situation_for_tier(system_id, None, rng)
+
+    def _spawn_random_situation_for_tier(
+        self,
+        system_id: str,
+        selected_tier: Optional[int],
+        rng: random.Random,
+    ) -> bool:
         if len(self.active_situations[system_id]) >= 3:
             return False
         spawnable = [
@@ -858,10 +931,24 @@ class WorldStateEngine:
             if bool(item.get("random_allowed"))
             and not bool(item.get("event_only"))
             and not bool(item.get("recovery_only"))
+            and (
+                selected_tier is None
+                or _int_or_default(item.get("severity_tier"), 0) == int(selected_tier)
+            )
         ]
         if not spawnable:
+            print(
+                "Spawn gate candidate filter: "
+                f"system_id={system_id} selected_type=situation "
+                f"selected_tier={selected_tier} candidates_found=0"
+            )
             return False
-        selected = rng.choice(spawnable)
+        print(
+            "Spawn gate candidate filter: "
+            f"system_id={system_id} selected_type=situation "
+            f"selected_tier={selected_tier} candidates_found={len(spawnable)}"
+        )
+        selected = _weighted_pick_by_spawn_weight(spawnable, rng)
         remaining_days = _roll_duration_days(selected.get("duration_days"), rng, default_days=3)
         active = ActiveSituation(
             situation_id=str(selected.get("situation_id")),
@@ -876,17 +963,37 @@ class WorldStateEngine:
     def _spawn_random_event(
         self, system_id: str, rng: random.Random, current_day: int
     ) -> Optional[ActiveEvent]:
+        return self._spawn_random_event_for_tier(system_id, None, rng, current_day)
+
+    def _spawn_random_event_for_tier(
+        self,
+        system_id: str,
+        selected_tier: Optional[int],
+        rng: random.Random,
+        current_day: int,
+    ) -> Optional[ActiveEvent]:
         candidates = [item for item in self.event_catalog if bool(item.get("random_allowed"))]
         if not candidates:
             return None
-        tier_weights: dict[int, int] = {1: 30, 2: 35, 3: 20, 4: 10, 5: 5}
-        selected_tier = _select_weighted_tier(candidates, tier_weights, rng)
-        if selected_tier is None:
-            return None
-        tier_events = [item for item in candidates if int(item.get("severity_tier", 0)) == selected_tier]
+        tier_events = [
+            item
+            for item in candidates
+            if selected_tier is None
+            or _int_or_default(item.get("severity_tier"), 0) == int(selected_tier)
+        ]
         if not tier_events:
+            print(
+                "Spawn gate candidate filter: "
+                f"system_id={system_id} selected_type=event "
+                f"selected_tier={selected_tier} candidates_found=0"
+            )
             return None
-        selected = rng.choice(tier_events)
+        print(
+            "Spawn gate candidate filter: "
+            f"system_id={system_id} selected_type=event "
+            f"selected_tier={selected_tier} candidates_found={len(tier_events)}"
+        )
+        selected = _weighted_pick_by_spawn_weight(tier_events, rng)
         remaining_days = _roll_duration_days(selected.get("duration_days"), rng, default_days=1)
         active = ActiveEvent(
             event_id=str(selected.get("event_id")),
@@ -1203,6 +1310,10 @@ def _deterministic_seed(world_seed: int, current_day: int, channel: str) -> int:
     return int(hashlib.sha256(packed).hexdigest(), 16)
 
 
+def _rng_u01(seed: int) -> float:
+    return random.Random(seed).random()
+
+
 def _deterministic_seed_with_parts(*parts: Any) -> int:
     packed = "|".join(str(part) for part in parts).encode("utf-8")
     return int(hashlib.sha256(packed).hexdigest(), 16)
@@ -1218,6 +1329,15 @@ def _coerce_non_negative_int(value: Any, default: int) -> int:
     if number < 0:
         return default
     return number
+
+
+def _int_or_default(value: Any, default: int) -> int:
+    try:
+        if isinstance(value, bool):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _load_valid_government_ids() -> set[str]:
@@ -1294,6 +1414,36 @@ def _roll_duration_days(duration_spec: Any, rng: random.Random, default_days: in
     if isinstance(duration_spec, int):
         return duration_spec
     return default_days
+
+
+def _select_spawn_severity_tier(roll: float) -> int:
+    if roll < 0.30:
+        return 1
+    if roll < 0.65:
+        return 2
+    if roll < 0.85:
+        return 3
+    if roll < 0.95:
+        return 4
+    return 5
+
+
+def _weighted_pick_by_spawn_weight(
+    candidates: list[dict[str, Any]], rng: random.Random
+) -> dict[str, Any]:
+    if not candidates:
+        raise ValueError("weighted pick requires at least one candidate")
+    weights = [max(0, int(item.get("spawn_weight", 1) or 1)) for item in candidates]
+    total = sum(weights)
+    if total <= 0:
+        return candidates[rng.randrange(len(candidates))]
+    pick = rng.uniform(0, total)
+    running = 0.0
+    for index, weight in enumerate(weights):
+        running += weight
+        if pick <= running:
+            return candidates[index]
+    return candidates[-1]
 
 
 def _select_weighted_tier(candidates: list[dict[str, Any]], tier_weights: dict[int, int], rng: random.Random) -> Optional[int]:

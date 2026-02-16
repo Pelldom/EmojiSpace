@@ -9,6 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
+import world_state_engine as wse  # noqa: E402
+
 from world_state_engine import (  # noqa: E402
     ActiveEvent,
     ActiveSituation,
@@ -67,6 +69,17 @@ def _build_sector_with_destination(
         neighbors=[],
     )
     return Galaxy(systems=[system])
+
+
+def _force_spawn_rolls(
+    monkeypatch,
+    *,
+    gate_roll: float,
+    type_roll: float,
+    severity_roll: float,
+) -> None:
+    sequence = iter([gate_roll, type_roll, severity_roll])
+    monkeypatch.setattr(wse, "_rng_u01", lambda _seed: next(sequence))
 
 
 def test_register_system_initializes_containers() -> None:
@@ -321,7 +334,7 @@ def test_no_spawn_when_probability_roll_fails(tmp_path: Path) -> None:
     assert engine.get_active_events("SYS-0") == []
 
 
-def test_only_one_spawn_per_day_globally(tmp_path: Path) -> None:
+def test_only_one_spawn_per_day_globally(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(
@@ -330,6 +343,7 @@ def test_only_one_spawn_per_day_globally(tmp_path: Path) -> None:
                 "situations": [
                     {
                         "situation_id": "S-RANDOM",
+                        "severity_tier": 1,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -360,18 +374,24 @@ def test_only_one_spawn_per_day_globally(tmp_path: Path) -> None:
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.00,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
         neighbor_system_ids=["SYS-1", "SYS-2"],
         current_day=30,
-        event_frequency_percent=8,
+        event_frequency_percent=100,
     )
     total = sum(len(v) for v in engine.active_situations.values()) + sum(len(v) for v in engine.active_events.values())
     assert total == 1
 
 
-def test_70_30_split_is_deterministically_respected(tmp_path: Path) -> None:
+def test_70_30_split_is_deterministically_respected(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(
@@ -380,6 +400,7 @@ def test_70_30_split_is_deterministically_respected(tmp_path: Path) -> None:
                 "situations": [
                     {
                         "situation_id": "S-RANDOM",
+                        "severity_tier": 1,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -411,12 +432,18 @@ def test_70_30_split_is_deterministically_respected(tmp_path: Path) -> None:
     situation_engine = WorldStateEngine()
     situation_engine.load_situation_catalog(situations_path)
     situation_engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.00,
+        severity_roll=0.10,
+    )
     situation_engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
         neighbor_system_ids=[],
         current_day=30,
-        event_frequency_percent=8,
+        event_frequency_percent=100,
     )
     assert [s.situation_id for s in situation_engine.get_active_situations("SYS-0")] == ["S-RANDOM"]
     assert situation_engine.get_active_events("SYS-0") == []
@@ -424,12 +451,18 @@ def test_70_30_split_is_deterministically_respected(tmp_path: Path) -> None:
     event_engine = WorldStateEngine()
     event_engine.load_situation_catalog(situations_path)
     event_engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     event_engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
         neighbor_system_ids=[],
         current_day=1,
-        event_frequency_percent=8,
+        event_frequency_percent=100,
     )
     assert [e.event_id for e in event_engine.get_active_events("SYS-0")] == ["E-T1"]
     assert event_engine.get_active_situations("SYS-0") == []
@@ -562,7 +595,9 @@ def test_no_random_spawning_if_catalogs_empty(tmp_path: Path) -> None:
     assert engine.get_active_events("SYS-0") == []
 
 
-def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(tmp_path: Path) -> None:
+def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
+    monkeypatch, tmp_path: Path
+) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(
@@ -571,6 +606,7 @@ def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
                 "situations": [
                     {
                         "situation_id": "S-A",
+                        "severity_tier": 1,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -580,6 +616,7 @@ def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
                     },
                     {
                         "situation_id": "S-B",
+                        "severity_tier": 1,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -625,6 +662,12 @@ def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
         engine.load_event_catalog(events_path)
         engine.add_situation(ActiveSituation("EXISTING-1", "SYS-0", "system", None, 5))
         engine.add_situation(ActiveSituation("EXISTING-2", "SYS-0", "system", None, 5))
+        _force_spawn_rolls(
+            monkeypatch,
+            gate_roll=0.00,
+            type_roll=0.90,
+            severity_roll=0.10,
+        )
         engine.evaluate_spawn_gate(
             world_seed=1,
             current_system_id="SYS-0",
@@ -643,6 +686,12 @@ def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
     engine.load_event_catalog(events_path)
     engine.add_situation(ActiveSituation("EXISTING-1", "SYS-0", "system", None, 5))
     engine.add_situation(ActiveSituation("EXISTING-2", "SYS-0", "system", None, 5))
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -656,7 +705,7 @@ def test_event_spawn_triggers_situations_up_to_cap_with_deterministic_durations(
     assert 2 <= first[2][1] <= 4
 
 
-def test_event_schedules_follow_up_events_in_stable_order(tmp_path: Path) -> None:
+def test_event_schedules_follow_up_events_in_stable_order(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
@@ -689,6 +738,12 @@ def test_event_schedules_follow_up_events_in_stable_order(tmp_path: Path) -> Non
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -702,7 +757,7 @@ def test_event_schedules_follow_up_events_in_stable_order(tmp_path: Path) -> Non
     ]
 
 
-def test_system_flags_apply_add_then_remove_deterministically(tmp_path: Path) -> None:
+def test_system_flags_apply_add_then_remove_deterministically(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
@@ -732,6 +787,12 @@ def test_system_flags_apply_add_then_remove_deterministically(tmp_path: Path) ->
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -742,7 +803,7 @@ def test_system_flags_apply_add_then_remove_deterministically(tmp_path: Path) ->
     assert engine.get_system_flags("SYS-0") == ["beta"]
 
 
-def test_modifiers_registry_tracks_active_and_removes_on_expiry(tmp_path: Path) -> None:
+def test_modifiers_registry_tracks_active_and_removes_on_expiry(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(
@@ -751,6 +812,7 @@ def test_modifiers_registry_tracks_active_and_removes_on_expiry(tmp_path: Path) 
                 "situations": [
                     {
                         "situation_id": "S-MOD",
+                        "severity_tier": 1,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -793,6 +855,12 @@ def test_modifiers_registry_tracks_active_and_removes_on_expiry(tmp_path: Path) 
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -815,7 +883,7 @@ def test_modifiers_registry_tracks_active_and_removes_on_expiry(tmp_path: Path) 
     assert engine.get_active_modifiers("SYS-0") == []
 
 
-def test_pending_structural_mutations_are_recorded_not_applied(tmp_path: Path) -> None:
+def test_pending_structural_mutations_are_recorded_not_applied(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
@@ -849,6 +917,12 @@ def test_pending_structural_mutations_are_recorded_not_applied(tmp_path: Path) -
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.90,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -1466,7 +1540,7 @@ def test_apply_event_effects_raises_when_event_missing() -> None:
         )
 
 
-def test_scheduled_events_execute_on_due_day_only(tmp_path: Path) -> None:
+def test_scheduled_events_execute_on_due_day_only(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
@@ -1510,6 +1584,12 @@ def test_scheduled_events_execute_on_due_day_only(tmp_path: Path) -> None:
     engine = WorldStateEngine()
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.90,
+        severity_roll=0.10,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -1557,7 +1637,7 @@ def test_scheduled_event_execution_order_is_stable(tmp_path: Path) -> None:
     assert _run_once() == ["E-2", "E-1", "E-3"]
 
 
-def test_scheduled_events_do_not_consume_spawn_gate(tmp_path: Path) -> None:
+def test_scheduled_events_do_not_consume_spawn_gate(monkeypatch, tmp_path: Path) -> None:
     situations_path = tmp_path / "situations.json"
     events_path = tmp_path / "events.json"
     situations_path.write_text(
@@ -1566,6 +1646,7 @@ def test_scheduled_events_do_not_consume_spawn_gate(tmp_path: Path) -> None:
                 "situations": [
                     {
                         "situation_id": "S-RANDOM",
+                        "severity_tier": 5,
                         "random_allowed": True,
                         "event_only": False,
                         "recovery_only": False,
@@ -1605,6 +1686,12 @@ def test_scheduled_events_do_not_consume_spawn_gate(tmp_path: Path) -> None:
     engine.load_situation_catalog(situations_path)
     engine.load_event_catalog(events_path)
     engine.schedule_event(ScheduledEvent(event_id="E-SCHEDULED", system_id="SYS-0", trigger_day=30))
+    _force_spawn_rolls(
+        monkeypatch,
+        gate_roll=0.00,
+        type_roll=0.00,
+        severity_roll=0.99,
+    )
     engine.evaluate_spawn_gate(
         world_seed=1,
         current_system_id="SYS-0",
@@ -1626,11 +1713,16 @@ def test_spawn_gate_cooldown_blocks_days_d_plus_1_to_d_plus_5_and_unlocks_d_plus
 
     call_count = {"spawn": 0}
 
-    def _spawn_situation(_system_id: str, _rng: random.Random) -> bool:
+    def _spawn_situation(_system_id: str, _selected_tier: int | None, _rng: random.Random) -> bool:
         call_count["spawn"] += 1
         return True
 
-    def _spawn_event(_system_id: str, _rng: random.Random, current_day: int) -> ActiveEvent:
+    def _spawn_event(
+        _system_id: str,
+        _selected_tier: int | None,
+        _rng: random.Random,
+        current_day: int,
+    ) -> ActiveEvent:
         call_count["spawn"] += 1
         return ActiveEvent(
             event_id=f"E-{current_day}",
@@ -1640,8 +1732,8 @@ def test_spawn_gate_cooldown_blocks_days_d_plus_1_to_d_plus_5_and_unlocks_d_plus
             trigger_day=current_day,
         )
 
-    monkeypatch.setattr(engine, "_spawn_random_situation", _spawn_situation)
-    monkeypatch.setattr(engine, "_spawn_random_event", _spawn_event)
+    monkeypatch.setattr(engine, "_spawn_random_situation_for_tier", _spawn_situation)
+    monkeypatch.setattr(engine, "_spawn_random_event_for_tier", _spawn_event)
     monkeypatch.setattr(engine, "apply_event_effects", lambda **_kwargs: True)
 
     engine.evaluate_spawn_gate(
@@ -1787,6 +1879,236 @@ def test_spawn_gate_cooldown_behavior_is_deterministic_under_repeated_runs(monke
                 event_frequency_percent=100,
             )
         return engine.cooldown_until_day_by_system["SYS-0"], calls["spawn"]
+
+    assert _run_once() == _run_once()
+
+
+def test_spawn_pipeline_can_select_each_severity_tier_deterministically(monkeypatch, tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": f"S-T{tier}",
+                        "severity_tier": tier,
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 1, "max": 1},
+                        "modifiers": [],
+                    }
+                    for tier in [1, 2, 3, 4, 5]
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(json.dumps({"events": []}), encoding="utf-8")
+
+    expected = {
+        0.10: "S-T1",
+        0.40: "S-T2",
+        0.70: "S-T3",
+        0.90: "S-T4",
+        0.99: "S-T5",
+    }
+    for severity_roll, expected_situation_id in expected.items():
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        sequence = iter([0.00, 0.00, severity_roll])  # gate pass, type=situation, tier roll
+        monkeypatch.setattr(wse, "_rng_u01", lambda _seed: next(sequence))
+        engine.evaluate_spawn_gate(
+            world_seed=123,
+            current_system_id="SYS-0",
+            neighbor_system_ids=[],
+            current_day=1,
+            event_frequency_percent=100,
+        )
+        rows = engine.get_active_situations("SYS-0")
+        assert len(rows) == 1
+        assert rows[0].situation_id == expected_situation_id
+
+
+def test_spawn_pipeline_fails_without_candidates_for_selected_type_and_tier(
+    monkeypatch, tmp_path: Path
+) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-T1",
+                        "severity_tier": 1,
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 1, "max": 1},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-T1",
+                        "event_family_id": "F",
+                        "severity_tier": 1,
+                        "random_allowed": True,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    sequence = iter([0.00, 0.90, 0.90])  # pass gate, event type, tier 4
+    monkeypatch.setattr(wse, "_rng_u01", lambda _seed: next(sequence))
+    engine.evaluate_spawn_gate(
+        world_seed=7,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=5,
+        event_frequency_percent=100,
+    )
+    assert engine.get_active_events("SYS-0") == []
+    assert engine.get_active_situations("SYS-0") == []
+    assert engine.cooldown_until_day_by_system["SYS-0"] is None
+
+
+def test_spawn_pipeline_sets_cooldown_only_when_instance_is_created(monkeypatch, tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-T1",
+                        "severity_tier": 1,
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 1, "max": 1},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(json.dumps({"events": []}), encoding="utf-8")
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+
+    seq_fail = iter([0.00, 0.00, 0.95])  # tier 5 -> no candidate
+    monkeypatch.setattr(wse, "_rng_u01", lambda _seed: next(seq_fail))
+    engine.evaluate_spawn_gate(
+        world_seed=9,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=10,
+        event_frequency_percent=100,
+    )
+    assert engine.cooldown_until_day_by_system["SYS-0"] is None
+
+    seq_pass = iter([0.00, 0.00, 0.10])  # tier 1 -> has candidate
+    monkeypatch.setattr(wse, "_rng_u01", lambda _seed: next(seq_pass))
+    engine.evaluate_spawn_gate(
+        world_seed=9,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=11,
+        event_frequency_percent=100,
+    )
+    assert engine.cooldown_until_day_by_system["SYS-0"] == 16
+
+
+def test_spawn_pipeline_type_and_tier_is_deterministic_across_repeated_runs(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-T2",
+                        "severity_tier": 2,
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 1, "max": 1},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-T2",
+                        "event_family_id": "F",
+                        "severity_tier": 2,
+                        "random_allowed": True,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> tuple[list[str], list[str], int | None]:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.evaluate_spawn_gate(
+            world_seed=4242,
+            current_system_id="SYS-0",
+            neighbor_system_ids=[],
+            current_day=6,
+            event_frequency_percent=100,
+        )
+        return (
+            [row.situation_id for row in engine.get_active_situations("SYS-0")],
+            [row.event_id for row in engine.get_active_events("SYS-0")],
+            engine.cooldown_until_day_by_system["SYS-0"],
+        )
 
     assert _run_once() == _run_once()
 
