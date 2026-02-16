@@ -43,7 +43,13 @@ def build_simulation(seed: int) -> tuple[SimulationController, dict]:
         logger=logger,
     ).generate()
     player = PlayerState(current_system_id=sector.systems[0].system_id, credits=5000)
-    time_engine = TimeEngine(logger=logger)
+    time_engine = TimeEngine(
+        logger=logger,
+        world_seed=seed,
+        sector=sector,
+        player_state=player,
+        event_frequency_percent=8,
+    )
     economy_engine = EconomyEngine(sector=sector, logger=logger)
     law_engine = GovernmentLawEngine(registry=registry, logger=logger, seed=seed)
     turn_loop = TurnLoop(

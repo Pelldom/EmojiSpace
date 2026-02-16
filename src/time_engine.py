@@ -1,6 +1,9 @@
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Any
 
 from logger import Logger
+from world_state_engine import WorldStateEngine
 
 
 _current_turn = 0
@@ -8,6 +11,11 @@ _player_action_context = False
 _hard_stop_player_dead = False
 _hard_stop_tier2_detention = False
 _shared_logger: Logger | None = None
+_world_state_engine: WorldStateEngine | None = None
+_world_state_seed: int | None = None
+_world_state_sector: Any = None
+_world_state_player: Any = None
+_world_state_event_frequency_percent: int = 8
 
 
 @dataclass(frozen=True)
@@ -99,6 +107,7 @@ def _process_single_day() -> bool:
         if _check_hard_stop() is not None:
             return False
     _set_current_turn(next_turn)
+    _run_world_state_lifecycle(next_turn)
     _log_time_event("time_advance_day_completed", f"turn={_current_turn} hard_stop=None")
     return True
 
@@ -148,16 +157,36 @@ def _set_hard_stop_state(*, player_dead: bool = False, tier2_detention: bool = F
 
 def _reset_time_state_for_test() -> None:
     global _current_turn, _player_action_context, _hard_stop_player_dead, _hard_stop_tier2_detention
+    global _world_state_engine, _world_state_seed, _world_state_sector, _world_state_player, _world_state_event_frequency_percent
     _current_turn = 0
     _player_action_context = False
     _hard_stop_player_dead = False
     _hard_stop_tier2_detention = False
+    _world_state_engine = None
+    _world_state_seed = None
+    _world_state_sector = None
+    _world_state_player = None
+    _world_state_event_frequency_percent = 8
 
 
 class TimeEngine:
-    def __init__(self, logger: Logger | None = None) -> None:
+    def __init__(
+        self,
+        logger: Logger | None = None,
+        world_seed: int | None = None,
+        sector: Any | None = None,
+        player_state: Any | None = None,
+        event_frequency_percent: int = 8,
+    ) -> None:
         if logger is not None:
             self.set_logger(logger)
+        if world_seed is not None and sector is not None and player_state is not None:
+            self.configure_world_state(
+                world_seed=world_seed,
+                sector=sector,
+                player_state=player_state,
+                event_frequency_percent=event_frequency_percent,
+            )
 
     @property
     def current_turn(self) -> int:
@@ -175,3 +204,60 @@ class TimeEngine:
     def set_logger(logger: Logger | None) -> None:
         global _shared_logger
         _shared_logger = logger
+
+    def configure_world_state(
+        self,
+        *,
+        world_seed: int,
+        sector: Any,
+        player_state: Any,
+        event_frequency_percent: int = 8,
+    ) -> None:
+        global _world_state_engine, _world_state_seed, _world_state_sector, _world_state_player, _world_state_event_frequency_percent
+        engine = WorldStateEngine()
+        data_root = Path(__file__).resolve().parents[1] / "data"
+        engine.load_situation_catalog(data_root / "situations.json")
+        engine.load_event_catalog(data_root / "events.json")
+        _world_state_engine = engine
+        _world_state_seed = int(world_seed)
+        _world_state_sector = sector
+        _world_state_player = player_state
+        _world_state_event_frequency_percent = int(event_frequency_percent)
+
+
+def _run_world_state_lifecycle(current_day: int) -> None:
+    if _world_state_engine is None or _world_state_seed is None or _world_state_sector is None or _world_state_player is None:
+        return
+    current_system_id = getattr(_world_state_player, "current_system_id", None)
+    if not isinstance(current_system_id, str) or not current_system_id:
+        return
+
+    current_system = _world_state_sector.get_system(current_system_id)
+    neighbor_system_ids: list[str] = []
+    if current_system is not None:
+        neighbor_system_ids = list(getattr(current_system, "neighbors", []))
+
+    def get_neighbors_fn(system_id: str) -> list[str]:
+        system = _world_state_sector.get_system(system_id)
+        if system is None:
+            return []
+        return list(getattr(system, "neighbors", []))
+
+    _world_state_engine.process_scheduled_events(
+        _world_state_seed,
+        current_day,
+    )
+    _world_state_engine.evaluate_spawn_gate(
+        _world_state_seed,
+        current_system_id,
+        neighbor_system_ids,
+        current_day,
+        _world_state_event_frequency_percent,
+    )
+    _world_state_engine.process_propagation(
+        _world_state_seed,
+        current_day,
+        get_neighbors_fn,
+    )
+    _world_state_engine.decrement_durations()
+    _world_state_engine.resolve_expired()
