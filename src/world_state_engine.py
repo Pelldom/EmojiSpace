@@ -21,11 +21,20 @@ class ActiveEvent:
     event_family_id: Optional[str]
     system_id: str
     remaining_days: int
+    trigger_day: int = 0
 
 
 @dataclass
 class ScheduledEvent:
     event_id: str
+    system_id: str
+    trigger_day: int
+    insertion_index: int = -1
+
+
+@dataclass
+class ScheduledSituation:
+    situation_id: str
     system_id: str
     trigger_day: int
     insertion_index: int = -1
@@ -53,6 +62,7 @@ class WorldStateEngine:
     active_situations: dict[str, list[ActiveSituation]] = field(default_factory=dict)
     active_events: dict[str, list[ActiveEvent]] = field(default_factory=dict)
     scheduled_events: list[ScheduledEvent] = field(default_factory=list)
+    scheduled_situations: list[ScheduledSituation] = field(default_factory=list)
     situation_catalog: list[dict[str, Any]] = field(default_factory=list)
     event_catalog: list[dict[str, Any]] = field(default_factory=list)
     system_flags: dict[str, set[str]] = field(default_factory=dict)
@@ -106,6 +116,13 @@ class WorldStateEngine:
             scheduled_event.insertion_index = self._scheduled_insertion_counter
             self._scheduled_insertion_counter += 1
         self.scheduled_events.append(scheduled_event)
+
+    def schedule_situation(self, scheduled_situation: ScheduledSituation) -> None:
+        self.register_system(scheduled_situation.system_id)
+        if scheduled_situation.insertion_index < 0:
+            scheduled_situation.insertion_index = self._scheduled_insertion_counter
+            self._scheduled_insertion_counter += 1
+        self.scheduled_situations.append(scheduled_situation)
 
     def load_situation_catalog(self, catalog_path: str | Path | None = None) -> None:
         path = Path(catalog_path) if catalog_path is not None else Path(__file__).resolve().parents[1] / "data" / "situations.json"
@@ -181,7 +198,7 @@ class WorldStateEngine:
         if rng.random() < 0.70:
             self._spawn_random_situation(current_system_id, rng)
             return
-        active_event = self._spawn_random_event(current_system_id, rng)
+        active_event = self._spawn_random_event(current_system_id, rng, current_day)
         if active_event is not None:
             self.apply_event_effects(
                 world_seed=world_seed,
@@ -304,6 +321,40 @@ class WorldStateEngine:
             )
 
     def process_scheduled_events(self, world_seed: int, current_day: int) -> int:
+        due_situations: list[ScheduledSituation] = []
+        pending_situations: list[ScheduledSituation] = []
+        for row in self.scheduled_situations:
+            if row.trigger_day == current_day:
+                due_situations.append(row)
+            else:
+                pending_situations.append(row)
+
+        situation_executed = 0
+        due_situations_sorted = sorted(
+            due_situations, key=lambda row: (row.system_id, row.insertion_index)
+        )
+        for row in due_situations_sorted:
+            situation_def = self._situation_catalog_by_id.get(row.situation_id)
+            if situation_def is None:
+                print(
+                    "Propagation schedule ignored: "
+                    f"system_id={row.system_id} situation_id={row.situation_id} "
+                    f"trigger_day={current_day} reason=unknown_situation_id"
+                )
+                continue
+            rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_day,
+                    "scheduled_situation",
+                    row.system_id,
+                    row.situation_id,
+                    row.insertion_index,
+                )
+            )
+            if self._create_propagated_situation(row.system_id, row.situation_id, rng):
+                situation_executed += 1
+
         due: list[ScheduledEvent] = []
         pending: list[ScheduledEvent] = []
         for row in self.scheduled_events:
@@ -335,6 +386,7 @@ class WorldStateEngine:
                     event_family_id=event_def.get("event_family_id"),
                     system_id=row.system_id,
                     remaining_days=max(0, remaining_days),
+                    trigger_day=current_day,
                 )
             )
             self.apply_event_effects(
@@ -346,8 +398,9 @@ class WorldStateEngine:
             )
             executed += 1
 
+        self.scheduled_situations = pending_situations
         self.scheduled_events = pending
-        return executed
+        return executed + situation_executed
 
     def process_propagation(
         self,
@@ -355,89 +408,121 @@ class WorldStateEngine:
         current_day: int,
         get_neighbors_fn: Callable[[str], list[str]],
     ) -> int:
-        active_event_ids = sorted(
-            {
-                row.event_id
-                for rows in self.active_events.values()
-                for row in rows
-                if row.event_id in self._event_catalog_by_id
-            }
-        )
         executed = 0
-        for event_id in active_event_ids:
-            event_def = self._event_catalog_by_id.get(event_id)
-            if event_def is None:
-                continue
-            if not bool(event_def.get("propagation_allowed")):
-                continue
-            if int(event_def.get("propagation_radius", 0)) < 1:
-                continue
+        for origin_system_id in sorted(self.active_events.keys()):
+            rows_sorted = sorted(
+                self.active_events[origin_system_id],
+                key=lambda row: (
+                    row.event_id,
+                    int(getattr(row, "trigger_day", 0)),
+                    row.remaining_days,
+                ),
+            )
+            for row in rows_sorted:
+                trigger_day = int(getattr(row, "trigger_day", 0))
+                if trigger_day <= 0:
+                    trigger_day = current_day
+                if trigger_day != current_day:
+                    continue
+                event_id = row.event_id
+                event_def = self._event_catalog_by_id.get(event_id)
+                if event_def is None:
+                    print(
+                        "Propagation ignored: "
+                        f"origin_system_id={origin_system_id} event_id={event_id} "
+                        f"trigger_day={trigger_day} reason=unknown_event_id"
+                    )
+                    continue
+                propagation = event_def.get("propagation", [])
+                if not isinstance(propagation, list) or not propagation:
+                    continue
+                for propagation_index, entry in enumerate(propagation):
+                    if not isinstance(entry, dict):
+                        print(
+                            "Propagation ignored: "
+                            f"origin_system_id={origin_system_id} event_id={event_id} "
+                            f"trigger_day={trigger_day} propagation_index={propagation_index} "
+                            "reason=invalid_entry"
+                        )
+                        continue
+                    situation_id = entry.get("situation_id")
+                    if not isinstance(situation_id, str) or not situation_id:
+                        print(
+                            "Propagation ignored: "
+                            f"origin_system_id={origin_system_id} event_id={event_id} "
+                            f"trigger_day={trigger_day} propagation_index={propagation_index} "
+                            "reason=missing_situation_id"
+                        )
+                        continue
+                    if situation_id not in self._situation_catalog_by_id:
+                        print(
+                            "Propagation ignored: "
+                            f"origin_system_id={origin_system_id} event_id={event_id} "
+                            f"trigger_day={trigger_day} propagation_index={propagation_index} "
+                            f"situation_id={situation_id} reason=unknown_situation_id"
+                        )
+                        continue
 
-            roll_rng = random.Random(
-                _deterministic_seed_with_parts(
-                    world_seed,
-                    current_day,
-                    "propagation",
-                    event_id,
-                )
-            )
-            chance_percent = int(event_def.get("propagation_daily_chance_percent", 25))
-            chance = max(0.0, min(1.0, float(chance_percent) / 100.0))
-            if roll_rng.random() >= chance:
-                continue
+                    delay_days = _coerce_non_negative_int(entry.get("delay_days", 0), 0)
+                    systems_affected = _coerce_non_negative_int(
+                        entry.get("systems_affected", 1), 1
+                    )
+                    candidate_neighbors = sorted(
+                        {
+                            system_id
+                            for system_id in get_neighbors_fn(origin_system_id)
+                            if system_id != origin_system_id
+                        }
+                    )
 
-            sources = sorted(
-                [
-                    system_id
-                    for system_id, rows in self.active_events.items()
-                    if any(row.event_id == event_id for row in rows)
-                ]
-            )
-            selected_source: Optional[str] = None
-            selected_targets: list[str] = []
-            for source in sources:
-                neighbors = sorted(set(get_neighbors_fn(source)))
-                targets = [
-                    neighbor
-                    for neighbor in neighbors
-                    if neighbor != source
-                    and not any(row.event_id == event_id for row in self.get_active_events(neighbor))
-                ]
-                if targets:
-                    selected_source = source
-                    selected_targets = targets
-                    break
-            if selected_source is None:
-                continue
-
-            activation_rng = random.Random(
-                _deterministic_seed_with_parts(
-                    world_seed,
-                    current_day,
-                    "propagation_target",
-                    event_id,
-                    selected_source,
-                )
-            )
-            target_system_id = activation_rng.choice(selected_targets)
-            self.register_system(target_system_id)
-            remaining_days = _roll_duration_days(event_def.get("duration_days"), activation_rng, default_days=1)
-            self.add_event(
-                ActiveEvent(
-                    event_id=event_id,
-                    event_family_id=event_def.get("event_family_id"),
-                    system_id=target_system_id,
-                    remaining_days=max(0, remaining_days),
-                )
-            )
-            self.apply_event_effects(
-                world_seed=world_seed,
-                current_day=current_day,
-                target_system_id=target_system_id,
-                event_id=event_id,
-                rng=activation_rng,
-            )
-            executed += 1
+                    select_seed = _deterministic_seed_with_parts(
+                        world_seed,
+                        origin_system_id,
+                        event_id,
+                        trigger_day,
+                        propagation_index,
+                        "propagation_select",
+                    )
+                    select_rng = random.Random(select_seed)
+                    shuffled = list(candidate_neighbors)
+                    select_rng.shuffle(shuffled)
+                    selected_neighbors = shuffled[:systems_affected]
+                    scheduled_day = trigger_day + delay_days
+                    print(
+                        "Propagation evaluated: "
+                        f"origin_system_id={origin_system_id} event_id={event_id} "
+                        f"trigger_day={trigger_day} propagation_index={propagation_index} "
+                        f"candidate_neighbors={candidate_neighbors} "
+                        f"selected_neighbors={selected_neighbors} "
+                        f"situation_id={situation_id} delay_days={delay_days} "
+                        f"systems_affected={systems_affected} scheduled_day={scheduled_day}"
+                    )
+                    for target_system_id in selected_neighbors:
+                        if delay_days == 0:
+                            duration_rng = random.Random(
+                                _deterministic_seed_with_parts(
+                                    world_seed,
+                                    origin_system_id,
+                                    event_id,
+                                    trigger_day,
+                                    propagation_index,
+                                    target_system_id,
+                                    "propagation_duration",
+                                )
+                            )
+                            if self._create_propagated_situation(
+                                target_system_id, situation_id, duration_rng
+                            ):
+                                executed += 1
+                        else:
+                            self.schedule_situation(
+                                ScheduledSituation(
+                                    situation_id=situation_id,
+                                    system_id=target_system_id,
+                                    trigger_day=scheduled_day,
+                                )
+                            )
+                            executed += 1
         return executed
 
     def get_system_flags(self, system_id: str) -> list[str]:
@@ -635,7 +720,9 @@ class WorldStateEngine:
         self.add_situation(active)
         return True
 
-    def _spawn_random_event(self, system_id: str, rng: random.Random) -> Optional[ActiveEvent]:
+    def _spawn_random_event(
+        self, system_id: str, rng: random.Random, current_day: int
+    ) -> Optional[ActiveEvent]:
         candidates = [item for item in self.event_catalog if bool(item.get("random_allowed"))]
         if not candidates:
             return None
@@ -653,9 +740,36 @@ class WorldStateEngine:
             event_family_id=selected.get("event_family_id"),
             system_id=system_id,
             remaining_days=max(0, remaining_days),
+            trigger_day=current_day,
         )
         self.add_event(active)
         return active
+
+    def _create_propagated_situation(
+        self, system_id: str, situation_id: str, rng: random.Random
+    ) -> bool:
+        self.register_system(system_id)
+        if len(self.active_situations[system_id]) >= 3:
+            return False
+        definition = self._situation_catalog_by_id.get(situation_id)
+        if definition is None:
+            return False
+        scope = str(definition.get("allowed_scope") or "system")
+        if scope not in {"system", "destination"}:
+            scope = "system"
+        remaining_days = _roll_duration_days(
+            definition.get("duration_days"), rng, default_days=3
+        )
+        self.add_situation(
+            ActiveSituation(
+                situation_id=situation_id,
+                system_id=system_id,
+                scope=scope,
+                target_id=None,
+                remaining_days=max(0, remaining_days),
+            )
+        )
+        return True
 
     def _add_situation_modifiers(self, active_situation: ActiveSituation) -> None:
         definition = self._situation_catalog_by_id.get(active_situation.situation_id)
@@ -713,6 +827,18 @@ def _deterministic_seed(world_seed: int, current_day: int, channel: str) -> int:
 def _deterministic_seed_with_parts(*parts: Any) -> int:
     packed = "|".join(str(part) for part in parts).encode("utf-8")
     return int(hashlib.sha256(packed).hexdigest(), 16)
+
+
+def _coerce_non_negative_int(value: Any, default: int) -> int:
+    try:
+        if isinstance(value, bool):
+            return default
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    if number < 0:
+        return default
+    return number
 
 
 def _roll_duration_days(duration_spec: Any, rng: random.Random, default_days: int) -> int:

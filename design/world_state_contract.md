@@ -24,6 +24,15 @@ Introduces:
 This contract extends prior systems without altering their authority.
 
 ----------------------------------------------------------------
+1A. Data-Driven Catalogs
+----------------------------------------------------------------
+
+- All Situation definitions are stored in data/situations.json.
+- All Event definitions are stored in data/events.json.
+- This contract defines schema, constraints, and behavioral rules only.
+- No specific event_ids or situation_ids are defined in this contract.
+
+----------------------------------------------------------------
 2. Deterministic Inputs
 ----------------------------------------------------------------
 
@@ -116,6 +125,14 @@ All Situations and Events must include:
 
 Emoji does not influence simulation logic.
 
+Severity tiers are internal only.
+They must not be exposed to the player through:
+- Emoji profile
+- DataNet
+- Logs intended for player visibility
+
+Simulation logs may record severity_tier.
+
 Tag governance note:
 Any new tags introduced by this phase MUST be synchronized with:
 - tags.json
@@ -147,6 +164,11 @@ Tier 1-2:
   - No government change
   - No destination destruction
 
+Only events explicitly permitted by these severity rules may:
+  - apply population_delta
+  - apply government_change
+  - destroy_destination_ids
+
 Tier 3:
   - Significant modifiers
   - No structural destruction
@@ -154,6 +176,10 @@ Tier 3:
 Tier 4-5:
   - May perform structural mutation
   - Subject to structural rate limit
+
+Structural mutation must remain deterministic.
+Structural mutation may not exceed caps defined elsewhere.
+Structural mutation never rebuilds world generation content.
 
 ----------------------------------------------------------------
 8. Duration Rules (Variable, Deterministic)
@@ -425,6 +451,10 @@ If a scheduled event is blocked by the structural rate limit:
   "start_day": integer,
   "end_day": integer,
   "source_event_id": "string|null",
+  "random_allowed": boolean,
+  "event_only": boolean,
+  "recovery_only": boolean,
+  "allowed_scope": "system|destination",
   "modifiers": [ModifierEntry]
 }
 
@@ -432,6 +462,13 @@ Limits:
 
 - Max 3 active situations per system.
 - Situations expire when current_day > end_day.
+- random_allowed and event_only may not both be true.
+- recovery_only situations may not be random_allowed.
+- event_only situations may only be created by Events.
+- recovery_only situations may only be created following structural mutation.
+- allowed_scope determines valid attachment location.
+- A system may not have more than 3 active situations at once.
+- Destination-level situations count toward that system's cap.
 
 ----------------------------------------------------------------
 16. Event Schema
@@ -439,8 +476,10 @@ Limits:
 
 {
   "event_id": "string",
+  "event_family_id": "string|null",
+  "display_name": "string",
   "emoji_id": "string",
-  "severity_tier": 1-5,
+  "severity_tier": integer (1-5),
   "system_id": "string",
   "trigger_day": integer,
   "root_event_id": "string",
@@ -464,16 +503,15 @@ Limits:
     "scheduled_events": [
       { "event_id": "string", "delay_days": integer }
     ],
-    "propagate_situations": [
-      {
-        "situation_id": "string",
-        "radius": 1,
-        "max_targets": integer,
-        "delay_days": integer
-      }
-    ],
     "modifiers": [ModifierEntry]
   }
+  "propagation": [
+    {
+      "situation_id": "string",
+      "delay_days": integer,
+      "systems_affected": integer
+    }
+  ]
 }
 
 Notes:
@@ -482,36 +520,67 @@ Notes:
   It adds destination tag "destroyed" (Section 18).
 - npc_mutations do not create NPCs.
 - government_change is an archetype swap only.
-- propagate_situations is only permitted if severity_tier >= 4.
-- Propagation may only create Situations.
-- Propagation may NOT trigger Events.
-- Propagation may NOT cause structural mutation outside origin system.
+- propagation entries are event-driven only and may create Situations only.
+- propagation may NOT trigger Events.
+- propagation may NOT cause structural mutation outside origin system.
+- propagation radius is fixed at 1 (direct neighbors only) and is not a data field.
+- event_id is internal.
+- display_name is player-facing.
+- Multiple events may share the same display_name.
+- severity_tier is internal simulation metadata.
+- severity_tier must not be displayed in UI, Emoji Profile, or DataNet output.
+- Events may optionally include:
+  - npc_spawn
+  - npc_elevation
+  - faction_create_or_elevate
+- These are generic capabilities.
+- The contract does not define event-specific behavior.
+
+----------------------------------------------------------------
+16A. Event Families
+----------------------------------------------------------------
+
+Definition:
+- event_family_id groups related event variants.
+- Variants may share identical display_name and emoji.
+
+Rules:
+- Escalation between family variants must use scheduled_events.
+- No automatic tier escalation.
+- Family grouping is narrative only and does not alter spawn mechanics.
 
 ----------------------------------------------------------------
 15A. Cross-System Situation Propagation
 ----------------------------------------------------------------
 
 Definition:
-Events with severity_tier >= 4 may propagate Situations to neighboring systems.
+Events may propagate Situations to neighboring systems via explicit event propagation entries.
 
 Rules:
 
-1. radius is fixed at 1 (direct starlane neighbors only).
-2. Eligible systems = all systems at graph distance 1 from origin.
-3. max_targets limits number of affected neighboring systems.
-4. Target systems selected deterministically:
-   - Sort eligible system_ids lexicographically.
-   - Compute deterministic score:
-     score = hash(world_seed, origin_system_id, trigger_day, target_system_id)
-   - Select lowest N scores, where N <= max_targets.
-5. delay_days >= 0.
-   - If 0: Situation created same day.
-   - If > 0: Scheduled for trigger_day + delay_days.
-6. Propagated Situations:
-   - Bypass spawn gate.
-   - Do NOT bypass 3 active Situation cap per system.
-   - Do NOT count toward structural rate limits.
-   - May NOT recursively propagate.
+1. Propagation schema on Event object:
+   "propagation": [
+     {
+       "situation_id": "string",
+       "delay_days": integer,
+       "systems_affected": integer
+     }
+   ]
+2. situation_id must reference a valid situation_id in data/situations.json.
+3. Unknown event_id or unknown situation_id encountered at runtime is ignored and logged.
+4. Candidate systems are radius 1 only (direct neighbors of origin_system_id).
+5. Deterministic selection:
+   - Select up to systems_affected neighbors.
+   - If systems_affected exceeds available neighbors, select all neighbors.
+   - Selection is deterministic and isolated from unrelated RNG streams.
+6. delay_days >= 0:
+   - scheduled_day = trigger_day + delay_days.
+   - delay_days 0 creates the Situation on trigger_day.
+7. Propagation creates Situations only:
+   - No Event creation in neighbors.
+   - No Event effect application in neighbors.
+   - No structural mutation in neighbors.
+8. Propagation does not bypass the per-system max 3 active Situation cap.
 
 Clarify:
 Propagation creates only Situations.
@@ -685,9 +754,16 @@ Must log:
 - system_flags changes
 - npc_mutations applied
 - scheduled events created and triggered
-- propagated_situations created
-- propagation target_system_ids
+- propagation origin_system_id
+- propagation event_id
+- propagation trigger_day
+- propagation entry index
+- propagation candidate_neighbors
+- propagation selected_neighbors
+- propagation situation_id
 - propagation delay_days
+- propagation systems_affected
+- propagation scheduled_day
 - modifier aggregation results
 - player deltas
 
@@ -708,6 +784,13 @@ Given identical:
 
 World State resolves identically.
 
+- Event spawn selection must be deterministic given:
+  - world_seed
+  - system_id
+  - current_day
+- Situation creation must be deterministic.
+- Propagation selection must be deterministic.
+- Scheduled event triggers must be deterministic.
 - propagation selection and scheduling
 
 No uncontrolled simulation drift allowed.

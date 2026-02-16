@@ -1,0 +1,1665 @@
+{
+  "version": "0.10.0",
+  "description": "Phase 6 Events catalog. Tiers are hidden from player UI; display_name may duplicate across tiers.",
+  "events": [
+    {
+      "event_id": "solar_flare_surge",
+      "display_name": "Solar Flare Surge",
+      "emoji_id": "EVENT_SOLAR_FLARE_SURGE",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "energy_crisis"
+          },
+          {
+            "situation_id": "supply_chain_failure"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "space_weather_alert"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_delegation",
+      "display_name": "Alien Delegation",
+      "emoji_id": "EVENT_ALIEN_DELEGATION",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "cultural_festival",
+            "scope_type": "destination"
+          },
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_presence"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "tag",
+            "target_id": "crew:alien",
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 50
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "major_discovery",
+      "display_name": "Major Discovery",
+      "emoji_id": "EVENT_MAJOR_DISCOVERY",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "exploration_craze"
+          },
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "discovery_hype"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": []
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "merchant_convoy_arrival",
+      "display_name": "Merchant Convoy Arrival",
+      "emoji_id": "EVENT_MERCHANT_CONVOY_ARRIVAL",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "convoy_present"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "smuggler_amnesty",
+      "display_name": "Smuggler Amnesty",
+      "emoji_id": "EVENT_SMUGGLER_AMNESTY",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "black_market_expansion",
+            "scope_type": "destination"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "amnesty_window"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "tag",
+            "target_id": "stolen",
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          },
+          {
+            "domain": "goods",
+            "target_type": "tag",
+            "target_id": "counterfeit",
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_cultural_exhibition",
+      "display_name": "Alien Cultural Exhibition",
+      "emoji_id": "EVENT_ALIEN_CULTURAL_EXHIBITION",
+      "severity_tier": 1,
+      "spawn_weight": 30,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "cultural_festival",
+            "scope_type": "destination"
+          },
+          {
+            "situation_id": "luxury_goods_demand"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_culture_underway"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "tag",
+            "target_id": "crew:alien",
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 40
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "war_skirmish",
+      "display_name": "War",
+      "emoji_id": "EVENT_WAR",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "military_mobilization"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "war_regional",
+            "delay_days": 4
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "plague_minor",
+      "display_name": "Plague Outbreak",
+      "emoji_id": "EVENT_PLAGUE",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "medical_shortage"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "plague_epidemic",
+            "delay_days": 5
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "category",
+            "target_id": "MEDICINE",
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": 20
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "economic_downturn",
+      "display_name": "Economic Shock",
+      "emoji_id": "EVENT_ECONOMIC_SHOCK",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "economic_recession"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "economic_recession",
+            "delay_days": 6
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": -10
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_border_incident",
+      "display_name": "Alien Incident",
+      "emoji_id": "EVENT_ALIEN_INCIDENT",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_activity"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "alien_incursion",
+            "delay_days": 6
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "corporate_audit",
+      "display_name": "Corporate Audit",
+      "emoji_id": "EVENT_CORPORATE_AUDIT",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "smuggling_crackdown"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "audit_in_progress"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": -10
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "pirate_warlord_emerges",
+      "display_name": "Pirate Warlord Emerges",
+      "emoji_id": "EVENT_PIRATE_WARLORD_EMERGES",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "pirate_surge"
+          },
+          {
+            "situation_id": "black_market_expansion",
+            "scope_type": "destination"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "pirate_warlord"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "trade_treaty_signed",
+      "display_name": "Trade Treaty Signed",
+      "emoji_id": "EVENT_TRADE_TREATY_SIGNED",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "treaty_active"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "price_bias_percent",
+            "modifier_value": -5
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "resource_discovery",
+      "display_name": "Resource Discovery",
+      "emoji_id": "EVENT_RESOURCE_DISCOVERY",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "industrial_expansion"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "resource_rush"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "category",
+            "target_id": "ORE",
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "diplomatic_incident",
+      "display_name": "Diplomatic Incident",
+      "emoji_id": "EVENT_DIPLOMATIC_INCIDENT",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "diplomatic_crisis"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_cultural_exchange",
+      "display_name": "Alien Cultural Exchange",
+      "emoji_id": "EVENT_ALIEN_CULTURAL_EXCHANGE",
+      "severity_tier": 2,
+      "spawn_weight": 35,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "cultural_festival",
+            "scope_type": "destination"
+          },
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_exchange"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "tag",
+            "target_id": "crew:alien",
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 30
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "economic_recession",
+      "display_name": "Economic Crisis",
+      "emoji_id": "EVENT_ECONOMIC_CRISIS",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "economic_recession"
+          },
+          {
+            "situation_id": "civil_unrest"
+          },
+          {
+            "situation_id": "supply_chain_failure"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "economic_crisis"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "economic_collapse",
+            "delay_days": 7
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": -15
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "political_assassination",
+      "display_name": "Political Assassination",
+      "emoji_id": "EVENT_POLITICAL_ASSASSINATION",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "civil_unrest"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "leadership_crisis"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "infrastructure_collapse",
+      "display_name": "Infrastructure Collapse",
+      "emoji_id": "EVENT_INFRASTRUCTURE_COLLAPSE",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "infrastructure_strain"
+          },
+          {
+            "situation_id": "industrial_parts_shortage"
+          },
+          {
+            "situation_id": "supply_chain_failure"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "infrastructure_failure"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "modules",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "availability_delta",
+            "modifier_value": -1
+          },
+          {
+            "domain": "ships",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "availability_delta",
+            "modifier_value": -1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "scientific_breakthrough",
+      "display_name": "Scientific Breakthrough",
+      "emoji_id": "EVENT_SCIENTIFIC_BREAKTHROUGH",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "breakthrough"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "modules",
+            "target_type": "tag",
+            "target_id": "technological",
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          },
+          {
+            "domain": "missions",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "spawn_weight_delta",
+            "modifier_value": 20
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_science_defector",
+      "display_name": "Alien Science Defector",
+      "emoji_id": "EVENT_ALIEN_SCIENCE_DEFECTOR",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "exploration_craze"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_defector"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "tag",
+            "target_id": "crew:alien",
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 25
+          },
+          {
+            "domain": "missions",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "spawn_weight_delta",
+            "modifier_value": 15
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_bounty_hunters",
+      "display_name": "Alien Bounty Hunters",
+      "emoji_id": "EVENT_ALIEN_BOUNTY_HUNTERS",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_hunters"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "religious_schism",
+      "display_name": "Religious Schism",
+      "emoji_id": "EVENT_RELIGIOUS_SCHISM",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "religious_revival"
+          },
+          {
+            "situation_id": "civil_unrest"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "schism"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "tag",
+            "target_id": "propaganda",
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": 15
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "corporate_takeover",
+      "display_name": "Corporate Takeover",
+      "emoji_id": "EVENT_CORPORATE_TAKEOVER",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "civil_unrest"
+          },
+          {
+            "situation_id": "labor_strike",
+            "scope_type": "destination"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "takeover"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "wage_bias_percent",
+            "modifier_value": 10
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_trade_pact",
+      "display_name": "Alien Trade Pact",
+      "emoji_id": "EVENT_ALIEN_TRADE_PACT",
+      "severity_tier": 3,
+      "spawn_weight": 20,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "trade_boom"
+          },
+          {
+            "situation_id": "luxury_goods_demand"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_trade"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "tag",
+            "target_id": "crew:alien",
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 20
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "war_regional",
+      "display_name": "War",
+      "emoji_id": "EVENT_WAR",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "military_mobilization"
+          },
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "refugee_strain"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "war_total",
+            "delay_days": 6
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "plague_epidemic",
+      "display_name": "Plague Outbreak",
+      "emoji_id": "EVENT_PLAGUE",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "quarantine",
+            "scope_type": "destination"
+          },
+          {
+            "situation_id": "medical_shortage"
+          },
+          {
+            "situation_id": "food_shortage"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "plague_systemic",
+            "delay_days": 6
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "category",
+            "target_id": "MEDICINE",
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": 30
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_incursion",
+      "display_name": "Alien Incident",
+      "emoji_id": "EVENT_ALIEN_INCIDENT",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "military_mobilization"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_incursion"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "alien_interstellar_crisis",
+            "delay_days": 7
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "stellar_instability_major",
+      "display_name": "Stellar Instability",
+      "emoji_id": "EVENT_STELLAR_INSTABILITY",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "energy_crisis"
+          },
+          {
+            "situation_id": "infrastructure_strain"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "stellar_instability"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [
+          {
+            "event_id": "micro_singularity_event",
+            "delay_days": 8
+          }
+        ],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "travel_time_delta",
+            "modifier_value": 1
+          },
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_artifact_discovery",
+      "display_name": "Alien Artifact Discovery",
+      "emoji_id": "EVENT_ALIEN_ARTIFACT_DISCOVERY",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "exploration_craze"
+          },
+          {
+            "situation_id": "trade_boom"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "artifact"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "modules",
+            "target_type": "tag",
+            "target_id": "secondary:alien",
+            "modifier_type": "availability_delta",
+            "modifier_value": 1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "mass_migration",
+      "display_name": "Mass Migration",
+      "emoji_id": "EVENT_MASS_MIGRATION",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "refugee_strain"
+          },
+          {
+            "situation_id": "infrastructure_strain"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "migration_wave"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "crew",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "hire_weight_delta",
+            "modifier_value": 20
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "strategic_blockade",
+      "display_name": "Strategic Blockade",
+      "emoji_id": "EVENT_STRATEGIC_BLOCKADE",
+      "severity_tier": 4,
+      "spawn_weight": 10,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "supply_chain_failure"
+          },
+          {
+            "situation_id": "resource_shortage"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "blockade"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "travel_time_delta",
+            "modifier_value": 1
+          },
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "availability_delta",
+            "modifier_value": -1
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "war_total",
+      "display_name": "War",
+      "emoji_id": "EVENT_WAR",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "military_mobilization"
+          },
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "refugee_strain"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "total_war"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "plague_systemic",
+      "display_name": "Plague Outbreak",
+      "emoji_id": "EVENT_PLAGUE",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "quarantine",
+            "scope_type": "destination"
+          },
+          {
+            "situation_id": "medical_shortage"
+          },
+          {
+            "situation_id": "food_shortage"
+          },
+          {
+            "situation_id": "public_panic"
+          },
+          {
+            "situation_id": "population_drain"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": -1,
+        "government_change": null,
+        "system_flag_add": [
+          "systemic_plague"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "category",
+            "target_id": "MEDICINE",
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": 40
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "economic_collapse",
+      "display_name": "Economic Collapse",
+      "emoji_id": "EVENT_ECONOMIC_COLLAPSE",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "economic_recession"
+          },
+          {
+            "situation_id": "civil_unrest"
+          },
+          {
+            "situation_id": "population_drain"
+          },
+          {
+            "situation_id": "supply_chain_failure"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": -1,
+        "government_change": null,
+        "system_flag_add": [
+          "collapse"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "goods",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "demand_bias_percent",
+            "modifier_value": -25
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "alien_interstellar_crisis",
+      "display_name": "Alien Incident",
+      "emoji_id": "EVENT_ALIEN_INTERSTELLAR_CRISIS",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "military_mobilization"
+          },
+          {
+            "situation_id": "public_panic"
+          },
+          {
+            "situation_id": "refugee_strain"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "alien_crisis"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "micro_singularity_event",
+      "display_name": "Micro Singularity Event",
+      "emoji_id": "EVENT_MICRO_SINGULARITY_EVENT",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "infrastructure_strain"
+          },
+          {
+            "situation_id": "public_panic"
+          },
+          {
+            "situation_id": "population_drain"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "unstable_wormhole"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "special",
+            "target_id": "unstable_wormhole",
+            "modifier_type": "special_flag",
+            "modifier_value": 1
+          },
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    },
+    {
+      "event_id": "interstellar_incident",
+      "display_name": "Interstellar Incident",
+      "emoji_id": "EVENT_INTERSTELLAR_INCIDENT",
+      "severity_tier": 5,
+      "spawn_weight": 5,
+      "random_allowed": true,
+      "effects": {
+        "create_situations": [
+          {
+            "situation_id": "border_tensions"
+          },
+          {
+            "situation_id": "public_panic"
+          }
+        ],
+        "destroy_destination_ids": [],
+        "population_delta": 0,
+        "government_change": null,
+        "system_flag_add": [
+          "interstellar_incident"
+        ],
+        "system_flag_remove": [],
+        "npc_mutations": [],
+        "player_progression_delta": {},
+        "asset_destruction": {
+          "goods_ids": []
+        },
+        "scheduled_events": [],
+        "modifiers": [
+          {
+            "domain": "travel",
+            "target_type": "ALL",
+            "target_id": null,
+            "modifier_type": "risk_bias_delta",
+            "modifier_value": 2
+          }
+        ]
+      },
+      "propagation": []
+    }
+  ]
+}
