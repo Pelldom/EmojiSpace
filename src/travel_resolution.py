@@ -79,11 +79,6 @@ def resolve_travel(
 
     travel_days = _travel_days(inter_system=inter_system, distance_ly=distance_ly)
     wage_cost = calculate_travel_wage_cost(ship, travel_days)
-    adjusted_risk = max(0.0, float(base_risk) * (1.0 + (float(travel_modifiers["travel_risk_percent"]) / 100.0)))
-    adjusted_encounter_rate = max(
-        0.0, float(base_encounter_rate) * (1.0 + (float(travel_modifiers["encounter_rate_percent"]) / 100.0))
-    )
-
     if player_state is not None:
         if int(player_state.credits) < wage_cost:
             return TravelResult(
@@ -92,29 +87,33 @@ def resolve_travel(
                 current_fuel=int(ship.current_fuel),
                 time_advanced=False,
                 reason="Insufficient credits to pay crew wages for travel.",
-                adjusted_risk=adjusted_risk,
-                adjusted_encounter_rate=adjusted_encounter_rate,
+                adjusted_risk=max(0.0, float(base_risk) * (1.0 + (float(travel_modifiers["travel_risk_percent"]) / 100.0))),
+                adjusted_encounter_rate=max(
+                    0.0, float(base_encounter_rate) * (1.0 + (float(travel_modifiers["encounter_rate_percent"]) / 100.0))
+                ),
                 route_id=resolved_route_id,
-                special=str(travel_modifiers["special"]),
+                special=travel_modifiers["special"],
             )
         player_state.credits = int(player_state.credits) - wage_cost
 
     base_fuel_cost = compute_fuel_cost(inter_system=inter_system, distance_ly=distance_ly)
     crew_modifiers = compute_crew_modifiers(ship)
+    adjusted_risk = max(0.0, float(base_risk) * (1.0 + (float(travel_modifiers["travel_risk_percent"]) / 100.0)))
+    adjusted_encounter_rate = max(
+        0.0, float(base_encounter_rate) * (1.0 + (float(travel_modifiers["encounter_rate_percent"]) / 100.0))
+    )
     base_fuel_with_crew = base_fuel_cost + int(crew_modifiers.fuel_delta)
     adjusted_fuel = max(
         0.0,
         float(base_fuel_with_crew) * (1.0 + (float(travel_modifiers["fuel_cost_percent"]) / 100.0)),
     )
-
-    special = str(travel_modifiers["special"])
+    special = travel_modifiers["special"]
     if special == "unstable_wormhole":
-        random_fn = getattr(rng, "random", None) if rng is not None else None
-        if callable(random_fn) and float(random_fn()) < 0.5:
+        # Alternate route path uses caller-provided RNG only; no local RNG streams.
+        if rng is not None and float(getattr(rng, "random")()) < 0.5:
             adjusted_fuel = max(0.0, adjusted_fuel * 0.5)
-        elif callable(random_fn):
+        elif rng is not None:
             adjusted_fuel = max(0.0, adjusted_fuel * 1.5)
-
     fuel_cost = max(1, int(round(adjusted_fuel)))
     if int(ship.current_fuel) < fuel_cost:
         return TravelResult(
@@ -132,7 +131,6 @@ def resolve_travel(
     ship.current_fuel = int(ship.current_fuel) - fuel_cost
     if advance_time is not None:
         advance_time()
-
     return TravelResult(
         success=True,
         fuel_cost=fuel_cost,
@@ -168,7 +166,6 @@ def _resolve_travel_world_state_modifiers(
     }
     if world_state_engine is None or not current_system_id:
         return defaults
-
     resolved = world_state_engine.resolve_modifiers_for_entities(
         current_system_id,
         "travel",
@@ -181,12 +178,10 @@ def _resolve_travel_world_state_modifiers(
         ],
     )
     row = resolved.get("resolved", {}).get(route_id, {})
-
     defaults["travel_time_percent"] = int(row.get("travel_time_percent", row.get("travel_time_delta", 0)))
     defaults["travel_risk_percent"] = int(row.get("travel_risk_percent", row.get("risk_bias_delta", 0)))
     defaults["encounter_rate_percent"] = int(row.get("encounter_rate_percent", 0))
     defaults["fuel_cost_percent"] = int(row.get("fuel_cost_percent", 0))
-
     special_value = row.get("special", "")
     if isinstance(special_value, str):
         defaults["special"] = special_value

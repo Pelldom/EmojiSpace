@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from entities import EntityType
 
@@ -36,6 +36,13 @@ class NPCEntity:
     affiliation_ids: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # Crew attachment (Phase 5.1 structural foundation only)
+    is_crew: bool = False
+    crew_role_id: Optional[str] = None
+    crew_tags: List[str] = field(default_factory=list)
+    hire_cost: int = 0
+    daily_wage: int = 0
+
     # Location association
     home_location_id: str | None = None
     current_location_id: str | None = None
@@ -50,6 +57,7 @@ class NPCEntity:
                 if key == "persistence_tier":
                     value = _normalize_persistence_tier(value)
                 setattr(state, key, value)
+        state.validate_crew()
         return state
 
     def to_dict(self) -> Dict[str, Any]:
@@ -73,11 +81,30 @@ class NPCEntity:
             "role_tags": list(self.role_tags),
             "affiliation_ids": list(self.affiliation_ids),
             "metadata": dict(self.metadata),
+            "is_crew": self.is_crew,
+            "crew_role_id": self.crew_role_id,
+            "crew_tags": list(self.crew_tags),
+            "hire_cost": self.hire_cost,
+            "daily_wage": self.daily_wage,
             "home_location_id": self.home_location_id,
             "current_location_id": self.current_location_id,
             "current_ship_id": self.current_ship_id,
             "current_system_id": self.current_system_id,
         }
+
+    def __post_init__(self) -> None:
+        self.validate_crew()
+
+    def validate_crew(self) -> None:
+        if not isinstance(self.crew_tags, list):
+            raise ValueError("crew_tags must be a list.")
+        if any((not isinstance(tag, str)) or (not tag.startswith("crew:")) for tag in self.crew_tags):
+            raise ValueError('crew_tags entries must be strings prefixed with "crew:".')
+        if self.is_crew:
+            if self.persistence_tier != NPCPersistenceTier.TIER_2:
+                raise ValueError("Crew NPCs must use NPCPersistenceTier.TIER_2.")
+            if not self.crew_role_id:
+                raise ValueError("Crew NPCs must define crew_role_id.")
 
     def set_location(self, location_id: str | None, logger=None, turn: int = 0) -> None:
         self.current_location_id = location_id

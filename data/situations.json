@@ -1,0 +1,984 @@
+{
+  "version": "0.10.0",
+  "description": "Situation catalog for EmojiSpace World State (Phase 6).",
+  "situations": [
+    {
+      "situation_id": "trade_boom",
+      "display_name": "Trade Boom",
+      "emoji_id": "SITUATION_TRADE_BOOM",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 15
+        },
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "economic_recession",
+      "display_name": "Economic Recession",
+      "emoji_id": "SITUATION_ECONOMIC_RECESSION",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": -15
+        },
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "price_bias_percent",
+          "modifier_value": -10
+        }
+      ]
+    },
+    {
+      "situation_id": "pirate_surge",
+      "display_name": "Pirate Surge",
+      "emoji_id": "SITUATION_PIRATE_SURGE",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "WEAPONS",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "military_mobilization",
+      "display_name": "Military Mobilization",
+      "emoji_id": "SITUATION_MILITARY_MOBILIZATION",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "WEAPONS",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "WEAPONS",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "border_tensions",
+      "display_name": "Border Tensions",
+      "emoji_id": "SITUATION_BORDER_TENSIONS",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "civil_unrest",
+      "display_name": "Civil Unrest",
+      "emoji_id": "SITUATION_CIVIL_UNREST",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "crew",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "hire_weight_delta",
+          "modifier_value": -10
+        }
+      ]
+    },
+    {
+      "situation_id": "labor_strike",
+      "display_name": "Labor Strike",
+      "emoji_id": "SITUATION_LABOR_STRIKE",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MACHINERY",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "METAL",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "industrial_expansion",
+      "display_name": "Industrial Expansion",
+      "emoji_id": "SITUATION_INDUSTRIAL_EXPANSION",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MACHINERY",
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "METAL",
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "resource_shortage",
+      "display_name": "Resource Shortage",
+      "emoji_id": "SITUATION_RESOURCE_SHORTAGE",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ORE",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 25
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ORE",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 15
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ORE",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "METAL",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 15
+        }
+      ]
+    },
+    {
+      "situation_id": "energy_crisis",
+      "display_name": "Energy Crisis",
+      "emoji_id": "SITUATION_ENERGY_CRISIS",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 30
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 15
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "quarantine",
+      "display_name": "Quarantine",
+      "emoji_id": "SITUATION_QUARANTINE",
+      "severity_tier": 4,
+      "random_allowed": false,
+      "event_only": true,
+      "recovery_only": false,
+      "allowed_scope": "destination",
+      "duration_days": {
+        "min": 7,
+        "max": 12
+      },
+      "modifiers": [
+        {
+          "domain": "travel",
+          "target_type": "special",
+          "target_id": "quarantine",
+          "modifier_type": "special_flag",
+          "modifier_value": 1
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "cultural_festival",
+      "display_name": "Cultural Festival",
+      "emoji_id": "SITUATION_CULTURAL_FESTIVAL",
+      "severity_tier": 1,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "destination",
+      "duration_days": {
+        "min": 2,
+        "max": 4
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "LUXURY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "LUXURY",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "religious_revival",
+      "display_name": "Religious Revival",
+      "emoji_id": "SITUATION_RELIGIOUS_REVIVAL",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "tag",
+          "target_id": "propaganda",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "black_market_expansion",
+      "display_name": "Black Market Expansion",
+      "emoji_id": "SITUATION_BLACK_MARKET_EXPANSION",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "tag",
+          "target_id": "counterfeit",
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "tag",
+          "target_id": "counterfeit",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": -10
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "smuggling_crackdown",
+      "display_name": "Smuggling Crackdown",
+      "emoji_id": "SITUATION_SMUGGLING_CRACKDOWN",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "tag",
+          "target_id": "counterfeit",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "goods",
+          "target_type": "tag",
+          "target_id": "counterfeit",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "exploration_craze",
+      "display_name": "Exploration Craze",
+      "emoji_id": "SITUATION_EXPLORATION_CRAZE",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "infrastructure_strain",
+      "display_name": "Infrastructure Strain",
+      "emoji_id": "SITUATION_INFRASTRUCTURE_STRAIN",
+      "severity_tier": 3,
+      "random_allowed": false,
+      "event_only": true,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "modules",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "ships",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "crew",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "hire_weight_delta",
+          "modifier_value": -10
+        }
+      ]
+    },
+    {
+      "situation_id": "refugee_strain",
+      "display_name": "Refugee Strain",
+      "emoji_id": "SITUATION_REFUGEE_STRAIN",
+      "severity_tier": 3,
+      "random_allowed": false,
+      "event_only": true,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 25
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 25
+        },
+        {
+          "domain": "crew",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "hire_weight_delta",
+          "modifier_value": 15
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "reconstruction",
+      "display_name": "Reconstruction",
+      "emoji_id": "SITUATION_RECONSTRUCTION",
+      "severity_tier": 3,
+      "random_allowed": false,
+      "event_only": false,
+      "recovery_only": true,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MACHINERY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "METAL",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "ENERGY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "public_panic",
+      "display_name": "Public Panic",
+      "emoji_id": "SITUATION_PUBLIC_PANIC",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "travel",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "risk_bias_delta",
+          "modifier_value": 1
+        }
+      ]
+    },
+    {
+      "situation_id": "medical_shortage",
+      "display_name": "Medical Shortage",
+      "emoji_id": "SITUATION_MEDICAL_SHORTAGE",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 30
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 15
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "MEDICINE",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "food_shortage",
+      "display_name": "Food Shortage",
+      "emoji_id": "SITUATION_FOOD_SHORTAGE",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 25
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "FOOD",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "industrial_parts_shortage",
+      "display_name": "Industrial Parts Shortage",
+      "emoji_id": "SITUATION_INDUSTRIAL_PARTS_SHORTAGE",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 25
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "luxury_goods_demand",
+      "display_name": "Luxury Goods Demand",
+      "emoji_id": "SITUATION_LUXURY_GOODS_DEMAND",
+      "severity_tier": 2,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "LUXURY",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "LUXURY",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "LUXURY",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        }
+      ]
+    },
+    {
+      "situation_id": "supply_chain_failure",
+      "display_name": "Supply Chain Failure",
+      "emoji_id": "SITUATION_SUPPLY_CHAIN_FAILURE",
+      "severity_tier": 3,
+      "random_allowed": true,
+      "event_only": false,
+      "recovery_only": false,
+      "allowed_scope": "system_or_destination",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "DATA",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 20
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "DATA",
+          "modifier_type": "price_bias_percent",
+          "modifier_value": 10
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "DATA",
+          "modifier_type": "availability_delta",
+          "modifier_value": -1
+        },
+        {
+          "domain": "goods",
+          "target_type": "category",
+          "target_id": "PARTS",
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": 10
+        }
+      ]
+    },
+    {
+      "situation_id": "population_drain",
+      "display_name": "Population Drain",
+      "emoji_id": "SITUATION_POPULATION_DRAIN",
+      "severity_tier": 3,
+      "random_allowed": false,
+      "event_only": true,
+      "recovery_only": false,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 5,
+        "max": 9
+      },
+      "modifiers": [
+        {
+          "domain": "goods",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "demand_bias_percent",
+          "modifier_value": -10
+        },
+        {
+          "domain": "crew",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "hire_weight_delta",
+          "modifier_value": -20
+        }
+      ]
+    },
+    {
+      "situation_id": "infrastructure_expansion",
+      "display_name": "Infrastructure Expansion",
+      "emoji_id": "SITUATION_INFRASTRUCTURE_EXPANSION",
+      "severity_tier": 2,
+      "random_allowed": false,
+      "event_only": false,
+      "recovery_only": true,
+      "allowed_scope": "system",
+      "duration_days": {
+        "min": 3,
+        "max": 6
+      },
+      "modifiers": [
+        {
+          "domain": "ships",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "modules",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "availability_delta",
+          "modifier_value": 1
+        },
+        {
+          "domain": "crew",
+          "target_type": "ALL",
+          "target_id": null,
+          "modifier_type": "hire_weight_delta",
+          "modifier_value": 10
+        }
+      ]
+    }
+  ]
+}

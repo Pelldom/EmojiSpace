@@ -149,9 +149,15 @@ Pricing must be resolved in **exactly** this order:
    - Apply substitute discount
 5. Apply tag-based price interpretation
 6. Apply government price bias
-7. Clamp final price to valid bounds
+7. Clamp final price to non-negative only (no upper clamp)
+   - final_multiplier = max(0, final_multiplier)
 
 Reordering is forbidden.
+
+Note:
+- Pricing MUST NOT apply an upper clamp to final price multipliers.
+- WorldState deltas are already capped per world_state_contract.md Section 13.
+- Pricing enforces only a non-negative floor to prevent negative prices.
 
 ### Category Pressure Multipliers (Phase 2.6)
 

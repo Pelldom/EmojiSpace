@@ -1,0 +1,72 @@
+[
+  {
+    "role_id": "pilot",
+    "hire_cost_min": 1000,
+    "hire_cost_max": 1500,
+    "base_daily_wage": 5,
+    "description": "Improves engine performance in combat."
+  },
+  {
+    "role_id": "gunner",
+    "hire_cost_min": 1100,
+    "hire_cost_max": 1600,
+    "base_daily_wage": 6,
+    "description": "Improves weapon handling and fire discipline."
+  },
+  {
+    "role_id": "tactician",
+    "hire_cost_min": 1300,
+    "hire_cost_max": 1800,
+    "base_daily_wage": 7,
+    "description": "Improves engagement planning and threat response."
+  },
+  {
+    "role_id": "engineer",
+    "hire_cost_min": 1200,
+    "hire_cost_max": 1700,
+    "base_daily_wage": 6,
+    "description": "Supports onboard systems reliability."
+  },
+  {
+    "role_id": "mechanic",
+    "hire_cost_min": 900,
+    "hire_cost_max": 1400,
+    "base_daily_wage": 5,
+    "description": "Supports maintenance and repair readiness."
+  },
+  {
+    "role_id": "navigator",
+    "hire_cost_min": 1000,
+    "hire_cost_max": 1450,
+    "base_daily_wage": 5,
+    "description": "Improves route planning and travel coordination."
+  },
+  {
+    "role_id": "broker",
+    "hire_cost_min": 1400,
+    "hire_cost_max": 1900,
+    "base_daily_wage": 7,
+    "description": "Supports market negotiation and trade handling."
+  },
+  {
+    "role_id": "quartermaster",
+    "hire_cost_min": 1100,
+    "hire_cost_max": 1600,
+    "base_daily_wage": 6,
+    "description": "Supports cargo organization and supply control."
+  },
+  {
+    "role_id": "lawyer",
+    "hire_cost_min": 1500,
+    "hire_cost_max": 2000,
+    "base_daily_wage": 8,
+    "description": "Supports legal compliance and dispute handling."
+  },
+  {
+    "role_id": "science",
+    "hire_cost_min": 1300,
+    "hire_cost_max": 1850,
+    "base_daily_wage": 7,
+    "description": "Supports scientific assessment and analysis."
+  }
+]
