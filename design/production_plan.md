@@ -680,6 +680,7 @@ Patch: unified spawn gate implements 70/30 Situation vs Event outcome split per 
 Phase 6 - Spawn Gate Repair (COMPLETED)
 Phase 6 - Slice 3 Event Execution Layer (COMPLETED)
 Phase 6 - Slice 4 Scheduled Event Execution (COMPLETED)
+Phase 6 - Slice 5 Propagation Execution (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.

@@ -1017,3 +1017,242 @@ def test_scheduled_event_duration_roll_is_deterministic(tmp_path: Path) -> None:
     second = _run_once()
     assert first == second
     assert 2 <= first <= 5
+
+
+def test_propagation_executes_deterministically_across_runs(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-PROP",
+                        "event_family_id": "F-P",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 2, "max": 4},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> dict[str, list[str]]:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.add_event(ActiveEvent(event_id="E-PROP", event_family_id="F-P", system_id="SYS-A", remaining_days=3))
+        count = engine.process_propagation(
+            world_seed=11,
+            current_day=40,
+            get_neighbors_fn=lambda system_id: {"SYS-A": ["SYS-B", "SYS-C"]}.get(system_id, []),
+        )
+        assert count == 1
+        return {sid: [row.event_id for row in engine.get_active_events(sid)] for sid in ["SYS-A", "SYS-B", "SYS-C"]}
+
+    assert _run_once() == _run_once()
+
+
+def test_propagation_cap_model_c_enforced_one_per_event_id_per_day(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-CAP",
+                        "event_family_id": "F-C",
+                        "severity_tier": 3,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.add_event(ActiveEvent(event_id="E-CAP", event_family_id="F-C", system_id="SYS-A", remaining_days=3))
+    engine.add_event(ActiveEvent(event_id="E-CAP", event_family_id="F-C", system_id="SYS-B", remaining_days=3))
+    count = engine.process_propagation(
+        world_seed=22,
+        current_day=41,
+        get_neighbors_fn=lambda system_id: {"SYS-A": ["SYS-C"], "SYS-B": ["SYS-D"]}.get(system_id, []),
+    )
+    assert count == 1
+    total_instances = sum(len([row for row in engine.get_active_events(sid) if row.event_id == "E-CAP"]) for sid in ["SYS-A", "SYS-B", "SYS-C", "SYS-D"])
+    assert total_instances == 3
+
+
+def test_different_event_ids_can_each_propagate_once_same_day(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-ONE",
+                        "event_family_id": "F1",
+                        "severity_tier": 1,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    },
+                    {
+                        "event_id": "E-TWO",
+                        "event_family_id": "F2",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.add_event(ActiveEvent(event_id="E-ONE", event_family_id="F1", system_id="SYS-A", remaining_days=2))
+    engine.add_event(ActiveEvent(event_id="E-TWO", event_family_id="F2", system_id="SYS-B", remaining_days=2))
+    count = engine.process_propagation(
+        world_seed=33,
+        current_day=42,
+        get_neighbors_fn=lambda system_id: {"SYS-A": ["SYS-C"], "SYS-B": ["SYS-D"]}.get(system_id, []),
+    )
+    assert count == 2
+    assert any(row.event_id == "E-ONE" for row in engine.get_active_events("SYS-C"))
+    assert any(row.event_id == "E-TWO" for row in engine.get_active_events("SYS-D"))
+
+
+def test_propagation_does_not_consume_spawn_gate(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-SPAWN",
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 3, "max": 3},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-PROP",
+                        "event_family_id": "FP",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.add_event(ActiveEvent(event_id="E-PROP", event_family_id="FP", system_id="SYS-A", remaining_days=2))
+    engine.evaluate_spawn_gate(
+        world_seed=1,
+        current_system_id="SYS-X",
+        neighbor_system_ids=[],
+        current_day=30,
+        event_frequency_percent=100,
+    )
+    propagation_count = engine.process_propagation(
+        world_seed=1,
+        current_day=30,
+        get_neighbors_fn=lambda system_id: {"SYS-A": ["SYS-B"]}.get(system_id, []),
+    )
+    assert len(engine.get_active_situations("SYS-X")) == 1
+    assert propagation_count == 1
+    assert any(row.event_id == "E-PROP" for row in engine.get_active_events("SYS-B"))
+
+
+def test_propagation_target_selection_is_deterministic_and_respects_constraints(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-TARGET",
+                        "event_family_id": "FT",
+                        "severity_tier": 2,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "propagation_allowed": True,
+                        "propagation_radius": 1,
+                        "propagation_daily_chance_percent": 100,
+                        "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> str:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.add_event(ActiveEvent(event_id="E-TARGET", event_family_id="FT", system_id="SYS-A", remaining_days=2))
+        engine.add_event(ActiveEvent(event_id="E-TARGET", event_family_id="FT", system_id="SYS-B", remaining_days=2))
+        count = engine.process_propagation(
+            world_seed=55,
+            current_day=43,
+            get_neighbors_fn=lambda system_id: {"SYS-A": ["SYS-C", "SYS-B", "SYS-A"], "SYS-B": ["SYS-D"]}.get(system_id, []),
+        )
+        assert count == 1
+        candidates = [sid for sid in ["SYS-C", "SYS-D"] if any(row.event_id == "E-TARGET" for row in engine.get_active_events(sid))]
+        assert len(candidates) == 1
+        return candidates[0]
+
+    first = _run_once()
+    second = _run_once()
+    assert first == second
+    assert first == "SYS-C"

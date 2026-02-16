@@ -3,7 +3,7 @@ import json
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 
 @dataclass
@@ -330,6 +330,97 @@ class WorldStateEngine:
             executed += 1
 
         self.scheduled_events = pending
+        return executed
+
+    def process_propagation(
+        self,
+        world_seed: int,
+        current_day: int,
+        get_neighbors_fn: Callable[[str], list[str]],
+    ) -> int:
+        active_event_ids = sorted(
+            {
+                row.event_id
+                for rows in self.active_events.values()
+                for row in rows
+                if row.event_id in self._event_catalog_by_id
+            }
+        )
+        executed = 0
+        for event_id in active_event_ids:
+            event_def = self._event_catalog_by_id.get(event_id)
+            if event_def is None:
+                continue
+            if not bool(event_def.get("propagation_allowed")):
+                continue
+            if int(event_def.get("propagation_radius", 0)) < 1:
+                continue
+
+            roll_rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_day,
+                    "propagation",
+                    event_id,
+                )
+            )
+            chance_percent = int(event_def.get("propagation_daily_chance_percent", 25))
+            chance = max(0.0, min(1.0, float(chance_percent) / 100.0))
+            if roll_rng.random() >= chance:
+                continue
+
+            sources = sorted(
+                [
+                    system_id
+                    for system_id, rows in self.active_events.items()
+                    if any(row.event_id == event_id for row in rows)
+                ]
+            )
+            selected_source: Optional[str] = None
+            selected_targets: list[str] = []
+            for source in sources:
+                neighbors = sorted(set(get_neighbors_fn(source)))
+                targets = [
+                    neighbor
+                    for neighbor in neighbors
+                    if neighbor != source
+                    and not any(row.event_id == event_id for row in self.get_active_events(neighbor))
+                ]
+                if targets:
+                    selected_source = source
+                    selected_targets = targets
+                    break
+            if selected_source is None:
+                continue
+
+            activation_rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_day,
+                    "propagation_target",
+                    event_id,
+                    selected_source,
+                )
+            )
+            target_system_id = activation_rng.choice(selected_targets)
+            self.register_system(target_system_id)
+            remaining_days = _roll_duration_days(event_def.get("duration_days"), activation_rng, default_days=1)
+            self.add_event(
+                ActiveEvent(
+                    event_id=event_id,
+                    event_family_id=event_def.get("event_family_id"),
+                    system_id=target_system_id,
+                    remaining_days=max(0, remaining_days),
+                )
+            )
+            self.apply_event_effects(
+                world_seed=world_seed,
+                current_day=current_day,
+                target_system_id=target_system_id,
+                event_id=event_id,
+                rng=activation_rng,
+            )
+            executed += 1
         return executed
 
     def get_system_flags(self, system_id: str) -> list[str]:
