@@ -686,6 +686,7 @@ Phase 6 - Slice 7 Shared Modifier Resolver (COMPLETED)
 Phase 6 - Slice 8 Goods Pricing Consumption (COMPLETED)
 Phase 6 - Slice 9 Mission Weight Consumption (COMPLETED)
 Phase 6 - Slice 10 Shipdock Inventory Consumption (COMPLETED)
+Phase 6 - Slice 11 Crew Domain Consumption (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
