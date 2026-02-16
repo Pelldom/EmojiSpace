@@ -59,7 +59,7 @@ All expansion must originate here.
 | **Phase 4.11.2 (COMPLETED)** | **0.8.2** | **Structural consolidation (SimulationController authority + harness consolidation)** |
 | **Phase 4.x (COMPLETED)** | **0.6.0** | **Combat Resolver + deterministic sim harness + tests** |
 | Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
-| Phase 6 | 0.10.x | Situations, Events, and Dynamic World State |
+| Phase 6 - Situations, Events, and Dynamic World State (IN DESIGN) | 0.10.0 | Situations, Events, and Dynamic World State |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -658,9 +658,9 @@ Completion Summary:
 
 ## Phase 6 - Events, Situations, and Mission Arcs
 
-**Target:** 1.0.x
+**Target:** 0.10.0
 
-## Phase 6 - Situations, Events, and Dynamic World State (IN PROGRESS)
+## Phase 6 - Situations, Events, and Dynamic World State (IN DESIGN)
 
 - Introduces deterministic World State layer
 - Adds Situations (persistent modifiers)
@@ -671,6 +671,10 @@ Completion Summary:
 - Enforces Worldgen Lock structural persistence
 - Integrates with Time Engine via daily evaluation
 - Maintains strict authority boundaries (Government, Pricing, Population, Travel, Ship Systems)
+
+Event and Situation architecture finalized.
+Implementation pending.
+Phase 6 - Slice 1 Core WorldStateEngine (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
@@ -693,14 +697,15 @@ Expand simulation continuity through persistent event pressure, mission progress
 
 ## Phase 7 - UI Framework (Android + Emoji Integration)
 
-**Target:** 1.1.x
+**Target:** 1.0.x
 
 ### Objective
 Add a deterministic presentation and interaction layer that consumes simulation authority without introducing mechanics.
 
 ### Scope
 - Presentation adapter layer.
-- Emoji metadata integration into schema:
+- Emoji metadata integration into schema: via Emoji Profiles
+  - emoji_profile_contract.md
   - Ship frames.
   - Modules.
   - SKUs.
@@ -720,7 +725,7 @@ Add a deterministic presentation and interaction layer that consumes simulation 
 
 ## Phase 8 - Monetization and Play Store Deployment
 
-**Target:** 1.2.x
+**Target:** 1.1.x
 
 ### Objective
 Prepare commercial packaging and monetization with strict isolation from simulation outcomes.
@@ -740,8 +745,9 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.0-dev
-Phase 6 in progress.
+Current Development Version: 0.10.0
+Event and Situation architecture finalized.
+Implementation pending.
 
 ## Authority Statement
 
