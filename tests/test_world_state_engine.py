@@ -823,3 +823,197 @@ def test_apply_event_effects_raises_when_event_missing() -> None:
             event_id="MISSING-EVENT",
             rng=random.Random(1),
         )
+
+
+def test_scheduled_events_execute_on_due_day_only(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-A",
+                        "event_family_id": "F-A",
+                        "severity_tier": 1,
+                        "random_allowed": True,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [{"event_id": "E-B", "delay_days": 3}],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    },
+                    {
+                        "event_id": "E-B",
+                        "event_family_id": "F-B",
+                        "severity_tier": 1,
+                        "random_allowed": False,
+                        "duration_days": {"min": 2, "max": 2},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.evaluate_spawn_gate(
+        world_seed=1,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=1,
+        event_frequency_percent=100,
+    )
+    assert any(row.event_id == "E-A" for row in engine.get_active_events("SYS-0"))
+    assert engine.process_scheduled_events(world_seed=1, current_day=1) == 0
+    assert engine.process_scheduled_events(world_seed=1, current_day=2) == 0
+    assert engine.process_scheduled_events(world_seed=1, current_day=3) == 0
+    assert engine.process_scheduled_events(world_seed=1, current_day=4) == 1
+    assert any(row.event_id == "E-B" for row in engine.get_active_events("SYS-0"))
+
+
+def test_scheduled_event_execution_order_is_stable(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {"event_id": "E-1", "event_family_id": "F", "severity_tier": 1, "random_allowed": False, "duration_days": {"min": 1, "max": 1}, "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []}},
+                    {"event_id": "E-2", "event_family_id": "F", "severity_tier": 1, "random_allowed": False, "duration_days": {"min": 1, "max": 1}, "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []}},
+                    {"event_id": "E-3", "event_family_id": "F", "severity_tier": 1, "random_allowed": False, "duration_days": {"min": 1, "max": 1}, "effects": {"create_situations": [], "scheduled_events": [], "system_flag_add": [], "system_flag_remove": [], "modifiers": []}},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> list[str]:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.schedule_event(ScheduledEvent(event_id="E-2", system_id="SYS-0", trigger_day=5))
+        engine.schedule_event(ScheduledEvent(event_id="E-1", system_id="SYS-0", trigger_day=5))
+        engine.schedule_event(ScheduledEvent(event_id="E-3", system_id="SYS-0", trigger_day=5))
+        executed = engine.process_scheduled_events(world_seed=10, current_day=5)
+        assert executed == 3
+        return [row.event_id for row in engine.get_active_events("SYS-0")]
+
+    assert _run_once() == ["E-2", "E-1", "E-3"]
+    assert _run_once() == ["E-2", "E-1", "E-3"]
+
+
+def test_scheduled_events_do_not_consume_spawn_gate(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(
+        json.dumps(
+            {
+                "situations": [
+                    {
+                        "situation_id": "S-RANDOM",
+                        "random_allowed": True,
+                        "event_only": False,
+                        "recovery_only": False,
+                        "allowed_scope": "system",
+                        "duration_days": {"min": 3, "max": 3},
+                        "modifiers": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-SCHEDULED",
+                        "event_family_id": "F-S",
+                        "severity_tier": 1,
+                        "random_allowed": False,
+                        "duration_days": {"min": 1, "max": 1},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    engine = WorldStateEngine()
+    engine.load_situation_catalog(situations_path)
+    engine.load_event_catalog(events_path)
+    engine.schedule_event(ScheduledEvent(event_id="E-SCHEDULED", system_id="SYS-0", trigger_day=30))
+    engine.evaluate_spawn_gate(
+        world_seed=1,
+        current_system_id="SYS-0",
+        neighbor_system_ids=[],
+        current_day=30,
+        event_frequency_percent=8,
+    )
+    scheduled_count = engine.process_scheduled_events(world_seed=1, current_day=30)
+    assert scheduled_count == 1
+    assert len(engine.get_active_situations("SYS-0")) == 1
+    assert any(row.event_id == "E-SCHEDULED" for row in engine.get_active_events("SYS-0"))
+
+
+def test_scheduled_event_duration_roll_is_deterministic(tmp_path: Path) -> None:
+    situations_path = tmp_path / "situations.json"
+    events_path = tmp_path / "events.json"
+    situations_path.write_text(json.dumps({"situations": []}), encoding="utf-8")
+    events_path.write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "event_id": "E-DUR",
+                        "event_family_id": "F-D",
+                        "severity_tier": 1,
+                        "random_allowed": False,
+                        "duration_days": {"min": 2, "max": 5},
+                        "effects": {
+                            "create_situations": [],
+                            "scheduled_events": [],
+                            "system_flag_add": [],
+                            "system_flag_remove": [],
+                            "modifiers": [],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _run_once() -> int:
+        engine = WorldStateEngine()
+        engine.load_situation_catalog(situations_path)
+        engine.load_event_catalog(events_path)
+        engine.schedule_event(ScheduledEvent(event_id="E-DUR", system_id="SYS-0", trigger_day=7))
+        assert engine.process_scheduled_events(world_seed=999, current_day=7) == 1
+        return engine.get_active_events("SYS-0")[0].remaining_days
+
+    first = _run_once()
+    second = _run_once()
+    assert first == second
+    assert 2 <= first <= 5

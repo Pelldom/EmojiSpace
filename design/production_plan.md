@@ -679,6 +679,7 @@ Phase 6 - Slice 2 Random Situation Spawn (COMPLETED)
 Patch: unified spawn gate implements 70/30 Situation vs Event outcome split per contract.
 Phase 6 - Spawn Gate Repair (COMPLETED)
 Phase 6 - Slice 3 Event Execution Layer (COMPLETED)
+Phase 6 - Slice 4 Scheduled Event Execution (COMPLETED)
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.

@@ -28,6 +28,7 @@ class ScheduledEvent:
     event_id: str
     system_id: str
     trigger_day: int
+    insertion_index: int = -1
 
 
 @dataclass
@@ -42,6 +43,7 @@ class WorldStateEngine:
     active_modifiers_by_system: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     _situation_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     _event_catalog_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    _scheduled_insertion_counter: int = 0
 
     def register_system(self, system_id: str) -> None:
         if system_id not in self.active_situations:
@@ -83,6 +85,9 @@ class WorldStateEngine:
 
     def schedule_event(self, scheduled_event: ScheduledEvent) -> None:
         self.register_system(scheduled_event.system_id)
+        if scheduled_event.insertion_index < 0:
+            scheduled_event.insertion_index = self._scheduled_insertion_counter
+            self._scheduled_insertion_counter += 1
         self.scheduled_events.append(scheduled_event)
 
     def load_situation_catalog(self, catalog_path: str | Path | None = None) -> None:
@@ -281,6 +286,52 @@ class WorldStateEngine:
                 }
             )
 
+    def process_scheduled_events(self, world_seed: int, current_day: int) -> int:
+        due: list[ScheduledEvent] = []
+        pending: list[ScheduledEvent] = []
+        for row in self.scheduled_events:
+            if row.trigger_day == current_day:
+                due.append(row)
+            else:
+                pending.append(row)
+
+        executed = 0
+        due_sorted = sorted(due, key=lambda row: (row.system_id, row.insertion_index))
+        for row in due_sorted:
+            event_def = self._event_catalog_by_id.get(row.event_id)
+            if event_def is None:
+                raise ValueError(f"Event definition not found for event_id={row.event_id}")
+            rng = random.Random(
+                _deterministic_seed_with_parts(
+                    world_seed,
+                    current_day,
+                    "scheduled_event",
+                    row.system_id,
+                    row.event_id,
+                    row.insertion_index,
+                )
+            )
+            remaining_days = _roll_duration_days(event_def.get("duration_days"), rng, default_days=1)
+            self.add_event(
+                ActiveEvent(
+                    event_id=row.event_id,
+                    event_family_id=event_def.get("event_family_id"),
+                    system_id=row.system_id,
+                    remaining_days=max(0, remaining_days),
+                )
+            )
+            self.apply_event_effects(
+                world_seed=world_seed,
+                current_day=current_day,
+                target_system_id=row.system_id,
+                event_id=row.event_id,
+                rng=rng,
+            )
+            executed += 1
+
+        self.scheduled_events = pending
+        return executed
+
     def get_system_flags(self, system_id: str) -> list[str]:
         self.register_system(system_id)
         return sorted(self.system_flags[system_id])
@@ -450,6 +501,11 @@ class WorldStateEngine:
 
 def _deterministic_seed(world_seed: int, current_day: int, channel: str) -> int:
     packed = f"{world_seed}|{current_day}|{channel}".encode("utf-8")
+    return int(hashlib.sha256(packed).hexdigest(), 16)
+
+
+def _deterministic_seed_with_parts(*parts: Any) -> int:
+    packed = "|".join(str(part) for part in parts).encode("utf-8")
     return int(hashlib.sha256(packed).hexdigest(), 16)
 
 
