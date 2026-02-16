@@ -5,7 +5,8 @@
     {
       "event_id": "solar_flare_surge",
       "display_name": "Solar Flare Surge",
-      "emoji_id": "EVENT_SOLAR_FLARE_SURGE",
+      "family": "solar_flare_surge",
+      "emoji_id": "event_solar_flare_surge",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -46,7 +47,8 @@
     {
       "event_id": "alien_delegation",
       "display_name": "Alien Delegation",
-      "emoji_id": "EVENT_ALIEN_DELEGATION",
+      "family": "alien_delegation",
+      "emoji_id": "event_alien_delegation",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -88,7 +90,8 @@
     {
       "event_id": "major_discovery",
       "display_name": "Major Discovery",
-      "emoji_id": "EVENT_MAJOR_DISCOVERY",
+      "family": "major_discovery",
+      "emoji_id": "event_major_discovery",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -121,7 +124,8 @@
     {
       "event_id": "merchant_convoy_arrival",
       "display_name": "Merchant Convoy Arrival",
-      "emoji_id": "EVENT_MERCHANT_CONVOY_ARRIVAL",
+      "family": "merchant_convoy_arrival",
+      "emoji_id": "event_merchant_convoy_arrival",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -159,7 +163,8 @@
     {
       "event_id": "smuggler_amnesty",
       "display_name": "Smuggler Amnesty",
-      "emoji_id": "EVENT_SMUGGLER_AMNESTY",
+      "family": "smuggler_amnesty",
+      "emoji_id": "event_smuggler_amnesty",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -205,7 +210,8 @@
     {
       "event_id": "alien_cultural_exhibition",
       "display_name": "Alien Cultural Exhibition",
-      "emoji_id": "EVENT_ALIEN_CULTURAL_EXHIBITION",
+      "family": "alien_cultural_exhibition",
+      "emoji_id": "event_alien_cultural_exhibition",
       "severity_tier": 1,
       "spawn_weight": 30,
       "random_allowed": true,
@@ -247,7 +253,8 @@
     {
       "event_id": "war_skirmish",
       "display_name": "War",
-      "emoji_id": "EVENT_WAR",
+      "family": "war",
+      "emoji_id": "event_war",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -291,7 +298,8 @@
     {
       "event_id": "plague_minor",
       "display_name": "Plague Outbreak",
-      "emoji_id": "EVENT_PLAGUE",
+      "family": "plague_outbreak",
+      "emoji_id": "event_plague_outbreak",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -335,7 +343,8 @@
     {
       "event_id": "economic_downturn",
       "display_name": "Economic Shock",
-      "emoji_id": "EVENT_ECONOMIC_SHOCK",
+      "family": "economic_shock",
+      "emoji_id": "event_economic_shock",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -376,7 +385,8 @@
     {
       "event_id": "alien_border_incident",
       "display_name": "Alien Incident",
-      "emoji_id": "EVENT_ALIEN_INCIDENT",
+      "family": "alien_incident",
+      "emoji_id": "event_alien_incident",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -422,7 +432,8 @@
     {
       "event_id": "corporate_audit",
       "display_name": "Corporate Audit",
-      "emoji_id": "EVENT_CORPORATE_AUDIT",
+      "family": "corporate_audit",
+      "emoji_id": "event_corporate_audit",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -460,7 +471,8 @@
     {
       "event_id": "pirate_warlord_emerges",
       "display_name": "Pirate Warlord Emerges",
-      "emoji_id": "EVENT_PIRATE_WARLORD_EMERGES",
+      "family": "pirate_warlord_emerges",
+      "emoji_id": "event_pirate_warlord_emerges",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -502,7 +514,8 @@
     {
       "event_id": "trade_treaty_signed",
       "display_name": "Trade Treaty Signed",
-      "emoji_id": "EVENT_TRADE_TREATY_SIGNED",
+      "family": "trade_treaty_signed",
+      "emoji_id": "event_trade_treaty_signed",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -540,7 +553,8 @@
     {
       "event_id": "resource_discovery",
       "display_name": "Resource Discovery",
-      "emoji_id": "EVENT_RESOURCE_DISCOVERY",
+      "family": "resource_discovery",
+      "emoji_id": "event_resource_discovery",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -578,7 +592,8 @@
     {
       "event_id": "diplomatic_incident",
       "display_name": "Diplomatic Incident",
-      "emoji_id": "EVENT_DIPLOMATIC_INCIDENT",
+      "family": "diplomatic_incident",
+      "emoji_id": "event_diplomatic_incident",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -619,7 +634,8 @@
     {
       "event_id": "alien_cultural_exchange",
       "display_name": "Alien Cultural Exchange",
-      "emoji_id": "EVENT_ALIEN_CULTURAL_EXCHANGE",
+      "family": "alien_cultural_exchange",
+      "emoji_id": "event_alien_cultural_exchange",
       "severity_tier": 2,
       "spawn_weight": 35,
       "random_allowed": true,
@@ -661,7 +677,8 @@
     {
       "event_id": "economic_recession",
       "display_name": "Economic Crisis",
-      "emoji_id": "EVENT_ECONOMIC_CRISIS",
+      "family": "economic_crisis",
+      "emoji_id": "event_economic_crisis",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -710,7 +727,8 @@
     {
       "event_id": "political_assassination",
       "display_name": "Political Assassination",
-      "emoji_id": "EVENT_POLITICAL_ASSASSINATION",
+      "family": "political_assassination",
+      "emoji_id": "event_political_assassination",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -751,7 +769,8 @@
     {
       "event_id": "infrastructure_collapse",
       "display_name": "Infrastructure Collapse",
-      "emoji_id": "EVENT_INFRASTRUCTURE_COLLAPSE",
+      "family": "infrastructure_collapse",
+      "emoji_id": "event_infrastructure_collapse",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -802,7 +821,8 @@
     {
       "event_id": "scientific_breakthrough",
       "display_name": "Scientific Breakthrough",
-      "emoji_id": "EVENT_SCIENTIFIC_BREAKTHROUGH",
+      "family": "scientific_breakthrough",
+      "emoji_id": "event_scientific_breakthrough",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -843,7 +863,8 @@
     {
       "event_id": "alien_science_defector",
       "display_name": "Alien Science Defector",
-      "emoji_id": "EVENT_ALIEN_SCIENCE_DEFECTOR",
+      "family": "alien_science_defector",
+      "emoji_id": "event_alien_science_defector",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -888,7 +909,8 @@
     {
       "event_id": "alien_bounty_hunters",
       "display_name": "Alien Bounty Hunters",
-      "emoji_id": "EVENT_ALIEN_BOUNTY_HUNTERS",
+      "family": "alien_bounty_hunters",
+      "emoji_id": "event_alien_bounty_hunters",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -926,7 +948,8 @@
     {
       "event_id": "religious_schism",
       "display_name": "Religious Schism",
-      "emoji_id": "EVENT_RELIGIOUS_SCHISM",
+      "family": "religious_schism",
+      "emoji_id": "event_religious_schism",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -967,7 +990,8 @@
     {
       "event_id": "corporate_takeover",
       "display_name": "Corporate Takeover",
-      "emoji_id": "EVENT_CORPORATE_TAKEOVER",
+      "family": "corporate_takeover",
+      "emoji_id": "event_corporate_takeover",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -1009,7 +1033,8 @@
     {
       "event_id": "alien_trade_pact",
       "display_name": "Alien Trade Pact",
-      "emoji_id": "EVENT_ALIEN_TRADE_PACT",
+      "family": "alien_trade_pact",
+      "emoji_id": "event_alien_trade_pact",
       "severity_tier": 3,
       "spawn_weight": 20,
       "random_allowed": true,
@@ -1050,7 +1075,8 @@
     {
       "event_id": "war_regional",
       "display_name": "War",
-      "emoji_id": "EVENT_WAR",
+      "family": "war",
+      "emoji_id": "event_war",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1097,7 +1123,8 @@
     {
       "event_id": "plague_epidemic",
       "display_name": "Plague Outbreak",
-      "emoji_id": "EVENT_PLAGUE",
+      "family": "plague_outbreak",
+      "emoji_id": "event_plague_outbreak",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1148,7 +1175,8 @@
     {
       "event_id": "alien_incursion",
       "display_name": "Alien Incident",
-      "emoji_id": "EVENT_ALIEN_INCIDENT",
+      "family": "alien_incident",
+      "emoji_id": "event_alien_incident",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1194,7 +1222,8 @@
     {
       "event_id": "stellar_instability_major",
       "display_name": "Stellar Instability",
-      "emoji_id": "EVENT_STELLAR_INSTABILITY",
+      "family": "stellar_instability",
+      "emoji_id": "event_stellar_instability",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1250,7 +1279,8 @@
     {
       "event_id": "alien_artifact_discovery",
       "display_name": "Alien Artifact Discovery",
-      "emoji_id": "EVENT_ALIEN_ARTIFACT_DISCOVERY",
+      "family": "alien_artifact_discovery",
+      "emoji_id": "event_alien_artifact_discovery",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1291,7 +1321,8 @@
     {
       "event_id": "mass_migration",
       "display_name": "Mass Migration",
-      "emoji_id": "EVENT_MASS_MIGRATION",
+      "family": "mass_migration",
+      "emoji_id": "event_mass_migration",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1332,7 +1363,8 @@
     {
       "event_id": "strategic_blockade",
       "display_name": "Strategic Blockade",
-      "emoji_id": "EVENT_STRATEGIC_BLOCKADE",
+      "family": "strategic_blockade",
+      "emoji_id": "event_strategic_blockade",
       "severity_tier": 4,
       "spawn_weight": 10,
       "random_allowed": true,
@@ -1383,7 +1415,8 @@
     {
       "event_id": "war_total",
       "display_name": "War",
-      "emoji_id": "EVENT_WAR",
+      "family": "war",
+      "emoji_id": "event_war",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,
@@ -1430,7 +1463,8 @@
     {
       "event_id": "plague_systemic",
       "display_name": "Plague Outbreak",
-      "emoji_id": "EVENT_PLAGUE",
+      "family": "plague_outbreak",
+      "emoji_id": "event_plague_outbreak",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,
@@ -1481,7 +1515,8 @@
     {
       "event_id": "economic_collapse",
       "display_name": "Economic Collapse",
-      "emoji_id": "EVENT_ECONOMIC_COLLAPSE",
+      "family": "economic_collapse",
+      "emoji_id": "event_economic_collapse",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,
@@ -1528,7 +1563,8 @@
     {
       "event_id": "alien_interstellar_crisis",
       "display_name": "Alien Incident",
-      "emoji_id": "EVENT_ALIEN_INTERSTELLAR_CRISIS",
+      "family": "alien_incident",
+      "emoji_id": "event_alien_incident",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,
@@ -1572,7 +1608,8 @@
     {
       "event_id": "micro_singularity_event",
       "display_name": "Micro Singularity Event",
-      "emoji_id": "EVENT_MICRO_SINGULARITY_EVENT",
+      "family": "micro_singularity_event",
+      "emoji_id": "event_micro_singularity_event",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,
@@ -1623,7 +1660,8 @@
     {
       "event_id": "interstellar_incident",
       "display_name": "Interstellar Incident",
-      "emoji_id": "EVENT_INTERSTELLAR_INCIDENT",
+      "family": "interstellar_incident",
+      "emoji_id": "event_interstellar_incident",
       "severity_tier": 5,
       "spawn_weight": 5,
       "random_allowed": true,

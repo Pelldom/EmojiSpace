@@ -5,7 +5,7 @@
     {
       "situation_id": "trade_boom",
       "display_name": "Trade Boom",
-      "emoji_id": "SITUATION_TRADE_BOOM",
+      "emoji_id": "situation_trade_boom",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -35,7 +35,7 @@
     {
       "situation_id": "economic_recession",
       "display_name": "Economic Recession",
-      "emoji_id": "SITUATION_ECONOMIC_RECESSION",
+      "emoji_id": "situation_economic_recession",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -65,7 +65,7 @@
     {
       "situation_id": "pirate_surge",
       "display_name": "Pirate Surge",
-      "emoji_id": "SITUATION_PIRATE_SURGE",
+      "emoji_id": "situation_pirate_surge",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -102,7 +102,7 @@
     {
       "situation_id": "military_mobilization",
       "display_name": "Military Mobilization",
-      "emoji_id": "SITUATION_MILITARY_MOBILIZATION",
+      "emoji_id": "situation_military_mobilization",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -146,7 +146,7 @@
     {
       "situation_id": "border_tensions",
       "display_name": "Border Tensions",
-      "emoji_id": "SITUATION_BORDER_TENSIONS",
+      "emoji_id": "situation_border_tensions",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -169,7 +169,7 @@
     {
       "situation_id": "civil_unrest",
       "display_name": "Civil Unrest",
-      "emoji_id": "SITUATION_CIVIL_UNREST",
+      "emoji_id": "situation_civil_unrest",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -213,7 +213,7 @@
     {
       "situation_id": "labor_strike",
       "display_name": "Labor Strike",
-      "emoji_id": "SITUATION_LABOR_STRIKE",
+      "emoji_id": "situation_labor_strike",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -250,7 +250,7 @@
     {
       "situation_id": "industrial_expansion",
       "display_name": "Industrial Expansion",
-      "emoji_id": "SITUATION_INDUSTRIAL_EXPANSION",
+      "emoji_id": "situation_industrial_expansion",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -287,7 +287,7 @@
     {
       "situation_id": "resource_shortage",
       "display_name": "Resource Shortage",
-      "emoji_id": "SITUATION_RESOURCE_SHORTAGE",
+      "emoji_id": "situation_resource_shortage",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -331,7 +331,7 @@
     {
       "situation_id": "energy_crisis",
       "display_name": "Energy Crisis",
-      "emoji_id": "SITUATION_ENERGY_CRISIS",
+      "emoji_id": "situation_energy_crisis",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -368,7 +368,7 @@
     {
       "situation_id": "quarantine",
       "display_name": "Quarantine",
-      "emoji_id": "SITUATION_QUARANTINE",
+      "emoji_id": "situation_quarantine",
       "severity_tier": 4,
       "random_allowed": false,
       "event_only": true,
@@ -405,7 +405,7 @@
     {
       "situation_id": "cultural_festival",
       "display_name": "Cultural Festival",
-      "emoji_id": "SITUATION_CULTURAL_FESTIVAL",
+      "emoji_id": "situation_cultural_festival",
       "severity_tier": 1,
       "random_allowed": true,
       "event_only": false,
@@ -435,7 +435,7 @@
     {
       "situation_id": "religious_revival",
       "display_name": "Religious Revival",
-      "emoji_id": "SITUATION_RELIGIOUS_REVIVAL",
+      "emoji_id": "situation_religious_revival",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -458,7 +458,7 @@
     {
       "situation_id": "black_market_expansion",
       "display_name": "Black Market Expansion",
-      "emoji_id": "SITUATION_BLACK_MARKET_EXPANSION",
+      "emoji_id": "situation_black_market_expansion",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -495,7 +495,7 @@
     {
       "situation_id": "smuggling_crackdown",
       "display_name": "Smuggling Crackdown",
-      "emoji_id": "SITUATION_SMUGGLING_CRACKDOWN",
+      "emoji_id": "situation_smuggling_crackdown",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -532,7 +532,7 @@
     {
       "situation_id": "exploration_craze",
       "display_name": "Exploration Craze",
-      "emoji_id": "SITUATION_EXPLORATION_CRAZE",
+      "emoji_id": "situation_exploration_craze",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -562,7 +562,7 @@
     {
       "situation_id": "infrastructure_strain",
       "display_name": "Infrastructure Strain",
-      "emoji_id": "SITUATION_INFRASTRUCTURE_STRAIN",
+      "emoji_id": "situation_infrastructure_strain",
       "severity_tier": 3,
       "random_allowed": false,
       "event_only": true,
@@ -599,7 +599,7 @@
     {
       "situation_id": "refugee_strain",
       "display_name": "Refugee Strain",
-      "emoji_id": "SITUATION_REFUGEE_STRAIN",
+      "emoji_id": "situation_refugee_strain",
       "severity_tier": 3,
       "random_allowed": false,
       "event_only": true,
@@ -643,7 +643,7 @@
     {
       "situation_id": "reconstruction",
       "display_name": "Reconstruction",
-      "emoji_id": "SITUATION_RECONSTRUCTION",
+      "emoji_id": "situation_reconstruction",
       "severity_tier": 3,
       "random_allowed": false,
       "event_only": false,
@@ -687,7 +687,7 @@
     {
       "situation_id": "public_panic",
       "display_name": "Public Panic",
-      "emoji_id": "SITUATION_PUBLIC_PANIC",
+      "emoji_id": "situation_public_panic",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -724,7 +724,7 @@
     {
       "situation_id": "medical_shortage",
       "display_name": "Medical Shortage",
-      "emoji_id": "SITUATION_MEDICAL_SHORTAGE",
+      "emoji_id": "situation_medical_shortage",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -761,7 +761,7 @@
     {
       "situation_id": "food_shortage",
       "display_name": "Food Shortage",
-      "emoji_id": "SITUATION_FOOD_SHORTAGE",
+      "emoji_id": "situation_food_shortage",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -798,7 +798,7 @@
     {
       "situation_id": "industrial_parts_shortage",
       "display_name": "Industrial Parts Shortage",
-      "emoji_id": "SITUATION_INDUSTRIAL_PARTS_SHORTAGE",
+      "emoji_id": "situation_industrial_parts_shortage",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -835,7 +835,7 @@
     {
       "situation_id": "luxury_goods_demand",
       "display_name": "Luxury Goods Demand",
-      "emoji_id": "SITUATION_LUXURY_GOODS_DEMAND",
+      "emoji_id": "situation_luxury_goods_demand",
       "severity_tier": 2,
       "random_allowed": true,
       "event_only": false,
@@ -872,7 +872,7 @@
     {
       "situation_id": "supply_chain_failure",
       "display_name": "Supply Chain Failure",
-      "emoji_id": "SITUATION_SUPPLY_CHAIN_FAILURE",
+      "emoji_id": "situation_supply_chain_failure",
       "severity_tier": 3,
       "random_allowed": true,
       "event_only": false,
@@ -916,7 +916,7 @@
     {
       "situation_id": "population_drain",
       "display_name": "Population Drain",
-      "emoji_id": "SITUATION_POPULATION_DRAIN",
+      "emoji_id": "situation_population_drain",
       "severity_tier": 3,
       "random_allowed": false,
       "event_only": true,
@@ -946,7 +946,7 @@
     {
       "situation_id": "infrastructure_expansion",
       "display_name": "Infrastructure Expansion",
-      "emoji_id": "SITUATION_INFRASTRUCTURE_EXPANSION",
+      "emoji_id": "situation_infrastructure_expansion",
       "severity_tier": 2,
       "random_allowed": false,
       "event_only": false,
