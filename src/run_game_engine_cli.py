@@ -16,62 +16,69 @@ def _prompt_seed() -> int:
         return 12345
 
 
-def _print_systems(engine: GameEngine) -> None:
-    current_system = engine.sector.get_system(engine.player_state.current_system_id)
-    if current_system is None:
-        print("Current system: unavailable")
+def _show_player_info(engine: GameEngine) -> None:
+    result = engine.execute({"type": "get_player_profile"})
+    detail = _extract_detail_from_stage(step_result=result, stage="player_profile")
+    if not isinstance(detail, dict):
+        print(json.dumps(result, sort_keys=True))
         return
+    print("PLAYER / SHIP INFO")
+    print(f"  Credits: {detail.get('credits')}")
+    print(f"  Fuel: {detail.get('fuel_current')}/{detail.get('fuel_capacity')}")
+    print(f"  Cargo manifest: {detail.get('cargo_manifest')}")
+    print(f"  Reputation: {detail.get('reputation_score')} band={detail.get('reputation_band')}")
+    print(f"  Heat: {detail.get('heat')}")
+    print(f"  Notoriety: {detail.get('notoriety_score')} band={detail.get('notoriety_band')}")
+    print(f"  Arrest state: {detail.get('arrest_state')}")
+    print(f"  Warrants: {detail.get('warrants')}")
+    print(f"  Location: {detail.get('system_id')} / {detail.get('destination_id')} / {detail.get('location_id')}")
+    print(f"  Turn: {detail.get('turn')}")
 
-    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
-    current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
-    fuel_capacity = int(getattr(active_ship, "fuel_capacity", 0) or 0)
 
-    print(f"Current system: {current_system.name} ({current_system.system_id})")
-    print(f"Current destination: {engine.player_state.current_destination_id}")
-    print(f"Fuel: {current_fuel}/{fuel_capacity}")
-    print("SYSTEM PROFILE")
-    print(f"  Name: {getattr(current_system, 'name', None)}")
-    print(f"  ID: {getattr(current_system, 'system_id', None)}")
-    print(f"  Government: {getattr(current_system, 'government_id', None)}")
-    print(f"  Population: {getattr(current_system, 'population', None)}")
-    print(f"  Coordinates: ({getattr(current_system, 'x', None)}, {getattr(current_system, 'y', None)})")
-
-    destination = _current_destination_object(engine)
-    print("DESTINATION PROFILE")
-    if destination is None:
-        print("  Destination: unavailable")
-    else:
-        print(f"  Name: {getattr(destination, 'display_name', None)}")
-        print(f"  ID: {getattr(destination, 'destination_id', None)}")
-        print(f"  Population: {getattr(destination, 'population', None)}")
-        print(f"  Primary economy: {getattr(destination, 'primary_economy_id', None)}")
-        market_attached = getattr(destination, "market", None) is not None
-        print(f"  Market attached: {market_attached}")
-        locations = list(getattr(destination, "locations", []) or [])
-        if not locations:
-            print("  Locations: none")
-        else:
-            print("  Locations:")
-            for index, location in enumerate(locations, start=1):
-                print(
-                    f"    {index}) {getattr(location, 'location_id', None)} "
-                    f"type={getattr(location, 'location_type', None)}"
-                )
-    print("Intra-system destinations:")
-    destinations = sorted(current_system.destinations, key=lambda destination: destination.destination_id)
-    for index, destination in enumerate(destinations, start=1):
-        print(f"  {index}) {destination.destination_id} {destination.display_name}")
-
-    print("Reachable inter-system systems:")
-    reachable = _reachable_systems(engine=engine, current_system=current_system, fuel_limit=current_fuel)
-    if not reachable:
-        print("  none")
+def _show_system_info(engine: GameEngine) -> None:
+    result = engine.execute({"type": "get_system_profile"})
+    detail = _extract_detail_from_stage(step_result=result, stage="system_profile")
+    if not isinstance(detail, dict):
+        print(json.dumps(result, sort_keys=True))
         return
-    for index, item in enumerate(reachable, start=1):
+    coords = detail.get("coordinates", {})
+    print("SYSTEM INFO")
+    print(f"  Name: {detail.get('name')}")
+    print(f"  ID: {detail.get('system_id')}")
+    print(f"  Government: {detail.get('government_id')}")
+    print(f"  Population: {detail.get('population')}")
+    print(f"  Coordinates: ({coords.get('x')}, {coords.get('y')})")
+    print(f"  Active situations: {detail.get('active_system_situations')}")
+    print(f"  Active flags: {detail.get('active_system_flags')}")
+    print("  Reachable systems:")
+    for row in detail.get("reachable_systems", []):
         print(
-            f"  {index}) {item['system_id']} {item['name']} "
-            f"distance_ly={item['distance_ly']:.3f}"
+            f"    {row.get('system_id')} {row.get('name')} "
+            f"distance_ly={row.get('distance_ly'):.3f} in_range={row.get('in_range')}"
         )
+
+
+def _show_destination_info(engine: GameEngine) -> None:
+    result = engine.execute({"type": "get_destination_profile"})
+    detail = _extract_detail_from_stage(step_result=result, stage="destination_profile")
+    if not isinstance(detail, dict):
+        print(json.dumps(result, sort_keys=True))
+        return
+    print("DESTINATION INFO")
+    print(f"  Name: {detail.get('name')}")
+    print(f"  ID: {detail.get('destination_id')}")
+    print(f"  Population: {detail.get('population')}")
+    print(f"  Primary economy: {detail.get('primary_economy')}")
+    print(f"  Market attached: {detail.get('market_attached')}")
+    print(f"  Active destination situations: {detail.get('active_destination_situations')}")
+    print("  Locations:")
+    locations = detail.get("locations", [])
+    if not locations:
+        print("    none")
+    for row in locations:
+        print(f"    {row.get('location_id')} type={row.get('location_type')}")
+    print(f"  Active crew: {detail.get('active_crew')}")
+    print(f"  Active missions: {detail.get('active_missions')}")
 
 
 def _travel_menu(engine: GameEngine) -> None:
@@ -259,26 +266,29 @@ def main() -> None:
     _configure_cli_test_fuel(engine)
     print(json.dumps({"event": "engine_init", "seed": seed}, sort_keys=True))
     while True:
-        print("1) show current travel overview")
-        print("2) travel to destination")
-        print("3) wait N days")
-        print("4) quit")
+        print("1) player / ship info")
+        print("2) system info")
+        print("3) destination info")
+        print("4) travel")
         print("5) enter location")
         print("6) destination actions")
+        print("7) quit")
         choice = input("Select: ").strip()
         if choice == "1":
-            _print_systems(engine)
+            _show_player_info(engine)
         elif choice == "2":
-            _travel_menu(engine)
+            _show_system_info(engine)
         elif choice == "3":
-            _wait_menu(engine)
+            _show_destination_info(engine)
         elif choice == "4":
-            print(json.dumps(engine.execute({"type": "quit"}), sort_keys=True))
-            break
+            _travel_menu(engine)
         elif choice == "5":
             _location_entry_menu(engine)
         elif choice == "6":
             _destination_actions_menu(engine)
+        elif choice == "7":
+            print(json.dumps(engine.execute({"type": "quit"}), sort_keys=True))
+            break
         else:
             print(json.dumps({"ok": False, "error": "invalid_menu_choice"}, sort_keys=True))
 
@@ -494,6 +504,21 @@ def _extract_rows_from_stage(*, step_result: dict[str, object], stage: str) -> l
         if isinstance(rows, list):
             return [row for row in rows if isinstance(row, dict)]
     return []
+
+
+def _extract_detail_from_stage(*, step_result: dict[str, object], stage: str) -> dict[str, object] | None:
+    events = step_result.get("events", [])
+    if not isinstance(events, list):
+        return None
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("stage") != stage:
+            continue
+        detail = event.get("detail", {})
+        if isinstance(detail, dict):
+            return detail
+    return None
 
 
 def _prompt_action_kwargs(action: dict[str, object]) -> dict[str, object]:

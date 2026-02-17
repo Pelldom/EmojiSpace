@@ -23,7 +23,13 @@ from interaction_layer import (
     destination_has_datanet_service,
     dispatch_player_action,
 )
-from law_enforcement import CargoSnapshot, PlayerOption, TriggerType, enforcement_checkpoint
+from law_enforcement import (
+    CargoSnapshot,
+    PlayerOption,
+    TriggerType,
+    band_index_from_1_100,
+    enforcement_checkpoint,
+)
 from market_pricing import price_transaction
 from npc_ship_generator import generate_npc_ship
 from player_state import PlayerState
@@ -172,6 +178,12 @@ class GameEngine:
                 self._execute_market_buy(context, payload)
             elif command_type == "market_sell":
                 self._execute_market_sell(context, payload)
+            elif command_type == "get_player_profile":
+                self._execute_get_player_profile(context)
+            elif command_type == "get_system_profile":
+                self._execute_get_system_profile(context)
+            elif command_type == "get_destination_profile":
+                self._execute_get_destination_profile(context)
             elif command_type == "encounter_action":
                 self._execute_encounter_action(context, payload)
             elif command_type == "quit":
@@ -741,6 +753,111 @@ class GameEngine:
             },
         )
 
+    def _execute_get_player_profile(self, context: EngineContext) -> None:
+        ship = self._active_ship()
+        system_id = self.player_state.current_system_id
+        reputation_score = int(self.player_state.reputation_by_system.get(system_id, 50))
+        heat = int(self.player_state.heat_by_system.get(system_id, 0))
+        notoriety_score = int(self.player_state.progression_tracks.get("notoriety", 0))
+        self._event(
+            context,
+            stage="player_profile",
+            subsystem="engine",
+            detail={
+                "credits": int(self.player_state.credits),
+                "fuel_current": int(ship.current_fuel),
+                "fuel_capacity": int(ship.fuel_capacity),
+                "cargo_manifest": {
+                    str(sku_id): int(quantity)
+                    for sku_id, quantity in sorted(self.player_state.cargo_by_ship.get("active", {}).items())
+                },
+                "reputation_score": reputation_score,
+                "reputation_band": int(band_index_from_1_100(reputation_score)),
+                "heat": heat,
+                "notoriety_score": notoriety_score,
+                "notoriety_band": int(band_index_from_1_100(notoriety_score)),
+                "arrest_state": self.player_state.arrest_state,
+                "warrants": list(self.player_state.warrants_by_system.get(system_id, [])),
+                "system_id": system_id,
+                "destination_id": self.player_state.current_destination_id,
+                "location_id": self.player_state.current_location_id,
+                "turn": int(get_current_turn()),
+            },
+        )
+
+    def _execute_get_system_profile(self, context: EngineContext) -> None:
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            raise ValueError("current_system_not_found")
+        ship = self._active_ship()
+        fuel_limit = int(ship.current_fuel)
+        reachable: list[dict[str, Any]] = []
+        for target in sorted(self.sector.systems, key=lambda entry: entry.system_id):
+            if target.system_id == system.system_id:
+                continue
+            distance_ly = float(self._warp_distance_ly(origin=system, target=target))
+            reachable.append(
+                {
+                    "system_id": target.system_id,
+                    "name": target.name,
+                    "distance_ly": distance_ly,
+                    "in_range": bool(distance_ly <= float(fuel_limit)),
+                }
+            )
+
+        active_situations = self._active_situation_rows_for_system(system_id=system.system_id)
+        flags = self._system_flags_for_current_system()
+        self._event(
+            context,
+            stage="system_profile",
+            subsystem="engine",
+            detail={
+                "system_id": system.system_id,
+                "name": system.name,
+                "government_id": system.government_id,
+                "population": int(system.population),
+                "coordinates": {"x": float(system.x), "y": float(system.y)},
+                "active_system_situations": active_situations,
+                "active_system_flags": flags,
+                "reachable_systems": reachable,
+            },
+        )
+
+    def _execute_get_destination_profile(self, context: EngineContext) -> None:
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("current_destination_not_found")
+        locations = sorted(
+            list(getattr(destination, "locations", []) or []),
+            key=lambda row: str(getattr(row, "location_id", "")),
+        )
+        crew_rows = self._active_crew_rows()
+        mission_rows = self._active_mission_rows()
+        self._event(
+            context,
+            stage="destination_profile",
+            subsystem="engine",
+            detail={
+                "destination_id": destination.destination_id,
+                "name": destination.display_name,
+                "population": int(destination.population),
+                "primary_economy": destination.primary_economy_id,
+                "market_attached": bool(destination.market is not None),
+                "locations": [
+                    {
+                        "location_id": getattr(row, "location_id", None),
+                        "location_type": getattr(row, "location_type", None),
+                    }
+                    for row in locations
+                ],
+                "active_destination_situations": self._active_destination_situations(
+                    destination_id=destination.destination_id
+                ),
+                "active_crew": crew_rows,
+                "active_missions": mission_rows,
+            },
+        )
+
     def _execute_encounter_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
         if not context.active_encounters:
             raise ValueError("encounter_action requires an active encounter.")
@@ -1043,6 +1160,9 @@ class GameEngine:
         allowed.add("market_sell_list")
         allowed.add("market_buy")
         allowed.add("market_sell")
+        allowed.add("get_player_profile")
+        allowed.add("get_system_profile")
+        allowed.add("get_destination_profile")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -1180,6 +1300,82 @@ class GameEngine:
         active = engine.get_active_situations(self.player_state.current_system_id)
         ids = [entry.situation_id for entry in active if hasattr(entry, "situation_id")]
         return sorted(ids)
+
+    def _active_situation_rows_for_system(self, *, system_id: str) -> list[dict[str, Any]]:
+        engine = self._world_state_engine()
+        if engine is None:
+            return []
+        active = engine.get_active_situations(system_id)
+        rows: list[dict[str, Any]] = []
+        for entry in sorted(
+            active,
+            key=lambda row: (
+                str(getattr(row, "situation_id", "")),
+                str(getattr(row, "scope", "")),
+                str(getattr(row, "target_id", "")),
+            ),
+        ):
+            rows.append(
+                {
+                    "situation_id": getattr(entry, "situation_id", None),
+                    "scope": getattr(entry, "scope", None),
+                    "target_id": getattr(entry, "target_id", None),
+                }
+            )
+        return rows
+
+    def _active_destination_situations(self, *, destination_id: str) -> list[str]:
+        rows = self._active_situation_rows_for_system(system_id=self.player_state.current_system_id)
+        ids: list[str] = []
+        for row in rows:
+            if row.get("scope") != "destination":
+                continue
+            target_id = row.get("target_id")
+            if target_id is not None and target_id != destination_id:
+                continue
+            situation_id = row.get("situation_id")
+            if isinstance(situation_id, str):
+                ids.append(situation_id)
+        return sorted(ids)
+
+    def _system_flags_for_current_system(self) -> list[str]:
+        engine = self._world_state_engine()
+        if engine is None:
+            return []
+        if hasattr(engine, "get_system_flags"):
+            return list(engine.get_system_flags(self.player_state.current_system_id))
+        return []
+
+    def _active_crew_rows(self) -> list[dict[str, Any]]:
+        ship = self._active_ship()
+        rows: list[dict[str, Any]] = []
+        for member in sorted(ship.crew, key=lambda row: str(getattr(row, "npc_id", ""))):
+            rows.append(
+                {
+                    "crew_id": getattr(member, "npc_id", None),
+                    "name": getattr(member, "display_name", None),
+                    "role": getattr(member, "primary_role", None),
+                    "traits": list(getattr(member, "personality_traits", []) or []),
+                    "modifiers": list(getattr(member, "special_modifiers", []) or []),
+                }
+            )
+        return rows
+
+    def _active_mission_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for mission_id in sorted(self.player_state.active_missions):
+            rows.append(
+                {
+                    "mission_id": mission_id,
+                    "mission_type": None,
+                    "origin_system_id": None,
+                    "target_system_id": None,
+                    "status": "active",
+                    "days_remaining": None,
+                    "reward_summary": None,
+                }
+            )
+        return rows
 
     def _current_destination(self) -> Destination | None:
         system = self.sector.get_system(self.player_state.current_system_id)

@@ -464,3 +464,73 @@ def test_voluntary_customs_cannot_double_trigger_without_allow_repeat() -> None:
     guard_events = [event for event in second["events"] if event.get("stage") == "customs_guard"]
     assert guard_events
     assert guard_events[0]["detail"]["reason"] == "customs_already_processed_this_turn"
+
+
+def test_profiles_do_not_advance_time() -> None:
+    engine = GameEngine(world_seed=12345)
+    turn_before = int(get_current_turn())
+    commands = [
+        ("get_player_profile", "player_profile"),
+        ("get_system_profile", "system_profile"),
+        ("get_destination_profile", "destination_profile"),
+    ]
+    for command_type, stage in commands:
+        result = engine.execute({"type": command_type})
+        assert result["ok"] is True
+        assert result["turn_before"] == turn_before
+        assert result["turn_after"] == turn_before
+        assert _extract_stage_detail(result, stage) is not None
+    assert int(get_current_turn()) == turn_before
+
+
+def test_profiles_do_not_mutate_state() -> None:
+    engine = GameEngine(world_seed=12345)
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    turn_before = int(get_current_turn())
+    player_before = engine.player_state.to_dict()
+    ship_before = {
+        "current_fuel": int(ship.current_fuel),
+        "current_system_id": ship.current_system_id,
+        "current_destination_id": ship.current_destination_id,
+        "current_location_id": ship.current_location_id,
+        "location_id": ship.location_id,
+    }
+
+    assert engine.execute({"type": "get_player_profile"})["ok"] is True
+    assert engine.execute({"type": "get_system_profile"})["ok"] is True
+    assert engine.execute({"type": "get_destination_profile"})["ok"] is True
+
+    player_after = engine.player_state.to_dict()
+    ship_after = {
+        "current_fuel": int(ship.current_fuel),
+        "current_system_id": ship.current_system_id,
+        "current_destination_id": ship.current_destination_id,
+        "current_location_id": ship.current_location_id,
+        "location_id": ship.location_id,
+    }
+    assert player_after == player_before
+    assert ship_after == ship_before
+    assert int(get_current_turn()) == turn_before
+
+
+def test_profiles_are_deterministic() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    commands = ["get_player_profile", "get_system_profile", "get_destination_profile"]
+    for command_type in commands:
+        first_a = engine_a.execute({"type": command_type})
+        second_a = engine_a.execute({"type": command_type})
+        first_b = engine_b.execute({"type": command_type})
+        second_b = engine_b.execute({"type": command_type})
+        assert first_a == second_a
+        assert first_b == second_b
+        assert first_a == first_b
+
+
+def _extract_stage_detail(result: dict, stage: str) -> dict | None:
+    for event in result.get("events", []):
+        if event.get("stage") == stage:
+            detail = event.get("detail", {})
+            if isinstance(detail, dict):
+                return detail
+    return None

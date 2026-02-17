@@ -803,6 +803,24 @@ Phase 7.5.3 - CLI inter-system UX refinement and test fuel increase.
 Phase 7.5.4 - Destination and Location Surfacing Layer (CLI).
 Phase 7.5.5 - Deterministic location actions and datanet refuel CLI integration.
 Phase 7.5.7 - Destination actions, market buy/sell surfacing, and customs market-entry guard.
+Phase 7.5.8 - Authoritative profile surfacing layer (player/system/destination separation).
+
+## Phase 7.5.8 - Authoritative Profile Surfacing Layer (IN PROGRESS)
+
+**Target:** 0.10.9
+
+### Objective
+Add authoritative read-only profile commands in GameEngine for player, system, and destination surfaces, and route CLI profile displays through those commands only.
+
+### Includes
+- `get_player_profile`, `get_system_profile`, and `get_destination_profile` command surfaces.
+- Deterministic, side-effect-free profile responses with StepResult events.
+- CLI separation of player, system, and destination views backed by engine commands.
+
+### Excludes
+- No gameplay mechanics changes.
+- No RNG stream or enforcement logic changes.
+- No market math or travel logic changes.
 
 ## Phase 8 - Monetization and Play Store Deployment
 
@@ -826,7 +844,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.8
+Current Development Version: 0.10.9
 Phase 6 complete.
 
 ## Authority Statement
