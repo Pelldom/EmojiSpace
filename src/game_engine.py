@@ -171,8 +171,17 @@ class GameEngine:
 
         inter_system = current_system.system_id != system.system_id
         distance_ly = self._warp_distance_ly(origin=current_system, target=system) if inter_system else 0.0
-        distance_ly_ceiled = int(math.ceil(distance_ly)) if inter_system else 0
         target_destination_id = self._resolve_destination_id(system, payload.get("target_destination_id"))
+
+        if (
+            target_system_id == self.player_state.current_system_id
+            and target_destination_id == self.player_state.current_destination_id
+        ):
+            raise ValueError("already_at_destination")
+
+        raw_days = int(math.ceil(distance_ly)) if inter_system else 1
+        days = max(1, raw_days) if inter_system else 1
+        fuel_cost = max(1, raw_days) if inter_system else 0
         route_id = payload.get("route_id")
         travel_id = self._travel_id(
             origin_system_id=self.player_state.current_system_id,
@@ -192,14 +201,13 @@ class GameEngine:
                 "target_destination_id": target_destination_id,
                 "inter_system": inter_system,
                 "distance_ly": float(distance_ly),
-                "distance_ly_ceiled": int(distance_ly_ceiled),
+                "distance_ly_ceiled": int(math.ceil(distance_ly)) if inter_system else 0,
             },
         )
 
         active_ship = self._active_ship()
         fuel_capacity = int(getattr(active_ship, "fuel_capacity", 0) or 5)
         current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
-        fuel_cost = int(distance_ly_ceiled)
         if inter_system and float(distance_ly) > float(fuel_capacity):
             raise ValueError("warp_range_exceeded")
         if current_fuel < fuel_cost:
@@ -228,7 +236,6 @@ class GameEngine:
         active_ship.current_location_id = target_destination_id
         active_ship.location_id = target_destination_id
 
-        days = int(math.ceil(distance_ly)) if inter_system else 1
         time_result = self._advance_time_in_chunks(days=days, reason=f"travel:{travel_id}")
         self._event(
             context,

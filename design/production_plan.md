@@ -798,6 +798,8 @@ Add deterministic spatial coordinates to systems and make GameEngine-owned warp 
 - No legacy orchestrator reuse.
 - No subsystem-wide refactor.
 
+Phase 7.5.2 - Same-location travel guard and inter-system minimum clamp.
+
 ## Phase 8 - Monetization and Play Store Deployment
 
 **Target:** 1.1.x
@@ -820,7 +822,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.3
+Current Development Version: 0.10.4
 Phase 6 complete.
 
 ## Authority Statement

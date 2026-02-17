@@ -120,3 +120,58 @@ def test_phase751_successful_warp_uses_ceil_distance_for_time_and_fuel() -> None
     assert result["turn_before"] == turn_before
     assert result["turn_after"] == turn_before + distance_ceil
     assert int(ship.current_fuel) == fuel_before - distance_ceil
+
+
+def test_same_location_travel_blocked() -> None:
+    engine = GameEngine(world_seed=12345)
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    fuel_before = int(ship.current_fuel)
+    current_system_id = engine.player_state.current_system_id
+    current_destination_id = engine.player_state.current_destination_id
+
+    result = engine.execute(
+        {
+            "type": "travel_to_destination",
+            "target_system_id": current_system_id,
+            "target_destination_id": current_destination_id,
+        }
+    )
+    assert result["ok"] is False
+    assert result["error"] == "already_at_destination"
+    assert result["turn_before"] == result["turn_after"]
+    assert int(ship.current_fuel) == fuel_before
+    assert len(result["events"]) == 1
+    assert result["events"][0]["stage"] == "start"
+
+
+def test_inter_system_minimum_clamp() -> None:
+    engine = GameEngine(world_seed=12345)
+    if len(engine.sector.systems) < 2:
+        pytest.skip("Need at least two systems for inter-system warp test.")
+
+    current = engine.sector.get_system(engine.player_state.current_system_id)
+    target = sorted(
+        [system for system in engine.sector.systems if system.system_id != current.system_id],
+        key=lambda system: system.system_id,
+    )[0]
+
+    # Force a deterministic near-zero inter-system distance while keeping distinct systems.
+    object.__setattr__(target, "x", float(current.x))
+    object.__setattr__(target, "y", float(current.y))
+
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    ship.fuel_capacity = max(int(ship.fuel_capacity), 5)
+    ship.current_fuel = max(int(ship.current_fuel), 5)
+    fuel_before = int(ship.current_fuel)
+    turn_before = engine.execute({"type": "wait", "days": 1})["turn_after"]
+
+    result = engine.execute({"type": "travel_to_destination", "target_system_id": target.system_id})
+    assert result["ok"] is True
+    assert result["turn_before"] == turn_before
+    assert result["turn_after"] == turn_before + 1
+
+    travel_events = [event for event in result["events"] if event.get("stage") == "travel"]
+    assert len(travel_events) >= 2
+    travel_resolution = travel_events[1]["detail"]
+    assert int(travel_resolution["fuel_cost"]) == 1
+    assert int(ship.current_fuel) == fuel_before - 1
