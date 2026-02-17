@@ -175,3 +175,29 @@ def test_inter_system_minimum_clamp() -> None:
     travel_resolution = travel_events[1]["detail"]
     assert int(travel_resolution["fuel_cost"]) == 1
     assert int(ship.current_fuel) == fuel_before - 1
+
+
+def test_inter_system_arrival_defaults_to_first_destination() -> None:
+    engine = GameEngine(world_seed=12345)
+    current = engine.sector.get_system(engine.player_state.current_system_id)
+    candidates = [system for system in engine.sector.systems if system.system_id != current.system_id]
+    candidates.sort(
+        key=lambda system: (
+            math.sqrt(((float(system.x) - float(current.x)) ** 2) + ((float(system.y) - float(current.y)) ** 2)),
+            system.system_id,
+        )
+    )
+    if not candidates:
+        pytest.skip("Need at least one inter-system destination.")
+
+    target = candidates[0]
+    first_destination = sorted(target.destinations, key=lambda entry: entry.destination_id)[0].destination_id
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    distance = math.sqrt(((float(target.x) - float(current.x)) ** 2) + ((float(target.y) - float(current.y)) ** 2))
+    distance_ceil = int(math.ceil(distance))
+    ship.fuel_capacity = max(int(ship.fuel_capacity), distance_ceil + 5)
+    ship.current_fuel = max(int(ship.current_fuel), distance_ceil + 5)
+
+    result = engine.execute({"type": "travel_to_destination", "target_system_id": target.system_id})
+    assert result["ok"] is True
+    assert result["player"]["destination_id"] == first_destination

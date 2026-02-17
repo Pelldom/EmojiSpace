@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from game_engine import GameEngine
 
@@ -16,27 +17,33 @@ def _prompt_seed() -> int:
 
 
 def _print_systems(engine: GameEngine) -> None:
-    rows: list[dict[str, object]] = []
-    for system in engine.sector.systems:
-        rows.append(
-            {
-                "system_id": system.system_id,
-                "name": system.name,
-                "population": int(system.population),
-                "government_id": system.government_id,
-                "x": float(system.x),
-                "y": float(system.y),
-                "destinations": [
-                    {
-                        "destination_id": destination.destination_id,
-                        "display_name": destination.display_name,
-                        "population": int(destination.population),
-                    }
-                    for destination in system.destinations
-                ],
-            }
+    current_system = engine.sector.get_system(engine.player_state.current_system_id)
+    if current_system is None:
+        print("Current system: unavailable")
+        return
+
+    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
+    current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
+    fuel_capacity = int(getattr(active_ship, "fuel_capacity", 0) or 0)
+
+    print(f"Current system: {current_system.name} ({current_system.system_id})")
+    print(f"Current destination: {engine.player_state.current_destination_id}")
+    print(f"Fuel: {current_fuel}/{fuel_capacity}")
+    print("Intra-system destinations:")
+    destinations = sorted(current_system.destinations, key=lambda destination: destination.destination_id)
+    for index, destination in enumerate(destinations, start=1):
+        print(f"  {index}) {destination.destination_id} {destination.display_name}")
+
+    print("Reachable inter-system systems:")
+    reachable = _reachable_systems(engine=engine, current_system=current_system, fuel_limit=current_fuel)
+    if not reachable:
+        print("  none")
+        return
+    for index, item in enumerate(reachable, start=1):
+        print(
+            f"  {index}) {item['system_id']} {item['name']} "
+            f"distance_ly={item['distance_ly']:.3f}"
         )
-    print(json.dumps(rows, sort_keys=True))
 
 
 def _travel_menu(engine: GameEngine) -> None:
@@ -45,6 +52,8 @@ def _travel_menu(engine: GameEngine) -> None:
     if current_system is None:
         print(json.dumps({"ok": False, "error": "current_system_not_found"}, sort_keys=True))
         return
+    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
+    current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
 
     print(f"Current system: {current_system.system_id} ({current_system.name})")
     print("1) Inter-system warp")
@@ -52,16 +61,13 @@ def _travel_menu(engine: GameEngine) -> None:
     mode = input("Travel mode: ").strip()
 
     if mode == "1":
-        options = [system for system in engine.sector.systems if system.system_id != current_system.system_id]
-        options.sort(key=lambda system: system.system_id)
+        reachable = _reachable_systems(engine=engine, current_system=current_system, fuel_limit=current_fuel)
+        options = [row["system"] for row in reachable]
         if not options:
             print(json.dumps({"ok": False, "error": "no_inter_system_targets"}, sort_keys=True))
             return
-        for index, system in enumerate(options, start=1):
-            dx = float(system.x) - float(current_system.x)
-            dy = float(system.y) - float(current_system.y)
-            distance = (dx * dx + dy * dy) ** 0.5
-            print(f"{index}) {system.system_id} {system.name} distance_ly={distance:.3f}")
+        for index, row in enumerate(reachable, start=1):
+            print(f"{index}) {row['system_id']} {row['name']} distance_ly={row['distance_ly']:.3f}")
         raw_index = input("Select target system index: ").strip()
         try:
             selected = int(raw_index)
@@ -74,25 +80,17 @@ def _travel_menu(engine: GameEngine) -> None:
         target_system = options[selected - 1]
         destinations = sorted(target_system.destinations, key=lambda entry: entry.destination_id)
         target_destination_id = destinations[0].destination_id if destinations else None
-        if destinations:
-            print("Destination options:")
-            for index, destination in enumerate(destinations, start=1):
-                print(f"{index}) {destination.destination_id} {destination.display_name}")
-            raw_destination = input("Select destination index [1]: ").strip()
-            if raw_destination:
-                try:
-                    destination_index = int(raw_destination)
-                    if 1 <= destination_index <= len(destinations):
-                        target_destination_id = destinations[destination_index - 1].destination_id
-                except ValueError:
-                    pass
         payload: dict[str, object] = {
             "type": "travel_to_destination",
             "target_system_id": target_system.system_id,
         }
         if target_destination_id is not None:
             payload["target_destination_id"] = target_destination_id
-        print(json.dumps(engine.execute(payload), sort_keys=True))
+        result = engine.execute(payload)
+        print(json.dumps(result, sort_keys=True))
+        if result.get("ok") is True and result.get("player", {}).get("system_id") == target_system.system_id:
+            print(f"You have arrived in {target_system.name}.")
+            _print_current_system_destinations(engine)
         return
 
     if mode == "2":
@@ -134,9 +132,10 @@ def _wait_menu(engine: GameEngine) -> None:
 def main() -> None:
     seed = _prompt_seed()
     engine = GameEngine(world_seed=seed)
+    _configure_cli_test_fuel(engine)
     print(json.dumps({"event": "engine_init", "seed": seed}, sort_keys=True))
     while True:
-        print("1) list systems and destinations")
+        print("1) show current travel overview")
         print("2) travel to destination")
         print("3) wait N days")
         print("4) quit")
@@ -152,6 +151,44 @@ def main() -> None:
             break
         else:
             print(json.dumps({"ok": False, "error": "invalid_menu_choice"}, sort_keys=True))
+
+
+def _reachable_systems(*, engine: GameEngine, current_system, fuel_limit: int) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for system in sorted(engine.sector.systems, key=lambda entry: entry.system_id):
+        if system.system_id == current_system.system_id:
+            continue
+        dx = float(system.x) - float(current_system.x)
+        dy = float(system.y) - float(current_system.y)
+        distance = math.sqrt((dx * dx) + (dy * dy))
+        if distance <= float(fuel_limit):
+            rows.append(
+                {
+                    "system": system,
+                    "system_id": system.system_id,
+                    "name": system.name,
+                    "distance_ly": float(distance),
+                }
+            )
+    return rows
+
+
+def _print_current_system_destinations(engine: GameEngine) -> None:
+    system = engine.sector.get_system(engine.player_state.current_system_id)
+    if system is None:
+        return
+    destinations = sorted(system.destinations, key=lambda destination: destination.destination_id)
+    print("Intra-system destinations:")
+    for index, destination in enumerate(destinations, start=1):
+        print(f"  {index}) {destination.destination_id} {destination.display_name}")
+
+
+def _configure_cli_test_fuel(engine: GameEngine) -> None:
+    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
+    if active_ship is None:
+        return
+    active_ship.fuel_capacity = 55
+    active_ship.current_fuel = 55
 
 
 if __name__ == "__main__":
