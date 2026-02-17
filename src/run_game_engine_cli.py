@@ -167,19 +167,32 @@ def _location_entry_menu(engine: GameEngine) -> None:
         print(json.dumps({"ok": False, "error": "no_locations_available"}, sort_keys=True))
         return
 
+    location_by_index: dict[int, object] = {}
     for index, location in enumerate(locations, start=1):
+        location_by_index[index] = location
         print(
             f"{index}) {getattr(location, 'location_id', None)} "
             f"type={getattr(location, 'location_type', None)}"
         )
     raw_index = input("Select location index: ").strip()
-    result = _enter_location_by_index(engine=engine, selection_text=raw_index)
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "invalid_location_index"}, sort_keys=True))
+        return
+    if selected < 1 or selected > len(locations):
+        print(json.dumps({"ok": False, "error": "location_index_out_of_range"}, sort_keys=True))
+        return
+    selected_location = location_by_index[selected]
+    result = engine.execute({"type": "enter_location", "location_index": selected})
     if result.get("ok") is False:
         print(json.dumps(result, sort_keys=True))
         return
 
     print(f"Entered location: {engine.player_state.current_location_id}")
-    _location_actions_menu(engine, selected_location=result.get("location"))
+    if str(getattr(selected_location, "location_type", "")) == "market":
+        _print_market_profile(engine)
+    _location_actions_menu(engine, selected_location=selected_location)
 
 
 def _location_actions_menu(engine: GameEngine, selected_location: object | None) -> None:
@@ -216,6 +229,12 @@ def _location_actions_menu(engine: GameEngine, selected_location: object | None)
                 continue
             action = actions[selected - 1]
             action_id = action["action_id"]
+            if action_id == "buy":
+                _market_buy_menu(engine)
+                continue
+            if action_id == "sell":
+                _market_sell_menu(engine)
+                continue
             action_kwargs = _prompt_action_kwargs(action)
             result = engine.execute(
                 {
@@ -226,7 +245,8 @@ def _location_actions_menu(engine: GameEngine, selected_location: object | None)
             )
             print(json.dumps(result, sort_keys=True))
         elif choice == "3":
-            _return_to_destination(engine)
+            result = engine.execute({"type": "return_to_destination"})
+            print(json.dumps(result, sort_keys=True))
             print(f"Returned to destination: {engine.player_state.current_location_id}")
             return
         else:
@@ -244,6 +264,7 @@ def main() -> None:
         print("3) wait N days")
         print("4) quit")
         print("5) enter location")
+        print("6) destination actions")
         choice = input("Select: ").strip()
         if choice == "1":
             _print_systems(engine)
@@ -256,6 +277,8 @@ def main() -> None:
             break
         elif choice == "5":
             _location_entry_menu(engine)
+        elif choice == "6":
+            _destination_actions_menu(engine)
         else:
             print(json.dumps({"ok": False, "error": "invalid_menu_choice"}, sort_keys=True))
 
@@ -310,36 +333,141 @@ def _current_destination_object(engine: GameEngine) -> object | None:
 
 
 def _enter_location_by_index(engine: GameEngine, selection_text: str) -> dict[str, object]:
-    destination = _current_destination_object(engine)
-    if destination is None:
-        return {"ok": False, "error": "no_locations_available"}
-    locations = list(getattr(destination, "locations", []) or [])
-    if not locations:
-        return {"ok": False, "error": "no_locations_available"}
     try:
         selected = int(selection_text)
     except ValueError:
         return {"ok": False, "error": "invalid_location_index"}
-    if selected < 1 or selected > len(locations):
-        return {"ok": False, "error": "location_index_out_of_range"}
-    location = locations[selected - 1]
-    location_id = getattr(location, "location_id", None)
-    engine.player_state.current_location_id = location_id
-    return {"ok": True, "location": location}
+    return engine.execute({"type": "enter_location", "location_index": selected})
 
 
 def _return_to_destination(engine: GameEngine) -> None:
-    engine.player_state.current_location_id = engine.player_state.current_destination_id
+    _ = engine.execute({"type": "return_to_destination"})
+
+
+def _destination_actions_menu(engine: GameEngine) -> None:
+    list_result = engine.execute({"type": "list_destination_actions"})
+    actions = _extract_actions_from_stage(step_result=list_result, stage="destination_actions")
+    if not actions:
+        print("No destination actions available.")
+        return
+    for index, action in enumerate(actions, start=1):
+        print(f"{index}) {action['action_id']} {action.get('display_name')}")
+    raw_index = input("Select destination action index: ").strip()
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "invalid_destination_action_index"}, sort_keys=True))
+        return
+    if selected < 1 or selected > len(actions):
+        print(json.dumps({"ok": False, "error": "destination_action_index_out_of_range"}, sort_keys=True))
+        return
+    action = actions[selected - 1]
+    kwargs = _prompt_action_kwargs(action)
+    result = engine.execute(
+        {
+            "type": "destination_action",
+            "action_id": action["action_id"],
+            "action_kwargs": kwargs,
+        }
+    )
+    print(json.dumps(result, sort_keys=True))
+
+
+def _print_market_profile(engine: GameEngine) -> None:
+    result = engine.execute({"type": "get_market_profile"})
+    if result.get("ok") is False:
+        print(json.dumps(result, sort_keys=True))
+        return
+    events = result.get("events", [])
+    detail = {}
+    for event in events:
+        if isinstance(event, dict) and event.get("stage") == "market_profile":
+            detail = event.get("detail", {})
+            break
+    if not isinstance(detail, dict):
+        print("Market profile unavailable.")
+        return
+    print("MARKET PROFILE")
+    print(f"  System: {detail.get('system_id')}")
+    print(f"  Destination: {detail.get('destination_id')}")
+    print(f"  Primary economy: {detail.get('primary_economy_id')}")
+    situations = detail.get("active_situations", [])
+    print(f"  Active situations: {situations if situations else 'none'}")
+    categories = detail.get("categories", {})
+    if not isinstance(categories, dict):
+        return
+    for category_id in sorted(categories):
+        row = categories[category_id]
+        print(
+            f"  {category_id}: produced={row.get('produced', [])} "
+            f"consumed={row.get('consumed', [])} neutral={row.get('neutral', [])}"
+        )
+
+
+def _market_buy_menu(engine: GameEngine) -> None:
+    result = engine.execute({"type": "market_buy_list"})
+    rows = _extract_rows_from_stage(step_result=result, stage="market_buy_list")
+    if not rows:
+        print("No market buy offers.")
+        return
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row['sku_id']} {row.get('display_name')} "
+            f"price={row.get('unit_price')} legality={row.get('legality')} risk={row.get('risk_tier')}"
+        )
+    raw_index = input("Select buy sku index: ").strip()
+    raw_qty = input("Quantity: ").strip()
+    try:
+        selected = int(raw_index)
+        quantity = int(raw_qty)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "invalid_buy_input"}, sort_keys=True))
+        return
+    if selected < 1 or selected > len(rows):
+        print(json.dumps({"ok": False, "error": "buy_index_out_of_range"}, sort_keys=True))
+        return
+    sku_id = rows[selected - 1]["sku_id"]
+    print(json.dumps(engine.execute({"type": "market_buy", "sku_id": sku_id, "quantity": quantity}), sort_keys=True))
+
+
+def _market_sell_menu(engine: GameEngine) -> None:
+    result = engine.execute({"type": "market_sell_list"})
+    rows = _extract_rows_from_stage(step_result=result, stage="market_sell_list")
+    if not rows:
+        print("No market sell offers.")
+        return
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row['sku_id']} {row.get('display_name')} units={row.get('player_has_units')} "
+            f"price={row.get('unit_price')} legality={row.get('legality')} risk={row.get('risk_tier')}"
+        )
+    raw_index = input("Select sell sku index: ").strip()
+    raw_qty = input("Quantity: ").strip()
+    try:
+        selected = int(raw_index)
+        quantity = int(raw_qty)
+    except ValueError:
+        print(json.dumps({"ok": False, "error": "invalid_sell_input"}, sort_keys=True))
+        return
+    if selected < 1 or selected > len(rows):
+        print(json.dumps({"ok": False, "error": "sell_index_out_of_range"}, sort_keys=True))
+        return
+    sku_id = rows[selected - 1]["sku_id"]
+    print(json.dumps(engine.execute({"type": "market_sell", "sku_id": sku_id, "quantity": quantity}), sort_keys=True))
 
 
 def _extract_actions_from_step_result(step_result: dict[str, object]) -> list[dict[str, object]]:
+    return _extract_actions_from_stage(step_result=step_result, stage="location_actions")
+
+
+def _extract_actions_from_stage(*, step_result: dict[str, object], stage: str) -> list[dict[str, object]]:
     events = step_result.get("events", [])
     if not isinstance(events, list):
         return []
     for event in events:
         if not isinstance(event, dict):
             continue
-        if event.get("stage") != "location_actions":
+        if event.get("stage") != stage:
             continue
         detail = event.get("detail", {})
         if not isinstance(detail, dict):
@@ -347,6 +475,24 @@ def _extract_actions_from_step_result(step_result: dict[str, object]) -> list[di
         actions = detail.get("actions", [])
         if isinstance(actions, list):
             return [entry for entry in actions if isinstance(entry, dict)]
+    return []
+
+
+def _extract_rows_from_stage(*, step_result: dict[str, object], stage: str) -> list[dict[str, object]]:
+    events = step_result.get("events", [])
+    if not isinstance(events, list):
+        return []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("stage") != stage:
+            continue
+        detail = event.get("detail", {})
+        if not isinstance(detail, dict):
+            continue
+        rows = detail.get("rows", [])
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
     return []
 
 
@@ -359,7 +505,15 @@ def _prompt_action_kwargs(action: dict[str, object]) -> dict[str, object]:
         if not isinstance(param, str):
             continue
         raw = input(f"{param}: ").strip()
-        kwargs[param] = raw
+        if param in {"quantity", "requested_units", "location_index"}:
+            try:
+                kwargs[param] = int(raw)
+            except ValueError:
+                kwargs[param] = raw
+        elif param == "allow_repeat":
+            kwargs[param] = raw.lower() in {"1", "true", "yes", "y"}
+        else:
+            kwargs[param] = raw
     return kwargs
 
 

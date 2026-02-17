@@ -9,7 +9,6 @@ SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
 from game_engine import GameEngine  # noqa: E402
-from run_game_engine_cli import _enter_location_by_index, _return_to_destination  # noqa: E402
 from time_engine import get_current_turn  # noqa: E402
 
 
@@ -48,14 +47,12 @@ def test_phase75_location_action_does_not_advance_time() -> None:
     before = engine.execute({"type": "wait", "days": 1})
     turn_before = before["turn_after"]
 
-    # Ensure refuel has room so the action path is actually exercised.
-    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
-    if ship.current_fuel > 0:
-        ship.current_fuel -= 1
-
-    result = engine.execute({"type": "location_action", "action_id": "refuel", "kwargs": {"requested_units": 1}})
+    _configure_for_destination_refuel(engine)
+    result = engine.execute(
+        {"type": "destination_action", "action_id": "refuel", "action_kwargs": {"requested_units": 1}}
+    )
     if result["ok"] is False:
-        pytest.skip("No safe location action available in current deterministic start state.")
+        pytest.skip("No safe destination refuel action available in current deterministic start state.")
     assert result["turn_before"] == turn_before
     assert result["turn_after"] == turn_before
 
@@ -222,13 +219,13 @@ def test_location_entry_and_return_do_not_advance_time_or_fuel() -> None:
     turn_before = engine.execute({"type": "wait", "days": 1})["turn_after"]
     fuel_before = int(ship.current_fuel)
 
-    result = _enter_location_by_index(engine, "1")
+    result = engine.execute({"type": "enter_location", "location_index": 1})
     assert result["ok"] is True
-    assert "events" not in result
     entered_location_id = engine.player_state.current_location_id
     assert isinstance(entered_location_id, str)
     assert entered_location_id != destination.destination_id
-    _return_to_destination(engine)
+    return_result = engine.execute({"type": "return_to_destination"})
+    assert return_result["ok"] is True
 
     assert engine.player_state.current_location_id == destination.destination_id
     assert int(ship.current_fuel) == fuel_before
@@ -248,11 +245,11 @@ def test_datanet_refuel_action_available_when_datanet_present() -> None:
     if destination is None or datanet_location is None:
         pytest.skip("No datanet location available in deterministic world.")
     engine.player_state.current_destination_id = destination.destination_id
-    engine.player_state.current_location_id = datanet_location.location_id
+    engine.player_state.current_location_id = destination.destination_id
 
-    result = engine.execute({"type": "list_location_actions"})
+    result = engine.execute({"type": "list_destination_actions"})
     assert result["ok"] is True
-    actions = _actions_from_step_result(result)
+    actions = _actions_from_step_result(result, stage="destination_actions")
     action_ids = [entry["action_id"] for entry in actions]
     assert "refuel" in action_ids
 
@@ -260,16 +257,16 @@ def test_datanet_refuel_action_available_when_datanet_present() -> None:
 def test_refuel_mutates_fuel_and_credits_deterministically() -> None:
     engine_a = GameEngine(world_seed=12345)
     engine_b = GameEngine(world_seed=12345)
-    _configure_for_datanet_refuel(engine_a)
-    _configure_for_datanet_refuel(engine_b)
+    _configure_for_destination_refuel(engine_a)
+    _configure_for_destination_refuel(engine_b)
 
-    command = {"type": "location_action", "action_id": "refuel", "action_kwargs": {"requested_units": 2}}
+    command = {"type": "destination_action", "action_id": "refuel", "action_kwargs": {"requested_units": 2}}
     result_a = engine_a.execute(command)
     result_b = engine_b.execute(command)
     assert result_a == result_b
     assert result_a["ok"] is True
     assert result_a["turn_before"] == result_a["turn_after"]
-    summaries = _location_action_summaries(result_a)
+    summaries = _action_summaries(result_a, stage="destination_action")
     assert summaries
     summary = summaries[0]
     assert int(summary["units_purchased"]) == 2
@@ -280,13 +277,13 @@ def test_refuel_mutates_fuel_and_credits_deterministically() -> None:
 def test_location_actions_list_is_sorted_and_deterministic() -> None:
     engine_a = GameEngine(world_seed=12345)
     engine_b = GameEngine(world_seed=12345)
-    _configure_for_datanet_refuel(engine_a)
-    _configure_for_datanet_refuel(engine_b)
+    _configure_for_market_location(engine_a)
+    _configure_for_market_location(engine_b)
 
     result_a = engine_a.execute({"type": "list_location_actions"})
     result_b = engine_b.execute({"type": "list_location_actions"})
     assert result_a == result_b
-    actions = _actions_from_step_result(result_a)
+    actions = _actions_from_step_result(result_a, stage="location_actions")
     action_ids = [entry["action_id"] for entry in actions]
     assert action_ids == sorted(action_ids)
 
@@ -300,28 +297,170 @@ def _destination_with_location_type(engine: GameEngine, location_type: str):
     return None, None
 
 
-def _configure_for_datanet_refuel(engine: GameEngine) -> None:
+def _configure_for_destination_refuel(engine: GameEngine) -> None:
     destination, datanet_location = _destination_with_location_type(engine, "datanet")
     if destination is None or datanet_location is None:
         pytest.skip("No datanet location available in deterministic world.")
     engine.player_state.current_destination_id = destination.destination_id
-    engine.player_state.current_location_id = datanet_location.location_id
+    engine.player_state.current_location_id = destination.destination_id
     ship = engine.fleet_by_id[engine.player_state.active_ship_id]
     ship.current_fuel = max(0, int(ship.current_fuel) - 2)
     engine.player_state.credits = max(int(engine.player_state.credits), 1000)
 
 
-def _actions_from_step_result(result: dict) -> list[dict]:
+def _configure_for_market_location(engine: GameEngine) -> None:
+    destination, market_location = _destination_with_location_type(engine, "market")
+    if destination is None or market_location is None:
+        pytest.skip("No market location available in deterministic world.")
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = destination.destination_id
+    enter = engine.execute({"type": "enter_location", "location_id": market_location.location_id})
+    if enter["ok"] is False:
+        pytest.skip(f"Unable to enter market deterministically: {enter['error']}")
+
+
+def _actions_from_step_result(result: dict, stage: str) -> list[dict]:
     for event in result.get("events", []):
-        if event.get("stage") == "location_actions":
+        if event.get("stage") == stage:
             return list(event.get("detail", {}).get("actions", []))
     return []
 
 
-def _location_action_summaries(result: dict) -> list[dict]:
+def _action_summaries(result: dict, stage: str) -> list[dict]:
     summaries = []
     for event in result.get("events", []):
-        if event.get("stage") == "location_action":
+        if event.get("stage") == stage:
             detail = event.get("detail", {})
             summaries.append(dict(detail.get("result_summary", {})))
     return summaries
+
+
+def _rows_from_stage(result: dict, stage: str) -> list[dict]:
+    for event in result.get("events", []):
+        if event.get("stage") == stage:
+            return list(event.get("detail", {}).get("rows", []))
+    return []
+
+
+def test_list_destination_actions_works_at_destination_root() -> None:
+    engine = GameEngine(world_seed=12345)
+    engine.player_state.current_location_id = engine.player_state.current_destination_id
+    result = engine.execute({"type": "list_destination_actions"})
+    assert result["ok"] is True
+    actions = _actions_from_step_result(result, stage="destination_actions")
+    action_ids = [row["action_id"] for row in actions]
+    assert action_ids == sorted(action_ids)
+    assert "customs_inspection" in action_ids
+
+
+def test_enter_location_and_return_are_engine_commands() -> None:
+    engine = GameEngine(world_seed=12345)
+    destination, market_location = _destination_with_location_type(engine, "market")
+    if destination is None or market_location is None:
+        pytest.skip("No market location available in deterministic world.")
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = destination.destination_id
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    turn_before = engine.execute({"type": "wait", "days": 1})["turn_after"]
+    fuel_before = int(ship.current_fuel)
+
+    entered = engine.execute({"type": "enter_location", "location_id": market_location.location_id})
+    assert entered["ok"] is True
+    assert engine.player_state.current_location_id == market_location.location_id
+    returned = engine.execute({"type": "return_to_destination"})
+    assert returned["ok"] is True
+    assert engine.player_state.current_location_id == destination.destination_id
+    assert int(get_current_turn()) == int(turn_before)
+    assert int(ship.current_fuel) == fuel_before
+
+
+def test_market_location_actions_include_buy_and_sell() -> None:
+    engine = GameEngine(world_seed=12345)
+    _configure_for_market_location(engine)
+    result = engine.execute({"type": "list_location_actions"})
+    assert result["ok"] is True
+    action_ids = [row["action_id"] for row in _actions_from_step_result(result, stage="location_actions")]
+    assert "buy" in action_ids
+    assert "sell" in action_ids
+
+
+def test_market_buy_debits_credits_and_adds_cargo_deterministically() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    _configure_for_market_location(engine_a)
+    _configure_for_market_location(engine_b)
+
+    buy_list = engine_a.execute({"type": "market_buy_list"})
+    rows = _rows_from_stage(buy_list, "market_buy_list")
+    if not rows:
+        pytest.skip("No market buy rows available.")
+    sku_id = rows[0]["sku_id"]
+    command = {"type": "market_buy", "sku_id": sku_id, "quantity": 1}
+    before_credits = int(engine_a.player_state.credits)
+    before_units = int(engine_a.player_state.cargo_by_ship.get("active", {}).get(sku_id, 0))
+    result_a = engine_a.execute(command)
+    result_b = engine_b.execute(command)
+    assert result_a == result_b
+    assert result_a["ok"] is True
+    assert int(engine_a.player_state.credits) < before_credits
+    assert int(engine_a.player_state.cargo_by_ship.get("active", {}).get(sku_id, 0)) == before_units + 1
+
+
+def test_market_sell_credits_player_and_removes_cargo_deterministically() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    _configure_for_market_location(engine_a)
+    _configure_for_market_location(engine_b)
+
+    buy_rows = _rows_from_stage(engine_a.execute({"type": "market_buy_list"}), "market_buy_list")
+    if not buy_rows:
+        pytest.skip("No market rows available to seed sell test.")
+    sku_id = buy_rows[0]["sku_id"]
+    assert engine_a.execute({"type": "market_buy", "sku_id": sku_id, "quantity": 1})["ok"] is True
+    assert engine_b.execute({"type": "market_buy", "sku_id": sku_id, "quantity": 1})["ok"] is True
+    credits_before = int(engine_a.player_state.credits)
+    units_before = int(engine_a.player_state.cargo_by_ship.get("active", {}).get(sku_id, 0))
+
+    command = {"type": "market_sell", "sku_id": sku_id, "quantity": 1}
+    result_a = engine_a.execute(command)
+    result_b = engine_b.execute(command)
+    assert result_a == result_b
+    assert result_a["ok"] is True
+    assert int(engine_a.player_state.credits) > credits_before
+    assert int(engine_a.player_state.cargo_by_ship.get("active", {}).get(sku_id, 0)) == units_before - 1
+
+
+def test_customs_auto_trigger_on_market_entry_guarded_once_per_turn() -> None:
+    engine = GameEngine(world_seed=12345)
+    destination, market_location = _destination_with_location_type(engine, "market")
+    if destination is None or market_location is None:
+        pytest.skip("No market location available in deterministic world.")
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = destination.destination_id
+
+    first = engine.execute({"type": "enter_location", "location_id": market_location.location_id})
+    assert first["ok"] is True
+    guard_events = [event for event in first["events"] if event.get("stage") == "customs_guard"]
+    assert not guard_events
+    assert engine.player_state.last_customs_turn == first["turn_after"]
+    assert engine.player_state.last_customs_destination_id == destination.destination_id
+    assert engine.player_state.last_customs_kind == "auto_market_entry"
+
+    back = engine.execute({"type": "return_to_destination"})
+    assert back["ok"] is True
+    second = engine.execute({"type": "enter_location", "location_id": market_location.location_id})
+    assert second["ok"] is True
+    second_guard_events = [event for event in second["events"] if event.get("stage") == "customs_guard"]
+    assert second_guard_events
+    assert second_guard_events[0]["detail"]["reason"] == "customs_already_processed_this_turn"
+
+
+def test_voluntary_customs_cannot_double_trigger_without_allow_repeat() -> None:
+    engine = GameEngine(world_seed=12345)
+    first = engine.execute({"type": "destination_action", "action_id": "customs_inspection"})
+    assert first["ok"] is True
+    second = engine.execute({"type": "destination_action", "action_id": "customs_inspection"})
+    assert second["ok"] is True
+    guard_events = [event for event in second["events"] if event.get("stage") == "customs_guard"]
+    assert guard_events
+    assert guard_events[0]["detail"]["reason"] == "customs_already_processed_this_turn"

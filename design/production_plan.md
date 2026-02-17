@@ -802,6 +802,7 @@ Phase 7.5.2 - Same-location travel guard and inter-system minimum clamp.
 Phase 7.5.3 - CLI inter-system UX refinement and test fuel increase.
 Phase 7.5.4 - Destination and Location Surfacing Layer (CLI).
 Phase 7.5.5 - Deterministic location actions and datanet refuel CLI integration.
+Phase 7.5.7 - Destination actions, market buy/sell surfacing, and customs market-entry guard.
 
 ## Phase 8 - Monetization and Play Store Deployment
 
@@ -825,7 +826,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.7
+Current Development Version: 0.10.8
 Phase 6 complete.
 
 ## Authority Statement

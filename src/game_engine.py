@@ -24,6 +24,7 @@ from interaction_layer import (
     dispatch_player_action,
 )
 from law_enforcement import CargoSnapshot, PlayerOption, TriggerType, enforcement_checkpoint
+from market_pricing import price_transaction
 from npc_ship_generator import generate_npc_ship
 from player_state import PlayerState
 from pursuit_resolver import resolve_pursuit
@@ -153,6 +154,24 @@ class GameEngine:
                 self._execute_location_action(context, payload)
             elif command_type == "list_location_actions":
                 self._execute_list_location_actions(context)
+            elif command_type == "list_destination_actions":
+                self._execute_list_destination_actions(context)
+            elif command_type == "destination_action":
+                self._execute_destination_action(context, payload)
+            elif command_type == "enter_location":
+                self._execute_enter_location(context, payload)
+            elif command_type == "return_to_destination":
+                self._execute_return_to_destination(context)
+            elif command_type == "get_market_profile":
+                self._execute_get_market_profile(context)
+            elif command_type == "market_buy_list":
+                self._execute_market_buy_list(context)
+            elif command_type == "market_sell_list":
+                self._execute_market_sell_list(context)
+            elif command_type == "market_buy":
+                self._execute_market_buy(context, payload)
+            elif command_type == "market_sell":
+                self._execute_market_sell(context, payload)
             elif command_type == "encounter_action":
                 self._execute_encounter_action(context, payload)
             elif command_type == "quit":
@@ -346,12 +365,28 @@ class GameEngine:
         if action_id not in available:
             raise ValueError("action_not_available_for_location")
 
+        if action_id == "buy":
+            sku_id = kwargs.get("sku_id")
+            quantity = kwargs.get("quantity")
+            if not isinstance(sku_id, str) or not sku_id:
+                raise ValueError("location buy requires sku_id.")
+            if not isinstance(quantity, int):
+                raise ValueError("location buy requires integer quantity.")
+            self._execute_market_buy(context, {"sku_id": sku_id, "quantity": quantity})
+            return
+        if action_id == "sell":
+            sku_id = kwargs.get("sku_id")
+            quantity = kwargs.get("quantity")
+            if not isinstance(sku_id, str) or not sku_id:
+                raise ValueError("location sell requires sku_id.")
+            if not isinstance(quantity, int):
+                raise ValueError("location sell requires integer quantity.")
+            self._execute_market_sell(context, {"sku_id": sku_id, "quantity": quantity})
+            return
+
         destination = self._current_destination()
         if destination is None:
             raise ValueError("No current destination for location_action.")
-
-        if self._is_market_scope_action(action_id):
-            self._run_law_checkpoint(context, trigger_type=TriggerType.CUSTOMS)
 
         active_ship = self._active_ship()
         fuel_before = int(active_ship.current_fuel)
@@ -398,6 +433,312 @@ class GameEngine:
             stage="location_actions",
             subsystem="interaction_layer",
             detail={"location_id": getattr(location, "location_id", None), "actions": models},
+        )
+
+    def _execute_list_destination_actions(self, context: EngineContext) -> None:
+        models = [self._location_action_to_dict(entry) for entry in self._available_destination_actions()]
+        self._event(
+            context,
+            stage="destination_actions",
+            subsystem="interaction_layer",
+            detail={
+                "destination_id": self.player_state.current_destination_id,
+                "actions": models,
+            },
+        )
+
+    def _execute_destination_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        action_id = payload.get("action_id")
+        if not isinstance(action_id, str) or not action_id:
+            raise ValueError("destination_action requires action_id.")
+        kwargs = payload.get("action_kwargs", payload.get("kwargs", {}))
+        if kwargs is None:
+            kwargs = {}
+        if not isinstance(kwargs, dict):
+            raise ValueError("destination_action.action_kwargs must be an object.")
+
+        available = {entry.action_id: entry for entry in self._available_destination_actions()}
+        if action_id not in available:
+            raise ValueError("destination_action_not_available")
+
+        if action_id == "refuel":
+            self._execute_destination_refuel(context, kwargs)
+            return
+        if action_id == "customs_inspection":
+            allow_repeat = bool(kwargs.get("allow_repeat", False))
+            customs = self._run_customs_with_guard(
+                context=context,
+                kind="voluntary",
+                allow_repeat=allow_repeat,
+                option_name=kwargs.get("option"),
+            )
+            self._event(
+                context,
+                stage="destination_action",
+                subsystem="law_enforcement",
+                detail={
+                    "action_id": "customs_inspection",
+                    "customs": customs,
+                },
+            )
+            return
+        raise ValueError(f"unsupported_destination_action:{action_id}")
+
+    def _execute_destination_refuel(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for refuel.")
+        if not destination_has_datanet_service(destination):
+            raise ValueError("datanet_required_for_refuel")
+        requested_units = kwargs.get("requested_units")
+        if requested_units is not None and not isinstance(requested_units, int):
+            raise ValueError("requested_units must be an integer.")
+
+        active_ship = self._active_ship()
+        fuel_before = int(active_ship.current_fuel)
+        credits_before = int(self.player_state.credits)
+        action_kwargs = self._build_destination_action_kwargs(
+            action_id="refuel",
+            destination=destination,
+            kwargs={"requested_units": requested_units},
+        )
+        result = dispatch_destination_action(action_id="refuel", **action_kwargs)
+        if isinstance(result.get("credits"), int):
+            self.player_state.credits = int(result["credits"])
+        fuel_after = int(active_ship.current_fuel)
+        credits_after = int(self.player_state.credits)
+        units = int(result.get("units_purchased", 0) or 0)
+        total_cost = int(result.get("total_cost", 0) or 0)
+        unit_price = int(total_cost / units) if units > 0 else 0
+        self._event(
+            context,
+            stage="destination_action",
+            subsystem="interaction_layer",
+            detail={
+                "action_id": "refuel",
+                "result_summary": {
+                    "result_ok": bool(result.get("ok", False)),
+                    "reason": result.get("reason"),
+                    "fuel_before": fuel_before,
+                    "fuel_after": fuel_after,
+                    "credits_before": credits_before,
+                    "credits_after": credits_after,
+                    "units_purchased": units,
+                    "unit_price": unit_price,
+                    "total_cost": total_cost,
+                },
+                "result": _jsonable(result),
+            },
+        )
+
+    def _execute_enter_location(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("no_current_destination")
+        locations = list(getattr(destination, "locations", []) or [])
+        if not locations:
+            raise ValueError("no_locations_available")
+
+        location_id = payload.get("location_id")
+        location_index = payload.get("location_index")
+        selected_location = None
+        if isinstance(location_id, str) and location_id:
+            for location in locations:
+                if getattr(location, "location_id", None) == location_id:
+                    selected_location = location
+                    break
+            if selected_location is None:
+                raise ValueError("location_not_found")
+        elif isinstance(location_index, int):
+            if location_index < 1 or location_index > len(locations):
+                raise ValueError("location_index_out_of_range")
+            selected_location = locations[location_index - 1]
+        else:
+            raise ValueError("enter_location requires location_id or location_index.")
+
+        location_type = str(getattr(selected_location, "location_type", "") or "")
+        if location_type == "market":
+            customs = self._run_customs_with_guard(context=context, kind="auto_market_entry")
+            outcome = customs.get("outcome")
+            if isinstance(outcome, dict):
+                if bool(outcome.get("market_access_denied")):
+                    raise ValueError("market_access_denied")
+                if bool(outcome.get("arrested")) or bool(outcome.get("dead")):
+                    raise ValueError("market_entry_blocked_by_enforcement")
+
+        selected_location_id = str(getattr(selected_location, "location_id", ""))
+        self.player_state.current_location_id = selected_location_id
+        active_ship = self._active_ship()
+        active_ship.current_location_id = selected_location_id
+        active_ship.location_id = selected_location_id
+        self._event(
+            context,
+            stage="location_navigation",
+            subsystem="engine",
+            detail={
+                "action": "enter_location",
+                "location_id": selected_location_id,
+                "location_type": location_type,
+            },
+        )
+
+    def _execute_return_to_destination(self, context: EngineContext) -> None:
+        destination_id = self.player_state.current_destination_id
+        self.player_state.current_location_id = destination_id
+        active_ship = self._active_ship()
+        active_ship.current_location_id = destination_id
+        active_ship.location_id = destination_id
+        self._event(
+            context,
+            stage="location_navigation",
+            subsystem="engine",
+            detail={"action": "return_to_destination", "destination_id": destination_id},
+        )
+
+    def _execute_get_market_profile(self, context: EngineContext) -> None:
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("no_current_destination")
+        market = getattr(destination, "market", None)
+        if market is None:
+            raise ValueError("market_not_available")
+        location = self._current_location()
+        if location is not None and str(getattr(location, "location_type", "")) not in {"market"}:
+            raise ValueError("market_profile_requires_destination_or_market_location")
+
+        categories: dict[str, Any] = {}
+        for category_id in sorted(market.categories):
+            category = market.categories[category_id]
+            categories[category_id] = {
+                "produced": sorted([entry.sku for entry in category.produced]),
+                "consumed": sorted([entry.sku for entry in category.consumed]),
+                "neutral": sorted([entry.sku for entry in category.neutral]),
+            }
+        self._event(
+            context,
+            stage="market_profile",
+            subsystem="market",
+            detail={
+                "system_id": self.player_state.current_system_id,
+                "destination_id": destination.destination_id,
+                "primary_economy_id": getattr(destination, "primary_economy_id", None),
+                "secondary_economy_ids": sorted(list(getattr(destination, "secondary_economy_ids", []) or [])),
+                "categories": categories,
+                "active_situations": self._active_situation_ids_for_current_system(),
+            },
+        )
+
+    def _execute_market_buy_list(self, context: EngineContext) -> None:
+        self._require_market_location()
+        rows = self._market_price_rows(action="buy")
+        self._event(
+            context,
+            stage="market_buy_list",
+            subsystem="market",
+            detail={"destination_id": self.player_state.current_destination_id, "rows": rows},
+        )
+
+    def _execute_market_sell_list(self, context: EngineContext) -> None:
+        self._require_market_location()
+        rows = self._market_price_rows(action="sell")
+        self._event(
+            context,
+            stage="market_sell_list",
+            subsystem="market",
+            detail={"destination_id": self.player_state.current_destination_id, "rows": rows},
+        )
+
+    def _execute_market_buy(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        self._require_market_location()
+        sku_id = payload.get("sku_id")
+        quantity = payload.get("quantity")
+        if not isinstance(sku_id, str) or not sku_id:
+            raise ValueError("market_buy requires sku_id.")
+        if not isinstance(quantity, int) or quantity < 1:
+            raise ValueError("market_buy requires quantity >= 1.")
+
+        customs = self._run_customs_with_guard(context=context, kind="auto_market_entry")
+        outcome = customs.get("outcome")
+        if isinstance(outcome, dict):
+            if bool(outcome.get("market_access_denied")):
+                raise ValueError("market_access_denied")
+            if bool(outcome.get("arrested")) or bool(outcome.get("dead")):
+                raise ValueError("market_trade_blocked_by_enforcement")
+
+        row = self._market_row_by_sku(action="buy", sku_id=sku_id)
+        if row is None:
+            raise ValueError("sku_not_available_for_buy")
+        unit_price = int(row["unit_price"])
+        total_cost = int(unit_price * quantity)
+        credits_before = int(self.player_state.credits)
+        if credits_before < total_cost:
+            raise ValueError("insufficient_credits")
+        self._ensure_cargo_capacity_for_add(quantity)
+
+        holdings = self.player_state.cargo_by_ship.setdefault("active", {})
+        holdings[sku_id] = int(holdings.get(sku_id, 0) + quantity)
+        self.player_state.credits = credits_before - total_cost
+        self._event(
+            context,
+            stage="market_trade",
+            subsystem="market",
+            detail={
+                "action": "buy",
+                "sku_id": sku_id,
+                "quantity": int(quantity),
+                "unit_price": int(unit_price),
+                "total_cost": int(total_cost),
+                "credits_before": credits_before,
+                "credits_after": int(self.player_state.credits),
+                "cargo_after": int(holdings.get(sku_id, 0)),
+            },
+        )
+
+    def _execute_market_sell(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        self._require_market_location()
+        sku_id = payload.get("sku_id")
+        quantity = payload.get("quantity")
+        if not isinstance(sku_id, str) or not sku_id:
+            raise ValueError("market_sell requires sku_id.")
+        if not isinstance(quantity, int) or quantity < 1:
+            raise ValueError("market_sell requires quantity >= 1.")
+
+        holdings = self.player_state.cargo_by_ship.setdefault("active", {})
+        current_units = int(holdings.get(sku_id, 0))
+        if current_units < quantity:
+            raise ValueError("insufficient_cargo_units")
+
+        customs = self._run_customs_with_guard(context=context, kind="auto_market_entry")
+        outcome = customs.get("outcome")
+        if isinstance(outcome, dict):
+            if bool(outcome.get("market_access_denied")):
+                raise ValueError("market_access_denied")
+            if bool(outcome.get("arrested")) or bool(outcome.get("dead")):
+                raise ValueError("market_trade_blocked_by_enforcement")
+
+        row = self._market_row_by_sku(action="sell", sku_id=sku_id)
+        if row is None:
+            raise ValueError("sku_not_available_for_sell")
+        unit_price = int(row["unit_price"])
+        total_gain = int(unit_price * quantity)
+        credits_before = int(self.player_state.credits)
+
+        holdings[sku_id] = current_units - quantity
+        self.player_state.credits = credits_before + total_gain
+        self._event(
+            context,
+            stage="market_trade",
+            subsystem="market",
+            detail={
+                "action": "sell",
+                "sku_id": sku_id,
+                "quantity": int(quantity),
+                "unit_price": int(unit_price),
+                "total_gain": int(total_gain),
+                "credits_before": credits_before,
+                "credits_after": int(self.player_state.credits),
+                "cargo_after": int(holdings.get(sku_id, 0)),
+            },
         )
 
     def _execute_encounter_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
@@ -693,6 +1034,15 @@ class GameEngine:
             return command_type, {}, "command payload must be an object."
         allowed = {"travel_to_destination", "location_action", "encounter_action", "wait", "quit"}
         allowed.add("list_location_actions")
+        allowed.add("list_destination_actions")
+        allowed.add("destination_action")
+        allowed.add("enter_location")
+        allowed.add("return_to_destination")
+        allowed.add("get_market_profile")
+        allowed.add("market_buy_list")
+        allowed.add("market_sell_list")
+        allowed.add("market_buy")
+        allowed.add("market_sell")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -865,7 +1215,9 @@ class GameEngine:
             return []
         location_type = str(getattr(location, "location_type", "") or "")
         destination_action_ids = list(destination_actions(destination))
-        supported_ids = {"refuel", "buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
+        if location_type == "market":
+            destination_action_ids = ["buy", "sell"]
+        supported_ids = {"buy", "sell", "buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
         scoped_allowed = self._allowed_action_ids_for_location_type(location_type)
 
         actions: list[LocationActionModel] = []
@@ -879,13 +1231,35 @@ class GameEngine:
             actions.append(self._location_action_model(action_id))
         return sorted(actions, key=lambda entry: entry.action_id)
 
+    def _available_destination_actions(self) -> list[LocationActionModel]:
+        destination = self._current_destination()
+        if destination is None:
+            return []
+        actions = [
+            LocationActionModel(
+                action_id="customs_inspection",
+                display_name="Customs Inspection",
+                description="Run a voluntary customs inspection at destination level.",
+            )
+        ]
+        if destination_has_datanet_service(destination):
+            actions.append(
+                LocationActionModel(
+                    action_id="refuel",
+                    display_name="Refuel",
+                    description="Purchase fuel units up to ship fuel capacity.",
+                    parameters=["requested_units"],
+                )
+            )
+        return sorted(actions, key=lambda entry: entry.action_id)
+
     def _allowed_action_ids_for_location_type(self, location_type: str) -> set[str]:
         if location_type == "datanet":
-            return {"refuel"}
+            return set()
         if location_type == "shipdock":
             return {"buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
         if location_type == "market":
-            return set()
+            return {"buy", "sell"}
         if location_type == "warehouse":
             return set()
         if location_type == "bar":
@@ -928,6 +1302,18 @@ class GameEngine:
                 action_id="repair_ship",
                 display_name="Repair Ship",
                 description="Restore hull and subsystem degradation at shipdock.",
+            ),
+            "buy": LocationActionModel(
+                action_id="buy",
+                display_name="Buy",
+                description="Buy listed market goods.",
+                parameters=["sku_id", "quantity"],
+            ),
+            "sell": LocationActionModel(
+                action_id="sell",
+                display_name="Sell",
+                description="Sell cargo to local market.",
+                parameters=["sku_id", "quantity"],
             ),
         }
         return catalog[action_id]
@@ -979,6 +1365,187 @@ class GameEngine:
 
     def _is_market_scope_action(self, action_id: str) -> bool:
         return action_id in {"buy", "sell"}
+
+    def _is_at_destination_root(self) -> bool:
+        return self.player_state.current_location_id == self.player_state.current_destination_id
+
+    def _require_market_location(self) -> None:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        if str(getattr(location, "location_type", "")) != "market":
+            raise ValueError("not_in_market_location")
+
+    def _run_customs_with_guard(
+        self,
+        *,
+        context: EngineContext,
+        kind: str,
+        allow_repeat: bool = False,
+        option_name: Any = None,
+    ) -> dict[str, Any]:
+        destination_id = self.player_state.current_destination_id
+        turn = int(get_current_turn())
+        same_turn_same_destination = (
+            self.player_state.last_customs_turn == turn
+            and self.player_state.last_customs_destination_id == destination_id
+        )
+        if same_turn_same_destination and not allow_repeat:
+            blocked = {
+                "blocked": True,
+                "reason": "customs_already_processed_this_turn",
+                "last_kind": self.player_state.last_customs_kind,
+            }
+            self._event(
+                context,
+                stage="customs_guard",
+                subsystem="law_enforcement",
+                detail=blocked,
+            )
+            return blocked
+
+        outcome = self._run_law_checkpoint(
+            context,
+            trigger_type=TriggerType.CUSTOMS,
+            option_name=str(option_name) if isinstance(option_name, str) else None,
+        )
+        self.player_state.last_customs_turn = turn
+        self.player_state.last_customs_destination_id = destination_id
+        self.player_state.last_customs_kind = kind
+        return {"blocked": False, "kind": kind, "outcome": outcome}
+
+    def _market_price_rows(self, *, action: str) -> list[dict[str, Any]]:
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("no_current_destination")
+        market = getattr(destination, "market", None)
+        if market is None:
+            raise ValueError("market_not_available")
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            raise ValueError("current_system_not_found")
+        government = self.government_registry.get_government(system.government_id)
+        holdings = self.player_state.cargo_by_ship.get("active", {})
+
+        rows: list[dict[str, Any]] = []
+        candidates: set[str] = set()
+        if action == "buy":
+            for category in market.categories.values():
+                for good in list(category.produced) + list(category.consumed) + list(category.neutral):
+                    candidates.add(good.sku)
+        else:
+            for sku in sorted(holdings):
+                if int(holdings.get(sku, 0)) > 0:
+                    candidates.add(sku)
+
+        for sku in sorted(candidates):
+            quote = self._market_price_quote(
+                destination=destination,
+                government=government,
+                sku=sku,
+                action=action,
+            )
+            if quote is None:
+                continue
+            row = {
+                "sku_id": sku,
+                "display_name": self._display_name_for_sku(destination=destination, sku=sku),
+                "legality": quote["legality"],
+                "risk_tier": quote["risk_tier"],
+                "unit_price": int(quote["unit_price"]),
+                "available_units": None,
+            }
+            if action == "sell":
+                row["player_has_units"] = int(holdings.get(sku, 0))
+            rows.append(row)
+        return rows
+
+    def _market_row_by_sku(self, *, action: str, sku_id: str) -> dict[str, Any] | None:
+        for row in self._market_price_rows(action=action):
+            if row.get("sku_id") == sku_id:
+                return row
+        return None
+
+    def _market_price_quote(
+        self,
+        *,
+        destination: Destination,
+        government: Any,
+        sku: str,
+        action: str,
+    ) -> dict[str, Any] | None:
+        market = destination.market
+        if market is None:
+            return None
+        try:
+            good = self.catalog.good_by_sku(sku)
+            tags = set(good.tags)
+            if isinstance(good.possible_tag, str):
+                tags.add(good.possible_tag)
+        except KeyError:
+            tags = set()
+            if "_" in sku:
+                prefix, remainder = sku.split("_", 1)
+                try:
+                    base_good = self.catalog.good_by_sku(remainder)
+                    tags = set(base_good.tags)
+                    tags.add(prefix)
+                except KeyError:
+                    return None
+            else:
+                return None
+
+        policy = self._law_engine.evaluate_policy(
+            government_id=government.id,
+            commodity=Commodity(commodity_id=sku, tags=tags),
+            action=action,
+            turn=int(get_current_turn()),
+        )
+        try:
+            pricing = price_transaction(
+                catalog=self.catalog,
+                market=market,
+                government=government,
+                policy=policy,
+                sku=sku,
+                action=action,
+                world_seed=self.world_seed,
+                system_id=self.player_state.current_system_id,
+                scarcity_modifier=1.0,
+                ship=self._active_ship(),
+                world_state_engine=self._world_state_engine(),
+            )
+        except Exception:  # noqa: BLE001
+            return None
+        return {
+            "unit_price": int(round(float(pricing.final_price))),
+            "legality": str(pricing.legality.value),
+            "risk_tier": str(pricing.risk_tier.value),
+        }
+
+    def _display_name_for_sku(self, *, destination: Destination, sku: str) -> str:
+        market = destination.market
+        if market is not None:
+            for category in market.categories.values():
+                for good in list(category.produced) + list(category.consumed) + list(category.neutral):
+                    if good.sku == sku:
+                        return str(good.name)
+        try:
+            return str(self.catalog.good_by_sku(sku).name)
+        except KeyError:
+            return sku
+
+    def _ensure_cargo_capacity_for_add(self, quantity: int) -> None:
+        ship = self._active_ship()
+        capacity = int(ship.get_effective_physical_capacity())
+        if capacity <= 0:
+            return
+        current_units = 0
+        holdings = self.player_state.cargo_by_ship.get("active", {})
+        for sku in holdings:
+            current_units += int(holdings.get(sku, 0))
+        if current_units + int(quantity) > capacity:
+            raise ValueError("cargo_capacity_exceeded")
 
     def _system_market_payloads(self, system: System | None) -> list[dict[str, Any]]:
         if system is None:

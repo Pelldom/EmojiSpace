@@ -69,6 +69,9 @@ class PlayerState:
     total_inspections_fled: int = 0
     total_inspections_bribed: int = 0
     total_inspections_attacked: int = 0
+    last_customs_turn: int | None = None
+    last_customs_destination_id: str | None = None
+    last_customs_kind: str | None = None
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "PlayerState":
@@ -116,6 +119,9 @@ class PlayerState:
             "total_inspections_fled": self.total_inspections_fled,
             "total_inspections_bribed": self.total_inspections_bribed,
             "total_inspections_attacked": self.total_inspections_attacked,
+            "last_customs_turn": self.last_customs_turn,
+            "last_customs_destination_id": self.last_customs_destination_id,
+            "last_customs_kind": self.last_customs_kind,
         }
 
     def set_arrest_state(self, value: str, logger=None, turn: int = 0) -> None:
