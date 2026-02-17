@@ -19,6 +19,8 @@ from interaction_layer import (
     HANDLER_PURSUIT_STUB,
     HANDLER_REACTION,
     dispatch_destination_action,
+    destination_actions,
+    destination_has_datanet_service,
     dispatch_player_action,
 )
 from law_enforcement import CargoSnapshot, PlayerOption, TriggerType, enforcement_checkpoint
@@ -59,6 +61,17 @@ class EngineContext:
     hard_stop: bool = False
     hard_stop_reason: str | None = None
     active_encounters: list[Any] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LocationActionModel:
+    action_id: str
+    display_name: str
+    description: str
+    time_cost_days: int = 0
+    fuel_cost: int = 0
+    requires_confirm: bool = False
+    parameters: list[str] = field(default_factory=list)
 
 
 class GameEngine:
@@ -138,6 +151,8 @@ class GameEngine:
                 self._execute_wait(context, payload)
             elif command_type == "location_action":
                 self._execute_location_action(context, payload)
+            elif command_type == "list_location_actions":
+                self._execute_list_location_actions(context)
             elif command_type == "encounter_action":
                 self._execute_encounter_action(context, payload)
             elif command_type == "quit":
@@ -314,14 +329,22 @@ class GameEngine:
         )
 
     def _execute_location_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+
         action_id = payload.get("action_id")
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("location_action requires action_id.")
-        kwargs = payload.get("kwargs", {})
+        kwargs = payload.get("action_kwargs", payload.get("kwargs", {}))
         if kwargs is None:
             kwargs = {}
         if not isinstance(kwargs, dict):
-            raise ValueError("location_action.kwargs must be an object.")
+            raise ValueError("location_action.action_kwargs must be an object.")
+
+        available = {entry.action_id: entry for entry in self._available_location_actions(location)}
+        if action_id not in available:
+            raise ValueError("action_not_available_for_location")
 
         destination = self._current_destination()
         if destination is None:
@@ -330,13 +353,51 @@ class GameEngine:
         if self._is_market_scope_action(action_id):
             self._run_law_checkpoint(context, trigger_type=TriggerType.CUSTOMS)
 
+        active_ship = self._active_ship()
+        fuel_before = int(active_ship.current_fuel)
+        credits_before = int(self.player_state.credits)
         action_kwargs = self._build_destination_action_kwargs(action_id=action_id, destination=destination, kwargs=kwargs)
         result = dispatch_destination_action(action_id=action_id, **action_kwargs)
+        if action_id == "refuel" and isinstance(result.get("credits"), int):
+            self.player_state.credits = int(result["credits"])
+        fuel_after = int(active_ship.current_fuel)
+        credits_after = int(self.player_state.credits)
+        summary = {
+            "result_ok": bool(result.get("ok", False)),
+            "reason": result.get("reason"),
+            "fuel_before": fuel_before,
+            "fuel_after": fuel_after,
+            "credits_before": credits_before,
+            "credits_after": credits_after,
+        }
+        if action_id == "refuel":
+            units = int(result.get("units_purchased", 0) or 0)
+            total_cost = int(result.get("total_cost", 0) or 0)
+            unit_price = int(total_cost / units) if units > 0 else 0
+            summary.update(
+                {
+                    "units_purchased": units,
+                    "unit_price": unit_price,
+                    "total_cost": total_cost,
+                }
+            )
         self._event(
             context,
-            stage="destination_interaction",
+            stage="location_action",
             subsystem="interaction_layer",
-            detail={"action_id": action_id, "result": _jsonable(result)},
+            detail={"action_id": action_id, "result_summary": summary, "result": _jsonable(result)},
+        )
+
+    def _execute_list_location_actions(self, context: EngineContext) -> None:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        models = [self._location_action_to_dict(entry) for entry in self._available_location_actions(location)]
+        self._event(
+            context,
+            stage="location_actions",
+            subsystem="interaction_layer",
+            detail={"location_id": getattr(location, "location_id", None), "actions": models},
         )
 
     def _execute_encounter_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
@@ -631,6 +692,7 @@ class GameEngine:
         if not isinstance(payload, dict):
             return command_type, {}, "command payload must be an object."
         allowed = {"travel_to_destination", "location_action", "encounter_action", "wait", "quit"}
+        allowed.add("list_location_actions")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -782,6 +844,105 @@ class GameEngine:
             return system.destinations[0]
         return None
 
+    def _current_location(self) -> Any | None:
+        destination = self._current_destination()
+        if destination is None:
+            return None
+        location_id = self.player_state.current_location_id
+        destination_id = self.player_state.current_destination_id
+        if not isinstance(location_id, str):
+            return None
+        if location_id == destination_id:
+            return None
+        for location in list(getattr(destination, "locations", []) or []):
+            if getattr(location, "location_id", None) == location_id:
+                return location
+        return None
+
+    def _available_location_actions(self, location: Any) -> list[LocationActionModel]:
+        destination = self._current_destination()
+        if destination is None:
+            return []
+        location_type = str(getattr(location, "location_type", "") or "")
+        destination_action_ids = list(destination_actions(destination))
+        supported_ids = {"refuel", "buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
+        scoped_allowed = self._allowed_action_ids_for_location_type(location_type)
+
+        actions: list[LocationActionModel] = []
+        for action_id in sorted(destination_action_ids):
+            if action_id not in supported_ids:
+                continue
+            if action_id not in scoped_allowed:
+                continue
+            if action_id == "refuel" and not destination_has_datanet_service(destination):
+                continue
+            actions.append(self._location_action_model(action_id))
+        return sorted(actions, key=lambda entry: entry.action_id)
+
+    def _allowed_action_ids_for_location_type(self, location_type: str) -> set[str]:
+        if location_type == "datanet":
+            return {"refuel"}
+        if location_type == "shipdock":
+            return {"buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
+        if location_type == "market":
+            return set()
+        if location_type == "warehouse":
+            return set()
+        if location_type == "bar":
+            return set()
+        return set()
+
+    def _location_action_model(self, action_id: str) -> LocationActionModel:
+        catalog = {
+            "refuel": LocationActionModel(
+                action_id="refuel",
+                display_name="Refuel",
+                description="Purchase fuel units up to ship fuel capacity.",
+                time_cost_days=0,
+                fuel_cost=0,
+                requires_confirm=False,
+                parameters=[],
+            ),
+            "buy_hull": LocationActionModel(
+                action_id="buy_hull",
+                display_name="Buy Hull",
+                description="Purchase a hull from shipdock inventory.",
+            ),
+            "sell_hull": LocationActionModel(
+                action_id="sell_hull",
+                display_name="Sell Hull",
+                description="Sell an owned hull currently present at destination.",
+                requires_confirm=True,
+            ),
+            "buy_module": LocationActionModel(
+                action_id="buy_module",
+                display_name="Buy Module",
+                description="Purchase a module for an eligible ship.",
+            ),
+            "sell_module": LocationActionModel(
+                action_id="sell_module",
+                display_name="Sell Module",
+                description="Sell a module installed on an eligible ship.",
+            ),
+            "repair_ship": LocationActionModel(
+                action_id="repair_ship",
+                display_name="Repair Ship",
+                description="Restore hull and subsystem degradation at shipdock.",
+            ),
+        }
+        return catalog[action_id]
+
+    def _location_action_to_dict(self, model: LocationActionModel) -> dict[str, Any]:
+        return {
+            "action_id": model.action_id,
+            "display_name": model.display_name,
+            "description": model.description,
+            "time_cost_days": int(model.time_cost_days),
+            "fuel_cost": int(model.fuel_cost),
+            "requires_confirm": bool(model.requires_confirm),
+            "parameters": list(model.parameters),
+        }
+
     def _build_destination_action_kwargs(
         self,
         *,
@@ -792,15 +953,15 @@ class GameEngine:
         system = self.sector.get_system(self.player_state.current_system_id)
         if system is None:
             raise ValueError("No current system for destination action.")
-        action_kwargs: dict[str, Any] = {"destination": destination}
+        action_kwargs: dict[str, Any] = {}
         action_kwargs.update(kwargs)
 
         if action_id == "refuel":
             action_kwargs.setdefault("ship", self._active_ship())
             action_kwargs.setdefault("player_credits", int(self.player_state.credits))
-            action_kwargs.setdefault("player", self.player_state)
             return action_kwargs
 
+        action_kwargs.setdefault("destination", destination)
         action_kwargs.setdefault("player", self.player_state)
         action_kwargs.setdefault("fleet_by_id", self.fleet_by_id)
         if action_id in {"buy_hull", "buy_module"}:

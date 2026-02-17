@@ -9,6 +9,8 @@ SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
 from game_engine import GameEngine  # noqa: E402
+from run_game_engine_cli import _enter_location_by_index, _return_to_destination  # noqa: E402
+from time_engine import get_current_turn  # noqa: E402
 
 
 def _first_target(engine: GameEngine) -> tuple[str, str | None]:
@@ -201,3 +203,125 @@ def test_inter_system_arrival_defaults_to_first_destination() -> None:
     result = engine.execute({"type": "travel_to_destination", "target_system_id": target.system_id})
     assert result["ok"] is True
     assert result["player"]["destination_id"] == first_destination
+
+
+def test_location_entry_and_return_do_not_advance_time_or_fuel() -> None:
+    engine = GameEngine(world_seed=12345)
+    current_system = engine.sector.get_system(engine.player_state.current_system_id)
+    destination = None
+    for item in sorted(current_system.destinations, key=lambda entry: entry.destination_id):
+        if list(getattr(item, "locations", []) or []):
+            destination = item
+            break
+    if destination is None:
+        pytest.skip("No destination with locations available.")
+
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = destination.destination_id
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    turn_before = engine.execute({"type": "wait", "days": 1})["turn_after"]
+    fuel_before = int(ship.current_fuel)
+
+    result = _enter_location_by_index(engine, "1")
+    assert result["ok"] is True
+    assert "events" not in result
+    entered_location_id = engine.player_state.current_location_id
+    assert isinstance(entered_location_id, str)
+    assert entered_location_id != destination.destination_id
+    _return_to_destination(engine)
+
+    assert engine.player_state.current_location_id == destination.destination_id
+    assert int(ship.current_fuel) == fuel_before
+    assert int(get_current_turn()) == int(turn_before)
+
+
+def test_list_location_actions_requires_being_in_location() -> None:
+    engine = GameEngine(world_seed=12345)
+    result = engine.execute({"type": "list_location_actions"})
+    assert result["ok"] is False
+    assert result["error"] == "not_in_location"
+
+
+def test_datanet_refuel_action_available_when_datanet_present() -> None:
+    engine = GameEngine(world_seed=12345)
+    destination, datanet_location = _destination_with_location_type(engine, "datanet")
+    if destination is None or datanet_location is None:
+        pytest.skip("No datanet location available in deterministic world.")
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = datanet_location.location_id
+
+    result = engine.execute({"type": "list_location_actions"})
+    assert result["ok"] is True
+    actions = _actions_from_step_result(result)
+    action_ids = [entry["action_id"] for entry in actions]
+    assert "refuel" in action_ids
+
+
+def test_refuel_mutates_fuel_and_credits_deterministically() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    _configure_for_datanet_refuel(engine_a)
+    _configure_for_datanet_refuel(engine_b)
+
+    command = {"type": "location_action", "action_id": "refuel", "action_kwargs": {"requested_units": 2}}
+    result_a = engine_a.execute(command)
+    result_b = engine_b.execute(command)
+    assert result_a == result_b
+    assert result_a["ok"] is True
+    assert result_a["turn_before"] == result_a["turn_after"]
+    summaries = _location_action_summaries(result_a)
+    assert summaries
+    summary = summaries[0]
+    assert int(summary["units_purchased"]) == 2
+    assert int(summary["fuel_after"]) > int(summary["fuel_before"])
+    assert int(summary["credits_after"]) < int(summary["credits_before"])
+
+
+def test_location_actions_list_is_sorted_and_deterministic() -> None:
+    engine_a = GameEngine(world_seed=12345)
+    engine_b = GameEngine(world_seed=12345)
+    _configure_for_datanet_refuel(engine_a)
+    _configure_for_datanet_refuel(engine_b)
+
+    result_a = engine_a.execute({"type": "list_location_actions"})
+    result_b = engine_b.execute({"type": "list_location_actions"})
+    assert result_a == result_b
+    actions = _actions_from_step_result(result_a)
+    action_ids = [entry["action_id"] for entry in actions]
+    assert action_ids == sorted(action_ids)
+
+
+def _destination_with_location_type(engine: GameEngine, location_type: str):
+    current_system = engine.sector.get_system(engine.player_state.current_system_id)
+    for destination in sorted(current_system.destinations, key=lambda entry: entry.destination_id):
+        for location in list(getattr(destination, "locations", []) or []):
+            if getattr(location, "location_type", None) == location_type:
+                return destination, location
+    return None, None
+
+
+def _configure_for_datanet_refuel(engine: GameEngine) -> None:
+    destination, datanet_location = _destination_with_location_type(engine, "datanet")
+    if destination is None or datanet_location is None:
+        pytest.skip("No datanet location available in deterministic world.")
+    engine.player_state.current_destination_id = destination.destination_id
+    engine.player_state.current_location_id = datanet_location.location_id
+    ship = engine.fleet_by_id[engine.player_state.active_ship_id]
+    ship.current_fuel = max(0, int(ship.current_fuel) - 2)
+    engine.player_state.credits = max(int(engine.player_state.credits), 1000)
+
+
+def _actions_from_step_result(result: dict) -> list[dict]:
+    for event in result.get("events", []):
+        if event.get("stage") == "location_actions":
+            return list(event.get("detail", {}).get("actions", []))
+    return []
+
+
+def _location_action_summaries(result: dict) -> list[dict]:
+    summaries = []
+    for event in result.get("events", []):
+        if event.get("stage") == "location_action":
+            detail = event.get("detail", {})
+            summaries.append(dict(detail.get("result_summary", {})))
+    return summaries
