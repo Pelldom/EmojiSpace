@@ -804,6 +804,7 @@ Phase 7.5.4 - Destination and Location Surfacing Layer (CLI).
 Phase 7.5.5 - Deterministic location actions and datanet refuel CLI integration.
 Phase 7.5.7 - Destination actions, market buy/sell surfacing, and customs market-entry guard.
 Phase 7.5.8 - Authoritative profile surfacing layer (player/system/destination separation).
+Phase 7.5.10 - Deterministic simulation and test platform harness.
 
 ## Phase 7.5.8 - Authoritative Profile Surfacing Layer (IN PROGRESS)
 
@@ -821,6 +822,25 @@ Add authoritative read-only profile commands in GameEngine for player, system, a
 - No gameplay mechanics changes.
 - No RNG stream or enforcement logic changes.
 - No market math or travel logic changes.
+
+## Phase 7.5.10 - Deterministic Simulation and Test Platform (IN PROGRESS)
+
+**Target:** 0.10.10
+
+### Objective
+Add a deterministic extended simulation harness and test platform that exercises authoritative engine commands for 250-turn playtesting, invariant enforcement, structured output logging, and determinism re-run verification.
+
+### Includes
+- `SimulatedPlaytester` harness with deterministic bias-driven decisioning.
+- Structured simulation output logs under `test/output`.
+- Invariant enforcement during each simulation step.
+- Determinism verification by re-running same-seed simulation and hashing final state.
+- Dedicated test coverage for simulation runtime and determinism.
+
+### Excludes
+- No gameplay logic changes.
+- No RNG model changes.
+- No enforcement or market formula changes.
 
 ## Phase 8 - Monetization and Play Store Deployment
 
@@ -844,7 +864,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.9
+Current Development Version: 0.10.10
 Phase 6 complete.
 
 ## Authority Statement
