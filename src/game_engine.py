@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import json
 import math
+import random
 from typing import Any
 
 from combat_resolver import resolve_combat
@@ -18,6 +19,7 @@ from interaction_layer import (
     HANDLER_LAW_STUB,
     HANDLER_PURSUIT_STUB,
     HANDLER_REACTION,
+    dispatch_location_action,
     dispatch_destination_action,
     destination_actions,
     destination_has_datanet_service,
@@ -31,7 +33,12 @@ from law_enforcement import (
     enforcement_checkpoint,
 )
 from market_pricing import price_transaction
+from mission_factory import create_mission
+from mission_generator import select_weighted_mission_type
+from mission_manager import MissionManager
 from npc_ship_generator import generate_npc_ship
+from npc_placement import resolve_npcs_for_location
+from npc_registry import NPCRegistry
 from player_state import PlayerState
 from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
@@ -48,9 +55,11 @@ from time_engine import (
     get_current_turn,
 )
 from world_generator import Destination, System, WorldGenerator
+from logger import Logger
 
 
 ENGINE_STREAM_NAME = "engine_orchestration"
+WAREHOUSE_CAPACITY_COST_PER_TURN = 2
 
 
 class _SilentLogger:
@@ -87,6 +96,9 @@ class GameEngine:
         self.config = dict(config or {})
         self._version = self.config.get("version", _read_version())
         self._silent_logger = _SilentLogger()
+        self._logger = Logger(version=self._version)
+        self._logging_enabled = False
+        self._log_path: str | None = None
 
         _reset_time_state_for_test()
 
@@ -116,6 +128,22 @@ class GameEngine:
             credits=int(self.config.get("starting_credits", 5000)),
         )
         self._apply_default_start_location()
+        # Fog-of-war correction: the player starts physically present in a system/destination,
+        # so both must be marked discovered at initialization.
+        start_system_marked = False
+        start_destination_marked = False
+        if isinstance(self.player_state.current_system_id, str) and self.player_state.current_system_id:
+            before = len(self.player_state.visited_system_ids)
+            self.player_state.visited_system_ids.add(self.player_state.current_system_id)
+            start_system_marked = len(self.player_state.visited_system_ids) > before
+        if isinstance(self.player_state.current_destination_id, str) and self.player_state.current_destination_id:
+            before = len(self.player_state.visited_destination_ids)
+            self.player_state.visited_destination_ids.add(self.player_state.current_destination_id)
+            start_destination_marked = len(self.player_state.visited_destination_ids) > before
+        self._pending_initialization_event = {
+            "starting_system_marked_visited": bool(start_system_marked),
+            "starting_destination_marked_visited": bool(start_destination_marked),
+        }
         self.fleet_by_id = self._build_default_fleet()
 
         self.time_engine = TimeEngine(
@@ -126,6 +154,10 @@ class GameEngine:
             event_frequency_percent=int(self.config.get("event_frequency_percent", 8)),
         )
         self._active_encounters: list[Any] = []
+        self._mission_manager = MissionManager()
+        self._npc_registry = NPCRegistry()
+        self._location_offered_mission_ids: dict[str, list[str]] = {}
+        self._location_npc_ids: dict[str, list[str]] = {}
 
     def execute(self, command: dict) -> dict:
         turn_before = int(get_current_turn())
@@ -160,6 +192,12 @@ class GameEngine:
                 self._execute_location_action(context, payload)
             elif command_type == "list_location_actions":
                 self._execute_list_location_actions(context)
+            elif command_type == "list_location_npcs":
+                self._execute_list_location_npcs(context)
+            elif command_type == "list_npc_interactions":
+                self._execute_list_npc_interactions(context, payload)
+            elif command_type == "npc_interact":
+                self._execute_npc_interact(context, payload)
             elif command_type == "list_destination_actions":
                 self._execute_list_destination_actions(context)
             elif command_type == "destination_action":
@@ -186,6 +224,10 @@ class GameEngine:
                 self._execute_get_destination_profile(context)
             elif command_type == "encounter_action":
                 self._execute_encounter_action(context, payload)
+            elif command_type == "warehouse_cancel":
+                self._execute_warehouse_cancel(context, payload)
+            elif command_type == "set_logging":
+                self._execute_set_logging(context, payload)
             elif command_type == "quit":
                 self._event(context, stage="command", subsystem="engine", detail={"quit": True})
             else:
@@ -277,6 +319,9 @@ class GameEngine:
         self.player_state.current_system_id = target_system_id
         self.player_state.current_destination_id = target_destination_id
         self.player_state.current_location_id = target_destination_id
+        self.player_state.visited_system_ids.add(target_system_id)
+        if isinstance(target_destination_id, str):
+            self.player_state.visited_destination_ids.add(target_destination_id)
         active_ship.current_system_id = target_system_id
         active_ship.current_destination_id = target_destination_id
         active_ship.current_location_id = target_destination_id
@@ -359,6 +404,339 @@ class GameEngine:
             },
         )
 
+    def _execute_warehouse_cancel(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        destination_id = payload.get("destination_id")
+        if not isinstance(destination_id, str) or not destination_id:
+            raise ValueError("warehouse_cancel requires destination_id.")
+        warehouse = self.player_state.warehouses.pop(destination_id, None)
+        if not isinstance(warehouse, dict):
+            self._event(
+                context,
+                stage="warehouse_cancel",
+                subsystem="interaction_layer",
+                detail={"destination_id": destination_id, "cancelled": False, "reason": "warehouse_not_found"},
+            )
+            return
+        forfeited_goods = self._warehouse_goods(warehouse)
+        self._event(
+            context,
+            stage="warehouse_cancel",
+            subsystem="interaction_layer",
+            detail={
+                "destination_id": destination_id,
+                "cancelled": True,
+                "forfeited_goods": forfeited_goods,
+                "forfeited_units": int(sum(forfeited_goods.values())),
+                "capacity_removed": int(self._warehouse_capacity(warehouse)),
+            },
+        )
+
+    def _execute_set_logging(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        enabled = bool(payload.get("enabled", False))
+        default_path = str(Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{self.world_seed}.log")
+        requested_path = payload.get("log_path")
+        log_path = str(requested_path) if isinstance(requested_path, str) and requested_path else default_path
+        truncate = bool(payload.get("truncate", False))
+        configured_path = self._logger.configure_file_logging(enabled=enabled, log_path=log_path, truncate=truncate)
+        self._logging_enabled = bool(enabled and configured_path)
+        self._log_path = configured_path if self._logging_enabled else None
+        if self._logging_enabled and isinstance(getattr(self, "_pending_initialization_event", None), dict):
+            try:
+                self._logger.log(
+                    turn=int(get_current_turn()),
+                    action="engine:initialization",
+                    state_change=json.dumps(
+                        {
+                            "subsystem": "engine",
+                            "stage": "initialization",
+                            "detail": dict(self._pending_initialization_event),
+                        },
+                        sort_keys=True,
+                        ensure_ascii=True,
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            self._pending_initialization_event = None
+        self._event(
+            context,
+            stage="logging",
+            subsystem="engine",
+            detail={
+                "enabled": bool(self._logging_enabled),
+                "log_path": self._log_path,
+                "truncate": bool(truncate),
+            },
+        )
+
+    def _execute_warehouse_rent(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        destination_id = self._current_destination_id_required()
+        units = kwargs.get("units")
+        if not isinstance(units, int) or units <= 0:
+            raise ValueError("warehouse_rent requires positive integer units.")
+        warehouse = self._ensure_warehouse_entry(destination_id)
+        before_capacity = int(warehouse.get("capacity", 0) or 0)
+        warehouse["capacity"] = before_capacity + int(units)
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={
+                "action_id": "warehouse_rent",
+                "result_summary": {
+                    "result_ok": True,
+                    "destination_id": destination_id,
+                    "units_rented": int(units),
+                    "capacity_before": before_capacity,
+                    "capacity_after": int(warehouse.get("capacity", 0)),
+                    "cost_per_turn_per_capacity": int(WAREHOUSE_CAPACITY_COST_PER_TURN),
+                },
+                "result": {"ok": True, "reason": "ok"},
+            },
+        )
+
+    def _execute_warehouse_deposit(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        destination_id = self._current_destination_id_required()
+        sku_id = kwargs.get("sku_id")
+        quantity = kwargs.get("quantity")
+        if not isinstance(sku_id, str) or not sku_id:
+            raise ValueError("warehouse_deposit requires sku_id.")
+        if not isinstance(quantity, int) or quantity <= 0:
+            raise ValueError("warehouse_deposit requires positive integer quantity.")
+        location = self._current_location()
+        result = dispatch_location_action(
+            "warehouse_deposit",
+            location_type=str(getattr(location, "location_type", "") or ""),
+            payload={
+                "player": self.player_state,
+                "destination_id": destination_id,
+                "sku_id": sku_id,
+                "quantity": int(quantity),
+            },
+        )
+        if result.get("ok") is not True:
+            raise ValueError(str(result.get("reason", "warehouse_deposit_failed")))
+        summary = result.get("result_summary", {})
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={
+                "action_id": "warehouse_deposit",
+                "result_summary": summary,
+                "result": {"ok": True, "reason": "ok"},
+            },
+        )
+
+    def _execute_warehouse_withdraw(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        destination_id = self._current_destination_id_required()
+        sku_id = kwargs.get("sku_id")
+        quantity = kwargs.get("quantity")
+        if not isinstance(sku_id, str) or not sku_id:
+            raise ValueError("warehouse_withdraw requires sku_id.")
+        if not isinstance(quantity, int) or quantity <= 0:
+            raise ValueError("warehouse_withdraw requires positive integer quantity.")
+        location = self._current_location()
+        active_ship = self._active_ship()
+        cargo_capacity_value = int(getattr(active_ship, "get_effective_physical_capacity", lambda: 0)() or 0)
+        cargo_capacity = cargo_capacity_value if cargo_capacity_value > 0 else None
+        result = dispatch_location_action(
+            "warehouse_withdraw",
+            location_type=str(getattr(location, "location_type", "") or ""),
+            payload={
+                "player": self.player_state,
+                "destination_id": destination_id,
+                "sku_id": sku_id,
+                "quantity": int(quantity),
+                "cargo_capacity": cargo_capacity,
+            },
+        )
+        if result.get("ok") is not True:
+            raise ValueError(str(result.get("reason", "warehouse_withdraw_failed")))
+        summary = result.get("result_summary", {})
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={
+                "action_id": "warehouse_withdraw",
+                "result_summary": summary,
+                "result": {"ok": True, "reason": "ok"},
+            },
+        )
+
+    def _mission_rng_for_location(self, *, location_id: str) -> random.Random:
+        seed_value = self.world_seed
+        parts = [self.player_state.current_system_id, self.player_state.current_destination_id or "", location_id]
+        for part in parts:
+            for char in str(part):
+                seed_value = (seed_value * 31 + ord(char)) % (2**32)
+        return random.Random(seed_value)
+
+    def _mission_candidates(self) -> list[dict[str, Any]]:
+        return [
+            {"mission_type_id": "delivery", "base_weight": 1.0, "mission_tags": ["data"]},
+            {"mission_type_id": "recovery", "base_weight": 1.0, "mission_tags": ["industrial"]},
+            {"mission_type_id": "escort", "base_weight": 1.0, "mission_tags": ["essential"]},
+        ]
+
+    def _ensure_location_mission_offers(self, *, location_id: str) -> list[str]:
+        existing = self._location_offered_mission_ids.get(location_id, [])
+        if existing:
+            return list(existing)
+        rng = self._mission_rng_for_location(location_id=location_id)
+        offer_count = rng.randint(1, 3)
+        offered_ids: list[str] = []
+        for index in range(offer_count):
+            mission_type, _ = select_weighted_mission_type(
+                eligible_missions=self._mission_candidates(),
+                rng=rng,
+                world_state_engine=self._world_state_engine(),
+                system_id=self.player_state.current_system_id,
+            )
+            mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
+            mission = create_mission(
+                source_type="system",
+                source_id=f"{location_id}:{index}",
+                system_id=self.player_state.current_system_id,
+                destination_id=self.player_state.current_destination_id,
+                mission_type=mission_type_id,
+                mission_tier=1 + int(rng.randint(0, 2)),
+                persistence_scope="ephemeral",
+                objectives=[f"{mission_type_id}:complete_objective"],
+                rewards=[{"type": "credits", "amount": 100 + (index * 50)}],
+            )
+            self._mission_manager.offer(mission)
+            offered_ids.append(mission.mission_id)
+        self._location_offered_mission_ids[location_id] = list(offered_ids)
+        return offered_ids
+
+    def _mission_rows_for_location(self, *, location_id: str) -> list[dict[str, Any]]:
+        mission_ids = self._ensure_location_mission_offers(location_id=location_id)
+        rows: list[dict[str, Any]] = []
+        for mission_id in mission_ids:
+            mission = self._mission_manager.missions.get(mission_id)
+            if mission is None:
+                continue
+            rows.append(
+                {
+                    "mission_id": mission.mission_id,
+                    "mission_type": mission.mission_type,
+                    "mission_tier": int(mission.mission_tier),
+                    "mission_state": str(mission.mission_state),
+                    "rewards": list(mission.rewards),
+                }
+            )
+        return rows
+
+    def _execute_mission_list(self, context: EngineContext) -> None:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        location_id = str(getattr(location, "location_id", "") or "")
+        if not location_id:
+            raise ValueError("invalid_location")
+        rows = self._mission_rows_for_location(location_id=location_id)
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="mission",
+            detail={"action_id": "mission_list", "missions": rows},
+        )
+
+    def _execute_mission_accept(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        location_id = str(getattr(location, "location_id", "") or "")
+        mission_id = kwargs.get("mission_id")
+        if not isinstance(mission_id, str) or not mission_id:
+            raise ValueError("mission_accept requires mission_id")
+        offered = self._ensure_location_mission_offers(location_id=location_id)
+        if mission_id not in offered:
+            raise ValueError("mission_not_offered_here")
+        accepted = self._mission_manager.accept(
+            mission_id=mission_id,
+            player=self.player_state,
+            location_type=str(getattr(location, "location_type", "") or ""),
+            ship=self._active_ship(),
+        )
+        if not accepted:
+            raise ValueError("mission_accept_failed")
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="mission",
+            detail={"action_id": "mission_accept", "mission_id": mission_id, "accepted": True},
+        )
+
+    def _execute_bar_talk(self, context: EngineContext) -> None:
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={"action_id": "bar_talk", "result": {"ok": True, "reason": "ok"}},
+        )
+
+    def _execute_bar_rumors(self, context: EngineContext) -> None:
+        bartender = self._role_npc_for_current_location("bartender")
+        npc_id = str(getattr(bartender, "npc_id", "") or "NPC-BARTENDER")
+        result = self._build_bartender_rumor_payload(npc_id=npc_id)
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={"action_id": "bar_rumors", "result": result},
+        )
+
+    def _execute_bar_hire_crew(self, context: EngineContext) -> None:
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={"action_id": "bar_hire_crew", "result": {"ok": False, "reason": "not_implemented"}},
+        )
+
+    def _execute_admin_talk(self, context: EngineContext) -> None:
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="interaction_layer",
+            detail={"action_id": "admin_talk", "result": {"ok": True, "reason": "ok"}},
+        )
+
+    def _execute_admin_pay_fines(self, context: EngineContext) -> None:
+        result = self._admin_pay_fines_result()
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="law_enforcement",
+            detail={"action_id": "admin_pay_fines", "result": result},
+        )
+
+    def _execute_admin_apply_license(self, context: EngineContext) -> None:
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="law_enforcement",
+            detail={"action_id": "admin_apply_license", "result": {"ok": False, "reason": "not_implemented"}},
+        )
+
+    def _execute_admin_turn_in(self, context: EngineContext) -> None:
+        system_id = self.player_state.current_system_id
+        warrants = list(self.player_state.warrants_by_system.get(system_id, []))
+        if not warrants:
+            result = {"ok": True, "reason": "no_warrants"}
+        else:
+            self.player_state.warrants_by_system[system_id] = []
+            result = {"ok": True, "reason": "ok", "cleared_warrants": len(warrants)}
+        self._event(
+            context,
+            stage="location_action",
+            subsystem="law_enforcement",
+            detail={"action_id": "admin_turn_in", "result": result},
+        )
+
     def _execute_location_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
         location = self._current_location()
         if location is None:
@@ -394,6 +772,42 @@ class GameEngine:
             if not isinstance(quantity, int):
                 raise ValueError("location sell requires integer quantity.")
             self._execute_market_sell(context, {"sku_id": sku_id, "quantity": quantity})
+            return
+        if action_id == "warehouse_rent":
+            self._execute_warehouse_rent(context, kwargs)
+            return
+        if action_id == "warehouse_deposit":
+            self._execute_warehouse_deposit(context, kwargs)
+            return
+        if action_id == "warehouse_withdraw":
+            self._execute_warehouse_withdraw(context, kwargs)
+            return
+        if action_id == "mission_list":
+            self._execute_mission_list(context)
+            return
+        if action_id == "mission_accept":
+            self._execute_mission_accept(context, kwargs)
+            return
+        if action_id == "bar_talk":
+            self._execute_bar_talk(context)
+            return
+        if action_id == "bar_rumors":
+            self._execute_bar_rumors(context)
+            return
+        if action_id == "bar_hire_crew":
+            self._execute_bar_hire_crew(context)
+            return
+        if action_id == "admin_talk":
+            self._execute_admin_talk(context)
+            return
+        if action_id == "admin_pay_fines":
+            self._execute_admin_pay_fines(context)
+            return
+        if action_id == "admin_apply_license":
+            self._execute_admin_apply_license(context)
+            return
+        if action_id == "admin_turn_in":
+            self._execute_admin_turn_in(context)
             return
 
         destination = self._current_destination()
@@ -445,6 +859,64 @@ class GameEngine:
             stage="location_actions",
             subsystem="interaction_layer",
             detail={"location_id": getattr(location, "location_id", None), "actions": models},
+        )
+
+    def _execute_list_location_npcs(self, context: EngineContext) -> None:
+        npcs = self._list_current_location_npcs()
+        rows = [self._npc_summary(npc) for npc in npcs]
+        self._event(
+            context,
+            stage="location_npcs",
+            subsystem="engine",
+            detail={"location_id": self.player_state.current_location_id, "npcs": rows},
+        )
+
+    def _execute_list_npc_interactions(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        npc_id = payload.get("npc_id")
+        if not isinstance(npc_id, str) or not npc_id:
+            raise ValueError("list_npc_interactions requires npc_id")
+        npc = self._npc_for_current_location(npc_id)
+        if npc is None:
+            raise ValueError("npc_not_in_location")
+        role = self._npc_primary_role(npc)
+        interactions = self._npc_interaction_rows_for_role(role)
+        self._event(
+            context,
+            stage="npc_interactions",
+            subsystem="interaction_layer",
+            detail={"npc_id": npc_id, "role": role, "interactions": interactions},
+        )
+
+    def _execute_npc_interact(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        npc_id = payload.get("npc_id")
+        interaction_id = payload.get("interaction_id")
+        if not isinstance(npc_id, str) or not npc_id:
+            raise ValueError("npc_interact requires npc_id")
+        if not isinstance(interaction_id, str) or not interaction_id:
+            raise ValueError("npc_interact requires interaction_id")
+        npc = self._npc_for_current_location(npc_id)
+        if npc is None:
+            raise ValueError("npc_not_in_location")
+        role = self._npc_primary_role(npc)
+        allowed = {row["action_id"] for row in self._npc_interaction_rows_for_role(role)}
+        if interaction_id not in allowed:
+            raise ValueError("interaction_not_available_for_npc")
+
+        result: dict[str, Any]
+        if interaction_id == "npc_talk":
+            result = {"ok": True, "text": self._npc_talk_text(npc=npc, role=role)}
+        elif interaction_id == "bartender_rumors":
+            result = self._build_bartender_rumor_payload(npc_id=npc_id)
+        elif interaction_id == "admin_pay_fines":
+            result = self._admin_pay_fines_result()
+        else:
+            raise ValueError("unknown_npc_interaction")
+
+        self._event(
+            context,
+            stage="npc_interaction",
+            subsystem="interaction_layer",
+            detail={"npc_id": npc_id, "interaction_id": interaction_id, "result": result},
         )
 
     def _execute_list_destination_actions(self, context: EngineContext) -> None:
@@ -583,6 +1055,21 @@ class GameEngine:
         active_ship = self._active_ship()
         active_ship.current_location_id = selected_location_id
         active_ship.location_id = selected_location_id
+        npcs = resolve_npcs_for_location(
+            location_id=selected_location_id,
+            location_type=location_type,
+            system_id=self.player_state.current_system_id,
+            registry=self._npc_registry,
+            logger=self._logger if self._logging_enabled else None,
+            turn=int(get_current_turn()),
+        )
+        self._location_npc_ids[selected_location_id] = sorted(
+            {
+                str(getattr(row, "npc_id", ""))
+                for row in npcs
+                if isinstance(getattr(row, "npc_id", None), str) and str(getattr(row, "npc_id", ""))
+            }
+        )
         self._event(
             context,
             stage="location_navigation",
@@ -591,6 +1078,7 @@ class GameEngine:
                 "action": "enter_location",
                 "location_id": selected_location_id,
                 "location_type": location_type,
+                "resolved_npc_ids": [getattr(row, "npc_id", None) for row in npcs],
             },
         )
 
@@ -679,7 +1167,29 @@ class GameEngine:
 
         row = self._market_row_by_sku(action="buy", sku_id=sku_id)
         if row is None:
-            raise ValueError("sku_not_available_for_buy")
+            destination = self._current_destination()
+            if destination is None:
+                raise ValueError("no_current_destination")
+            system = self.sector.get_system(self.player_state.current_system_id)
+            if system is None:
+                raise ValueError("current_system_not_found")
+            government = self.government_registry.get_government(system.government_id)
+            quote = self._market_price_quote(
+                destination=destination,
+                government=government,
+                sku=str(sku_id),
+                action="buy",
+            )
+            if quote is None:
+                raise ValueError("sku_not_available_for_buy")
+            row = {
+                "sku_id": sku_id,
+                "display_name": self._display_name_for_sku(destination=destination, sku=sku_id),
+                "legality": quote["legality"],
+                "risk_tier": quote["risk_tier"],
+                "unit_price": int(quote["unit_price"]),
+                "available_units": None,
+            }
         unit_price = int(row["unit_price"])
         total_cost = int(unit_price * quantity)
         credits_before = int(self.player_state.credits)
@@ -759,6 +1269,9 @@ class GameEngine:
         reputation_score = int(self.player_state.reputation_by_system.get(system_id, 50))
         heat = int(self.player_state.heat_by_system.get(system_id, 0))
         notoriety_score = int(self.player_state.progression_tracks.get("notoriety", 0))
+        insurance_cost = int(self._insurance_cost_per_turn())
+        crew_wages = int(self._crew_wages_per_turn())
+        warehouse_cost = int(self._warehouse_cost_per_turn())
         self._event(
             context,
             stage="player_profile",
@@ -782,6 +1295,11 @@ class GameEngine:
                 "destination_id": self.player_state.current_destination_id,
                 "location_id": self.player_state.current_location_id,
                 "turn": int(get_current_turn()),
+                "insurance_cost_per_turn": insurance_cost,
+                "crew_wages_per_turn": crew_wages,
+                "warehouse_cost_per_turn": warehouse_cost,
+                "total_recurring_cost_per_turn": int(insurance_cost + crew_wages + warehouse_cost),
+                "warehouses": self._warehouse_profile_rows(),
             },
         )
 
@@ -1151,6 +1669,9 @@ class GameEngine:
             return command_type, {}, "command payload must be an object."
         allowed = {"travel_to_destination", "location_action", "encounter_action", "wait", "quit"}
         allowed.add("list_location_actions")
+        allowed.add("list_location_npcs")
+        allowed.add("list_npc_interactions")
+        allowed.add("npc_interact")
         allowed.add("list_destination_actions")
         allowed.add("destination_action")
         allowed.add("enter_location")
@@ -1163,6 +1684,8 @@ class GameEngine:
         allowed.add("get_player_profile")
         allowed.add("get_system_profile")
         allowed.add("get_destination_profile")
+        allowed.add("warehouse_cancel")
+        allowed.add("set_logging")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -1189,23 +1712,33 @@ class GameEngine:
         }
 
     def _event(self, context: EngineContext, *, stage: str, subsystem: str, detail: dict[str, Any]) -> None:
-        context.events.append(
-            {
-                "stage": stage,
-                "world_seed": int(self.world_seed),
-                "turn": int(get_current_turn()),
-                "command_type": context.command_type,
-                "subsystem": subsystem,
-                "detail": _jsonable(detail),
-            }
-        )
+        event_payload = {
+            "stage": stage,
+            "world_seed": int(self.world_seed),
+            "turn": int(get_current_turn()),
+            "command_type": context.command_type,
+            "subsystem": subsystem,
+            "detail": _jsonable(detail),
+        }
+        context.events.append(event_payload)
+        if self._logging_enabled:
+            try:
+                self._logger.log(
+                    turn=int(get_current_turn()),
+                    action=f"{subsystem}:{stage}",
+                    state_change=json.dumps(event_payload, sort_keys=True, ensure_ascii=True),
+                )
+            except Exception:  # noqa: BLE001
+                return
 
     def _advance_time(self, *, days: int, reason: str) -> Any:
         _set_player_action_context(True)
         try:
-            return advance_time(days=int(days), reason=reason)
+            result = advance_time(days=int(days), reason=reason)
         finally:
             _set_player_action_context(False)
+        self._apply_recurring_costs(days_completed=int(result.days_completed))
+        return result
 
     def _advance_time_in_chunks(self, *, days: int, reason: str) -> dict[str, Any]:
         remaining = int(days)
@@ -1364,15 +1897,16 @@ class GameEngine:
     def _active_mission_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for mission_id in sorted(self.player_state.active_missions):
+            mission = self._mission_manager.missions.get(mission_id)
             rows.append(
                 {
                     "mission_id": mission_id,
-                    "mission_type": None,
-                    "origin_system_id": None,
-                    "target_system_id": None,
+                    "mission_type": getattr(mission, "mission_type", None),
+                    "origin_system_id": getattr(mission, "system_id", None),
+                    "target_system_id": getattr(mission, "destination_location_id", None),
                     "status": "active",
                     "days_remaining": None,
-                    "reward_summary": None,
+                    "reward_summary": list(getattr(mission, "rewards", []) or []) if mission is not None else None,
                 }
             )
         return rows
@@ -1405,6 +1939,13 @@ class GameEngine:
                 return location
         return None
 
+    # PHASE 7.6 AUDIT NOTES
+    # - BAR support pre-pass: location type may be generated, but action catalog was empty.
+    # - ADMINISTRATION support pre-pass: location type may be generated, but action catalog was empty.
+    # - mission_list / mission_accept pre-pass: no engine command or location action exposure.
+    # - Crew hiring pre-pass: crew entity system exists, but no location action wiring in GameEngine.
+    # - Fines/licensing/wanted pre-pass: law data exists, but no administration location routing.
+
     def _available_location_actions(self, location: Any) -> list[LocationActionModel]:
         destination = self._current_destination()
         if destination is None:
@@ -1413,7 +1954,40 @@ class GameEngine:
         destination_action_ids = list(destination_actions(destination))
         if location_type == "market":
             destination_action_ids = ["buy", "sell"]
-        supported_ids = {"buy", "sell", "buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
+        if location_type == "warehouse":
+            destination_action_ids = self._warehouse_action_ids_for_current_destination()
+        if location_type == "bar":
+            destination_action_ids = ["bar_talk", "bar_rumors", "mission_list", "mission_accept", "bar_hire_crew"]
+        if location_type == "administration":
+            destination_action_ids = [
+                "admin_talk",
+                "admin_pay_fines",
+                "admin_apply_license",
+                "admin_turn_in",
+                "mission_list",
+                "mission_accept",
+            ]
+        supported_ids = {
+            "buy",
+            "sell",
+            "buy_hull",
+            "sell_hull",
+            "buy_module",
+            "sell_module",
+            "repair_ship",
+            "warehouse_rent",
+            "warehouse_deposit",
+            "warehouse_withdraw",
+            "bar_talk",
+            "bar_rumors",
+            "mission_list",
+            "mission_accept",
+            "bar_hire_crew",
+            "admin_talk",
+            "admin_pay_fines",
+            "admin_apply_license",
+            "admin_turn_in",
+        }
         scoped_allowed = self._allowed_action_ids_for_location_type(location_type)
 
         actions: list[LocationActionModel] = []
@@ -1457,9 +2031,11 @@ class GameEngine:
         if location_type == "market":
             return {"buy", "sell"}
         if location_type == "warehouse":
-            return set()
+            return {"warehouse_rent", "warehouse_deposit", "warehouse_withdraw"}
         if location_type == "bar":
-            return set()
+            return {"bar_talk", "bar_rumors", "mission_list", "mission_accept", "bar_hire_crew"}
+        if location_type == "administration":
+            return {"admin_talk", "admin_pay_fines", "admin_apply_license", "admin_turn_in", "mission_list", "mission_accept"}
         return set()
 
     def _location_action_model(self, action_id: str) -> LocationActionModel:
@@ -1511,6 +2087,70 @@ class GameEngine:
                 description="Sell cargo to local market.",
                 parameters=["sku_id", "quantity"],
             ),
+            "warehouse_rent": LocationActionModel(
+                action_id="warehouse_rent",
+                display_name="Rent Warehouse Space",
+                description="Rent additional warehouse capacity at this destination.",
+                parameters=["units"],
+            ),
+            "warehouse_deposit": LocationActionModel(
+                action_id="warehouse_deposit",
+                display_name="Deposit Cargo",
+                description="Move cargo from ship hold to destination warehouse.",
+                parameters=["sku_id", "quantity"],
+            ),
+            "warehouse_withdraw": LocationActionModel(
+                action_id="warehouse_withdraw",
+                display_name="Withdraw Cargo",
+                description="Move goods from destination warehouse to ship hold.",
+                parameters=["sku_id", "quantity"],
+            ),
+            "bar_talk": LocationActionModel(
+                action_id="bar_talk",
+                display_name="Talk",
+                description="Talk to locals at the bar.",
+            ),
+            "bar_rumors": LocationActionModel(
+                action_id="bar_rumors",
+                display_name="Ask For Rumors",
+                description="Collect local rumors.",
+            ),
+            "mission_list": LocationActionModel(
+                action_id="mission_list",
+                display_name="List Missions",
+                description="List available missions for this location.",
+            ),
+            "mission_accept": LocationActionModel(
+                action_id="mission_accept",
+                display_name="Accept Mission",
+                description="Accept an offered mission by mission id.",
+                parameters=["mission_id"],
+            ),
+            "bar_hire_crew": LocationActionModel(
+                action_id="bar_hire_crew",
+                display_name="Hire Crew",
+                description="Attempt to hire available crew contacts.",
+            ),
+            "admin_talk": LocationActionModel(
+                action_id="admin_talk",
+                display_name="Talk",
+                description="Talk to administration personnel.",
+            ),
+            "admin_pay_fines": LocationActionModel(
+                action_id="admin_pay_fines",
+                display_name="Pay Fines",
+                description="Pay outstanding fines for this system.",
+            ),
+            "admin_apply_license": LocationActionModel(
+                action_id="admin_apply_license",
+                display_name="Apply License",
+                description="Apply for restricted trade license.",
+            ),
+            "admin_turn_in": LocationActionModel(
+                action_id="admin_turn_in",
+                display_name="Turn In",
+                description="Turn in outstanding warrants.",
+            ),
         }
         return catalog[action_id]
 
@@ -1524,6 +2164,332 @@ class GameEngine:
             "requires_confirm": bool(model.requires_confirm),
             "parameters": list(model.parameters),
         }
+
+    def _list_current_location_npcs(self) -> list[Any]:
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        location_id = str(getattr(location, "location_id", "") or "")
+        location_type = str(getattr(location, "location_type", "") or "")
+        if not location_id:
+            return []
+
+        resolved_ids = [npc_id for npc_id in self._location_npc_ids.get(location_id, []) if isinstance(npc_id, str)]
+        if not resolved_ids:
+            npcs = resolve_npcs_for_location(
+                location_id=location_id,
+                location_type=location_type,
+                system_id=self.player_state.current_system_id,
+                registry=self._npc_registry,
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            resolved_ids = sorted(
+                {
+                    str(getattr(row, "npc_id", ""))
+                    for row in npcs
+                    if isinstance(getattr(row, "npc_id", None), str) and str(getattr(row, "npc_id", ""))
+                }
+            )
+            self._location_npc_ids[location_id] = list(resolved_ids)
+
+        by_id: dict[str, Any] = {}
+        for npc in self._npc_registry.list_by_location(location_id):
+            npc_id = str(getattr(npc, "npc_id", "") or "")
+            if npc_id:
+                by_id[npc_id] = npc
+        for npc_id in resolved_ids:
+            npc = self._npc_registry.get(npc_id)
+            if npc is not None:
+                by_id[npc_id] = npc
+
+        ordered = sorted(by_id.values(), key=lambda row: str(getattr(row, "npc_id", "")))
+        structural_role = "bartender" if location_type == "bar" else "administrator" if location_type == "administration" else ""
+        if not structural_role:
+            return ordered
+
+        primary: Any | None = None
+        for npc in ordered:
+            if self._npc_primary_role(npc) == structural_role:
+                primary = npc
+                break
+        if primary is None:
+            return ordered
+        return [primary] + [npc for npc in ordered if str(getattr(npc, "npc_id", "")) != str(getattr(primary, "npc_id", ""))]
+
+    def _npc_for_current_location(self, npc_id: str) -> Any | None:
+        for npc in self._list_current_location_npcs():
+            if str(getattr(npc, "npc_id", "")) == npc_id:
+                return npc
+        return None
+
+    def _role_npc_for_current_location(self, role: str) -> Any | None:
+        for npc in self._list_current_location_npcs():
+            if self._npc_primary_role(npc) == role:
+                return npc
+        return None
+
+    def _npc_primary_role(self, npc: Any) -> str:
+        role_tags = getattr(npc, "role_tags", [])
+        if isinstance(role_tags, list):
+            for role in role_tags:
+                if isinstance(role, str) and role:
+                    return role
+        roles = getattr(npc, "roles", [])
+        if isinstance(roles, list):
+            for role in roles:
+                if isinstance(role, str) and role:
+                    return role
+        return "unknown"
+
+    def _npc_summary(self, npc: Any) -> dict[str, Any]:
+        tier_raw = getattr(npc, "persistence_tier", 1)
+        tier_value = int(getattr(tier_raw, "value", tier_raw))
+        return {
+            "npc_id": str(getattr(npc, "npc_id", "") or ""),
+            "display_name": str(getattr(npc, "display_name", "") or ""),
+            "role": self._npc_primary_role(npc),
+            "persistence_tier": int(tier_value),
+        }
+
+    def _npc_interaction_rows_for_role(self, role: str) -> list[dict[str, Any]]:
+        base = [
+            {
+                "action_id": "npc_talk",
+                "display_name": "Talk",
+                "description": "Have a short conversation.",
+                "parameters": [],
+            }
+        ]
+        if role == "bartender":
+            return base + [
+                {
+                    "action_id": "bartender_rumors",
+                    "display_name": "Ask for rumors",
+                    "description": "Request a local rumor.",
+                    "parameters": [],
+                }
+            ]
+        if role == "administrator":
+            return base + [
+                {
+                    "action_id": "admin_pay_fines",
+                    "display_name": "Pay fines",
+                    "description": "Pay outstanding fines in this system.",
+                    "parameters": [],
+                }
+            ]
+        return base
+
+    def _npc_talk_text(self, *, npc: Any, role: str) -> str:
+        name = str(getattr(npc, "display_name", "") or "Contact")
+        if role == "bartender":
+            return f"{name} polishes a glass and nods."
+        if role == "administrator":
+            return f"{name} reviews your record and waits."
+        return f"{name} acknowledges you."
+
+    def _admin_pay_fines_result(self) -> dict[str, Any]:
+        system_id = self.player_state.current_system_id
+        due = int(self.player_state.outstanding_fines.get(system_id, 0) or 0)
+        if due <= 0:
+            return {"ok": True, "reason": "no_fines_due", "paid": 0}
+        if int(self.player_state.credits) < due:
+            return {"ok": False, "reason": "insufficient_credits", "paid": 0}
+        self.player_state.credits = int(self.player_state.credits) - due
+        self.player_state.outstanding_fines[system_id] = 0
+        return {"ok": True, "reason": "ok", "paid": due}
+
+    def _build_bartender_rumor_payload(self, *, npc_id: str) -> dict[str, Any]:
+        destination_id = str(self.player_state.current_destination_id or "")
+        location_id = str(self.player_state.current_location_id or "")
+        turn_value = int(get_current_turn())
+        rng = random.Random(
+            self._stable_seed(
+                self.world_seed,
+                self.player_state.current_system_id,
+                destination_id,
+                location_id,
+                npc_id,
+                turn_value,
+                "bartender_rumor",
+            )
+        )
+
+        rumor_type = ["red_herring", "lore", "world_state_hint"][int(rng.randint(0, 2))]
+        if rumor_type == "red_herring":
+            return {
+                "ok": True,
+                "rumor_type": "red_herring",
+                "rumor_text": "A trader swears hidden riches drift near old debris.",
+            }
+        if rumor_type == "lore":
+            return {
+                "ok": True,
+                "rumor_type": "lore",
+                "rumor_text": "Long-haulers say every port keeps a story no map can hold.",
+            }
+
+        hint_choices: list[dict[str, str | None]] = []
+        current_system = self.sector.get_system(self.player_state.current_system_id)
+        if current_system is not None:
+            for destination in sorted(list(current_system.destinations), key=lambda row: row.destination_id):
+                hint_choices.append(
+                    {
+                        "system_id": str(current_system.system_id),
+                        "destination_id": str(destination.destination_id),
+                    }
+                )
+            ship = self._active_ship()
+            fuel_limit = int(ship.current_fuel)
+            for target in sorted(self.sector.systems, key=lambda entry: entry.system_id):
+                if target.system_id == current_system.system_id:
+                    continue
+                distance_ly = float(self._warp_distance_ly(origin=current_system, target=target))
+                if distance_ly <= float(fuel_limit):
+                    hint_choices.append({"system_id": str(target.system_id), "destination_id": None})
+        if not hint_choices:
+            return {
+                "ok": True,
+                "rumor_type": "lore",
+                "rumor_text": "The bar goes quiet when routes run dry.",
+            }
+
+        hint = hint_choices[int(rng.randint(0, len(hint_choices) - 1))]
+        hint_system_id = str(hint.get("system_id") or "")
+        hint_destination_id = hint.get("destination_id")
+        destination_known = isinstance(hint_destination_id, str) and hint_destination_id in self.player_state.visited_destination_ids
+        system_known = hint_system_id in self.player_state.visited_system_ids
+        if destination_known:
+            rumor_text = f"Someone mentioned unusual traffic near {hint_destination_id}."
+        elif system_known:
+            rumor_text = f"Pilots keep circling a point in {hint_system_id} without saying why."
+        else:
+            rumor_text = "A pilot hints at movement along a reachable route."
+
+        payload: dict[str, Any] = {
+            "ok": True,
+            "rumor_type": "world_state_hint",
+            "rumor_text": rumor_text,
+            "hint": {"system_id": hint_system_id},
+        }
+        if isinstance(hint_destination_id, str):
+            payload["hint"]["destination_id"] = hint_destination_id
+        return payload
+
+    def _stable_seed(self, *parts: Any) -> int:
+        value = 0
+        for part in parts:
+            for char in str(part):
+                value = (value * 31 + ord(char)) % (2**32)
+        return value
+
+    def _current_destination_id_required(self) -> str:
+        destination_id = self.player_state.current_destination_id
+        if not isinstance(destination_id, str) or not destination_id:
+            raise ValueError("no_current_destination")
+        return destination_id
+
+    def _ensure_warehouse_entry(self, destination_id: str) -> dict[str, Any]:
+        warehouse = self.player_state.warehouses.get(destination_id)
+        if not isinstance(warehouse, dict):
+            warehouse = {"capacity": 0, "goods": {}}
+            self.player_state.warehouses[destination_id] = warehouse
+        if not isinstance(warehouse.get("goods"), dict):
+            warehouse["goods"] = {}
+        if not isinstance(warehouse.get("capacity"), int):
+            warehouse["capacity"] = int(warehouse.get("capacity", 0) or 0)
+        return warehouse
+
+    def _warehouse_capacity(self, warehouse: dict[str, Any]) -> int:
+        return max(0, int(warehouse.get("capacity", 0) or 0))
+
+    def _warehouse_goods(self, warehouse: dict[str, Any]) -> dict[str, int]:
+        goods_raw = warehouse.get("goods", {})
+        if not isinstance(goods_raw, dict):
+            return {}
+        return {
+            str(sku_id): int(quantity)
+            for sku_id, quantity in goods_raw.items()
+            if isinstance(quantity, int) and int(quantity) > 0
+        }
+
+    def _warehouse_used_capacity(self, warehouse: dict[str, Any]) -> int:
+        return int(sum(self._warehouse_goods(warehouse).values()))
+
+    def _warehouse_available_capacity(self, warehouse: dict[str, Any]) -> int:
+        return max(0, int(self._warehouse_capacity(warehouse) - self._warehouse_used_capacity(warehouse)))
+
+    def _warehouse_action_ids_for_current_destination(self) -> list[str]:
+        destination_id = self.player_state.current_destination_id
+        if not isinstance(destination_id, str) or not destination_id:
+            return []
+        warehouse = self.player_state.warehouses.get(destination_id)
+        actions = ["warehouse_rent"]
+        cargo_manifest = self.player_state.cargo_by_ship.get("active", {})
+        has_cargo = isinstance(cargo_manifest, dict) and any(
+            isinstance(quantity, int) and int(quantity) > 0 for quantity in cargo_manifest.values()
+        )
+        if isinstance(warehouse, dict):
+            if has_cargo and self._warehouse_available_capacity(warehouse) > 0:
+                actions.append("warehouse_deposit")
+            if self._warehouse_used_capacity(warehouse) > 0:
+                actions.append("warehouse_withdraw")
+        return actions
+
+    def _warehouse_cost_per_turn(self) -> int:
+        total_capacity = 0
+        for warehouse in self.player_state.warehouses.values():
+            if not isinstance(warehouse, dict):
+                continue
+            total_capacity += self._warehouse_capacity(warehouse)
+        return int(total_capacity * WAREHOUSE_CAPACITY_COST_PER_TURN)
+
+    def _insurance_cost_per_turn(self) -> int:
+        total = 0
+        for policy in self.player_state.insurance_policies:
+            if not isinstance(policy, dict):
+                continue
+            value = policy.get("premium_per_turn", policy.get("cost_per_turn", 0))
+            if isinstance(value, int):
+                total += int(value)
+        return int(total)
+
+    def _crew_wages_per_turn(self) -> int:
+        active_ship = self.fleet_by_id.get(self.player_state.active_ship_id)
+        return int(getattr(active_ship, "get_total_daily_wages", lambda: 0)() or 0)
+
+    def _recurring_cost_per_turn(self) -> int:
+        return int(self._insurance_cost_per_turn() + self._crew_wages_per_turn() + self._warehouse_cost_per_turn())
+
+    def _apply_recurring_costs(self, *, days_completed: int) -> None:
+        if int(days_completed) <= 0:
+            return
+        per_turn = int(self._recurring_cost_per_turn())
+        if per_turn <= 0:
+            return
+        self.player_state.credits = int(self.player_state.credits) - (per_turn * int(days_completed))
+
+    def _warehouse_profile_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for destination_id in sorted(self.player_state.warehouses):
+            warehouse = self.player_state.warehouses[destination_id]
+            if not isinstance(warehouse, dict):
+                continue
+            capacity = int(self._warehouse_capacity(warehouse))
+            goods = self._warehouse_goods(warehouse)
+            used = int(sum(goods.values()))
+            rows.append(
+                {
+                    "destination_id": destination_id,
+                    "capacity": capacity,
+                    "used": used,
+                    "available": max(0, int(capacity - used)),
+                    "cost_per_turn": int(capacity * WAREHOUSE_CAPACITY_COST_PER_TURN),
+                    "goods": goods,
+                }
+            )
+        return rows
 
     def _build_destination_action_kwargs(
         self,
@@ -1662,6 +2628,61 @@ class GameEngine:
                 return row
         return None
 
+    def _possible_variant_tags(self) -> set[str]:
+        return {
+            str(good.possible_tag)
+            for good in self.catalog.goods
+            if isinstance(good.possible_tag, str) and good.possible_tag
+        }
+
+    def _resolve_base_sku_and_variant_tags(self, *, sku: str) -> tuple[str | None, list[str]]:
+        try:
+            self.catalog.good_by_sku(sku)
+            return sku, []
+        except KeyError:
+            pass
+        known_tags = self._possible_variant_tags()
+        if not known_tags:
+            return None, []
+        parts = [part for part in sku.split("_") if part]
+        if not parts:
+            return None, []
+        candidates: list[tuple[str, list[str]]] = []
+        max_strip = len(parts) - 1
+        for prefix_count in range(0, max_strip + 1):
+            for suffix_count in range(0, max_strip - prefix_count + 1):
+                if prefix_count == 0 and suffix_count == 0:
+                    continue
+                prefix_parts = parts[:prefix_count]
+                suffix_parts = parts[len(parts) - suffix_count :] if suffix_count > 0 else []
+                stripped_parts = prefix_parts + suffix_parts
+                if not stripped_parts or any(part not in known_tags for part in stripped_parts):
+                    continue
+                core = parts[prefix_count : len(parts) - suffix_count]
+                if not core:
+                    continue
+                candidate_sku = "_".join(core)
+                try:
+                    self.catalog.good_by_sku(candidate_sku)
+                except KeyError:
+                    continue
+                candidates.append((candidate_sku, stripped_parts))
+        if not candidates:
+            return None, []
+        candidates.sort(key=lambda entry: (-len(entry[0]), len(entry[1]), entry[0], tuple(entry[1])))
+        return candidates[0]
+
+    def _market_goods_with_roles(self, market: Any) -> list[tuple[Any, str]]:
+        rows: list[tuple[Any, str]] = []
+        for category in market.categories.values():
+            for good in category.produced:
+                rows.append((good, "produced"))
+            for good in category.neutral:
+                rows.append((good, "neutral"))
+            for good in category.consumed:
+                rows.append((good, "consumed"))
+        return rows
+
     def _market_price_quote(
         self,
         *,
@@ -1673,43 +2694,87 @@ class GameEngine:
         market = destination.market
         if market is None:
             return None
-        try:
-            good = self.catalog.good_by_sku(sku)
-            tags = set(good.tags)
-            if isinstance(good.possible_tag, str):
-                tags.add(good.possible_tag)
-        except KeyError:
-            tags = set()
-            if "_" in sku:
-                prefix, remainder = sku.split("_", 1)
-                try:
-                    base_good = self.catalog.good_by_sku(remainder)
-                    tags = set(base_good.tags)
-                    tags.add(prefix)
-                except KeyError:
-                    return None
-            else:
-                return None
+        market_entries = self._market_goods_with_roles(market)
+        exact_entry = next((entry for entry in market_entries if str(entry[0].sku) == sku), None)
 
-        policy = self._law_engine.evaluate_policy(
-            government_id=government.id,
-            commodity=Commodity(commodity_id=sku, tags=tags),
-            action=action,
-            turn=int(get_current_turn()),
-        )
+        base_sku, inferred_variant_tags = self._resolve_base_sku_and_variant_tags(sku=sku)
+        if base_sku is None and exact_entry is None:
+            return None
+        catalog_good = None
+        if isinstance(base_sku, str):
+            try:
+                catalog_good = self.catalog.good_by_sku(base_sku)
+            except KeyError:
+                catalog_good = None
+
+        if exact_entry is not None:
+            exact_good = exact_entry[0]
+            category = str(getattr(exact_good, "category", ""))
+            sold_tags = list(getattr(exact_good, "tags", ()) or [])
+            sold_base_sku = base_sku if isinstance(base_sku, str) else None
+            if sold_base_sku is None:
+                resolved_base, _ = self._resolve_base_sku_and_variant_tags(sku=str(exact_good.sku))
+                sold_base_sku = resolved_base
+        else:
+            if catalog_good is None:
+                return None
+            category = str(catalog_good.category)
+            sold_tags = list(catalog_good.tags)
+            for tag in inferred_variant_tags:
+                if tag not in sold_tags:
+                    sold_tags.append(tag)
+            sold_base_sku = base_sku
+
+        if category not in market.categories:
+            return None
+
+        near_match_entry = None
+        if exact_entry is None and isinstance(sold_base_sku, str):
+            base_matches: list[tuple[Any, str]] = []
+            for entry in market_entries:
+                market_good = entry[0]
+                if str(getattr(market_good, "category", "")) != category:
+                    continue
+                market_base, _ = self._resolve_base_sku_and_variant_tags(sku=str(market_good.sku))
+                if market_base == sold_base_sku:
+                    base_matches.append(entry)
+            if base_matches:
+                base_matches.sort(key=lambda entry: str(entry[0].sku))
+                near_match_entry = base_matches[0]
+
+        if exact_entry is not None:
+            pricing_sku = sku
+            substitute_override = None
+        elif near_match_entry is not None:
+            pricing_sku = str(near_match_entry[0].sku)
+            substitute_override = False
+        elif isinstance(sold_base_sku, str):
+            pricing_sku = sold_base_sku
+            substitute_override = True
+        else:
+            return None
+
         try:
             pricing = price_transaction(
                 catalog=self.catalog,
                 market=market,
                 government=government,
-                policy=policy,
-                sku=sku,
+                policy=self._law_engine.evaluate_policy(
+                    government_id=government.id,
+                    commodity=Commodity(commodity_id=sku, tags=set(sold_tags)),
+                    action=action,
+                    turn=int(get_current_turn()),
+                ),
+                sku=pricing_sku,
                 action=action,
                 world_seed=self.world_seed,
                 system_id=self.player_state.current_system_id,
+                destination_id=self.player_state.current_destination_id,
                 scarcity_modifier=1.0,
                 ship=self._active_ship(),
                 world_state_engine=self._world_state_engine(),
+                tags_override=sold_tags,
+                substitute_override=substitute_override,
             )
         except Exception:  # noqa: BLE001
             return None

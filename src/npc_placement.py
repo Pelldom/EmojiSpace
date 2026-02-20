@@ -22,7 +22,7 @@ def resolve_npcs_for_location(
     if npc is None:
         npc = NPCEntity(
             npc_id=npc_id,
-            persistence_tier=NPCPersistenceTier.TIER_2,
+            persistence_tier=NPCPersistenceTier.TIER_3,
             display_name=role.replace("_", " ").title(),
             role_tags=[role],
             current_location_id=location_id,

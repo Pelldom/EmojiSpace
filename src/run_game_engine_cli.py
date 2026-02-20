@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 from game_engine import GameEngine
 
@@ -27,17 +28,13 @@ def _show_player_info(engine: GameEngine) -> None:
         stage="destination_profile",
     )
     cargo_manifest = _compact_manifest(detail.get("cargo_manifest", {}))
-    insurance_cost = _sum_numeric_fields(
-        rows=getattr(engine.player_state, "insurance_policies", []) or [],
-        candidate_keys=("premium_per_turn", "cost_per_turn", "recurring_cost", "premium"),
-    )
-    warehouse_cost = _sum_numeric_fields(
-        rows=getattr(engine.player_state, "warehouse_leases", []) or [],
-        candidate_keys=("rental_cost_per_turn", "cost_per_turn", "recurring_cost", "rental"),
-    )
-    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
-    crew_wages = int(getattr(active_ship, "get_total_daily_wages", lambda: 0)() or 0)
-    recurring_total = int(insurance_cost + warehouse_cost + crew_wages)
+    insurance_cost = int(detail.get("insurance_cost_per_turn", 0) or 0)
+    warehouse_cost = int(detail.get("warehouse_cost_per_turn", 0) or 0)
+    crew_wages = int(detail.get("crew_wages_per_turn", 0) or 0)
+    recurring_total = int(detail.get("total_recurring_cost_per_turn", 0) or 0)
+    warehouses = detail.get("warehouses", [])
+    if not isinstance(warehouses, list):
+        warehouses = []
     print("PLAYER / SHIP INFO")
     print(f"  Credits: {detail.get('credits')}")
     print(f"  Fuel: {detail.get('fuel_current')}/{detail.get('fuel_capacity')}")
@@ -60,6 +57,38 @@ def _show_player_info(engine: GameEngine) -> None:
     print(f"  Warehouse rental: {warehouse_cost}")
     print(f"  Crew wages: {crew_wages}")
     print(f"  Total recurring cost: {recurring_total}")
+    print("WAREHOUSE RENTALS")
+    if not warehouses:
+        print("  none")
+        return
+    for index, row in enumerate(warehouses, start=1):
+        destination_id = row.get("destination_id")
+        capacity = int(row.get("capacity", 0) or 0)
+        used = int(row.get("used", 0) or 0)
+        available = int(row.get("available", 0) or 0)
+        cost = int(row.get("cost_per_turn", 0) or 0)
+        goods = row.get("goods", {})
+        print(
+            f"  {index}) destination={destination_id} capacity={capacity} "
+            f"used={used} available={available} cost/turn={cost} goods={goods}"
+        )
+    raw_cancel = input("Cancel warehouse rental index [0 skip]: ").strip()
+    if raw_cancel in {"", "0"}:
+        return
+    try:
+        selected = int(raw_cancel)
+    except ValueError:
+        print("Invalid warehouse cancel index.")
+        return
+    if selected < 1 or selected > len(warehouses):
+        print("Invalid warehouse cancel index.")
+        return
+    destination_id = warehouses[selected - 1].get("destination_id")
+    if not isinstance(destination_id, str) or not destination_id:
+        print("Invalid warehouse destination.")
+        return
+    result = engine.execute({"type": "warehouse_cancel", "destination_id": destination_id})
+    print(json.dumps(result, sort_keys=True))
 
 
 def _show_system_info(engine: GameEngine) -> None:
@@ -69,13 +98,29 @@ def _show_system_info(engine: GameEngine) -> None:
         print(json.dumps(result, sort_keys=True))
         return
     coords = detail.get("coordinates", {})
+    system_id = str(detail.get("system_id", "") or "")
+    system_visited = system_id in _visited_system_ids(engine)
     print("SYSTEM INFO")
     print(f"  Name: {detail.get('name')}")
-    print(f"  ID: {detail.get('system_id')}")
-    print(f"  Government: {detail.get('government_id')}")
-    print(f"  Population: {detail.get('population')}")
+    print(f"  ID: {system_id}")
+    if system_visited:
+        print(f"  Government: {detail.get('government_id')}")
+        print(f"  Population: {detail.get('population')}")
+    else:
+        print("  Government: Unknown")
+        print("  Population: Unknown")
     print(f"  Coordinates: ({coords.get('x')}, {coords.get('y')})")
-    print(f"  Active situations: {detail.get('active_system_situations')}")
+    if system_visited:
+        print(f"  Active situations: {detail.get('active_system_situations')}")
+        system = engine.sector.get_system(system_id)
+        if system is None:
+            print("  Destinations: none")
+        else:
+            destination_names = [destination.display_name for destination in sorted(system.destinations, key=lambda d: d.destination_id)]
+            print(f"  Destinations: {destination_names if destination_names else 'none'}")
+    else:
+        print("  Active situations: Unknown")
+        print("  Destinations: Unknown")
     print(f"  Active flags: {detail.get('active_system_flags')}")
     print("  Reachable systems:")
     for row in detail.get("reachable_systems", []):
@@ -91,19 +136,30 @@ def _show_destination_info(engine: GameEngine) -> None:
     if not isinstance(detail, dict):
         print(json.dumps(result, sort_keys=True))
         return
+    destination_id = str(detail.get("destination_id", "") or "")
+    destination_visited = destination_id in _visited_destination_ids(engine)
     print("DESTINATION INFO")
     print(f"  Name: {detail.get('name')}")
-    print(f"  ID: {detail.get('destination_id')}")
+    print(f"  ID: {destination_id}")
     print(f"  Population: {detail.get('population')}")
-    print(f"  Primary economy: {detail.get('primary_economy')}")
+    if destination_visited:
+        print(f"  Primary economy: {detail.get('primary_economy')}")
+    else:
+        print("  Primary economy: Unknown")
     print(f"  Market attached: {detail.get('market_attached')}")
-    print(f"  Active destination situations: {detail.get('active_destination_situations')}")
+    if destination_visited:
+        print(f"  Active destination situations: {detail.get('active_destination_situations')}")
+    else:
+        print("  Active destination situations: Unknown")
     print("  Locations:")
-    locations = detail.get("locations", [])
-    if not locations:
-        print("    none")
-    for row in locations:
-        print(f"    {row.get('location_id')} type={row.get('location_type')}")
+    if not destination_visited:
+        print("    Unknown")
+    else:
+        locations = detail.get("locations", [])
+        if not locations:
+            print("    none")
+        for row in locations:
+            print(f"    {row.get('location_id')} type={row.get('location_type')}")
 
 
 def _travel_menu(engine: GameEngine) -> None:
@@ -129,7 +185,20 @@ def _travel_menu(engine: GameEngine) -> None:
                 print("No inter-system targets in range.")
                 continue
             for index, row in enumerate(reachable, start=1):
-                print(f"{index}) {row['system_id']} {row['name']} distance_ly={row['distance_ly']:.3f}")
+                system_id = str(row["system_id"])
+                visited = system_id in _visited_system_ids(engine)
+                base = f"{index}) {row['system_id']} {row['name']} distance_ly={row['distance_ly']:.3f}"
+                if not visited:
+                    print(base)
+                    continue
+                system = row["system"]
+                destination_count = len(getattr(system, "destinations", []) or [])
+                live_situations = _active_system_situations(engine=engine, system_id=system_id)
+                print(
+                    f"{base} government={getattr(system, 'government_id', None)} "
+                    f"population={getattr(system, 'population', None)} destinations={destination_count} "
+                    f"active_situations={live_situations}"
+                )
             raw_index = input("Select target system index: ").strip()
             try:
                 selected = int(raw_index)
@@ -233,14 +302,18 @@ def _location_entry_menu(engine: GameEngine) -> None:
         location_type = str(getattr(selected_location, "location_type", "") or "")
         if location_type == "market":
             _market_location_menu(engine)
-            continue
+            return
         if location_type == "datanet":
             _datanet_location_menu(engine)
-            continue
+            return
         if location_type == "warehouse":
             _warehouse_location_menu(engine)
-            continue
+            return
+        if location_type in {"bar", "administration"}:
+            _npc_first_location_menu(engine)
+            return
         _location_actions_menu(engine)
+        return
 
 
 def _location_actions_menu(engine: GameEngine) -> None:
@@ -285,6 +358,111 @@ def _location_actions_menu(engine: GameEngine) -> None:
             }
         )
         print(json.dumps(result, sort_keys=True))
+
+
+def _npc_first_location_menu(engine: GameEngine) -> None:
+    while True:
+        list_result = engine.execute({"type": "list_location_npcs"})
+        detail = _extract_detail_from_stage(step_result=list_result, stage="location_npcs") or {}
+        npcs = detail.get("npcs", [])
+        if not isinstance(npcs, list):
+            npcs = []
+        print(f"LOCATION: {engine.player_state.current_location_id}")
+        if not npcs:
+            print("No NPCs present.")
+            print("0) Return to destination")
+            if input("Select NPC index: ").strip() == "0":
+                _return_to_destination(engine)
+                print(f"Returned to destination: {engine.player_state.current_location_id}")
+                return
+            print("Invalid NPC index.")
+            continue
+
+        for index, row in enumerate(npcs, start=1):
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("display_name", "Unknown"))
+            role = str(row.get("role", "unknown"))
+            print(f"{index}) {name} ({role})")
+        print("0) Return to destination")
+        raw_choice = input("Select NPC index: ").strip()
+        if raw_choice == "0":
+            _return_to_destination(engine)
+            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            return
+        try:
+            selected = int(raw_choice)
+        except ValueError:
+            print("Invalid NPC index.")
+            continue
+        if selected < 1 or selected > len(npcs):
+            print("Invalid NPC index.")
+            continue
+        row = npcs[selected - 1]
+        if not isinstance(row, dict):
+            print("Invalid NPC index.")
+            continue
+        npc_id = row.get("npc_id")
+        if not isinstance(npc_id, str) or not npc_id:
+            print("Invalid NPC selection.")
+            continue
+        _npc_interactions_menu(engine, npc_id=npc_id)
+
+
+def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
+    while True:
+        list_result = engine.execute({"type": "list_npc_interactions", "npc_id": npc_id})
+        detail = _extract_detail_from_stage(step_result=list_result, stage="npc_interactions") or {}
+        interactions = detail.get("interactions", [])
+        if not isinstance(interactions, list):
+            interactions = []
+        print(f"NPC: {npc_id}")
+        for index, row in enumerate(interactions, start=1):
+            if not isinstance(row, dict):
+                continue
+            print(f"{index}) {row.get('display_name')}")
+        print("0) Back")
+        raw_choice = input("Select interaction index: ").strip()
+        if raw_choice == "0":
+            return
+        try:
+            selected = int(raw_choice)
+        except ValueError:
+            print("Invalid interaction index.")
+            continue
+        if selected < 1 or selected > len(interactions):
+            print("Invalid interaction index.")
+            continue
+        action = interactions[selected - 1]
+        if not isinstance(action, dict):
+            print("Invalid interaction index.")
+            continue
+        interaction_id = action.get("action_id")
+        if not isinstance(interaction_id, str) or not interaction_id:
+            print("Invalid interaction selection.")
+            continue
+        result = engine.execute({"type": "npc_interact", "npc_id": npc_id, "interaction_id": interaction_id})
+        detail_out = _extract_detail_from_stage(step_result=result, stage="npc_interaction") or {}
+        interaction_result = detail_out.get("result")
+        if isinstance(interaction_result, dict):
+            if isinstance(interaction_result.get("rumor_type"), str):
+                print(f"Rumor type: {interaction_result.get('rumor_type')}")
+                print(f"Rumor: {interaction_result.get('rumor_text')}")
+                hint = interaction_result.get("hint")
+                if isinstance(hint, dict):
+                    system_id = hint.get("system_id")
+                    destination_id = hint.get("destination_id")
+                    if isinstance(system_id, str) and system_id:
+                        if isinstance(destination_id, str) and destination_id:
+                            print(f"Hint: system={system_id} destination={destination_id}")
+                        else:
+                            print(f"Hint: system={system_id}")
+            elif isinstance(interaction_result.get("text"), str):
+                print(str(interaction_result.get("text")))
+            else:
+                print(json.dumps(interaction_result, sort_keys=True))
+        else:
+            print(json.dumps(result, sort_keys=True))
 
 
 def _market_location_menu(engine: GameEngine) -> None:
@@ -341,25 +519,82 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
         profile = _build_warehouse_profile(engine)
         _print_warehouse_profile(profile)
         print("LOCATION: warehouse")
-        print("1) Deposit cargo")
-        print("2) Withdraw cargo")
-        if profile.get("supports_rent"):
-            print("3) Rent additional space")
-        else:
-            print("3) Rent additional space (unavailable)")
+        print("1) Rent space")
+        print("2) Deposit cargo")
+        print("3) Withdraw cargo")
         print("4) Return to Destination")
         raw_action = input("Select action index: ").strip()
         if raw_action == "1":
-            _execute_location_action_if_available(engine, action_id="deposit_cargo")
+            raw_units = input("Units to rent: ").strip()
+            try:
+                units = int(raw_units)
+            except ValueError:
+                print("Invalid units.")
+                continue
+            result = engine.execute(
+                {
+                    "type": "location_action",
+                    "action_id": "warehouse_rent",
+                    "action_kwargs": {"units": units},
+                }
+            )
+            print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "2":
-            _execute_location_action_if_available(engine, action_id="withdraw_cargo")
+            player_profile = _extract_detail_from_stage(
+                step_result=engine.execute({"type": "get_player_profile"}),
+                stage="player_profile",
+            )
+            cargo_manifest = {}
+            if isinstance(player_profile, dict):
+                cargo_manifest = _compact_manifest(player_profile.get("cargo_manifest", {}))
+            if not cargo_manifest:
+                print("No cargo available to deposit.")
+                continue
+            cargo_skus = sorted(cargo_manifest.keys())
+            for index, sku_id in enumerate(cargo_skus, start=1):
+                print(f"{index}) {sku_id} units={cargo_manifest.get(sku_id)}")
+            raw_index = input("Select cargo SKU index: ").strip()
+            try:
+                selected_index = int(raw_index)
+            except ValueError:
+                print("Invalid cargo SKU index.")
+                continue
+            if selected_index < 1 or selected_index > len(cargo_skus):
+                print("Invalid cargo SKU index.")
+                continue
+            selected_sku_id = cargo_skus[selected_index - 1]
+            raw_qty = input("Quantity: ").strip()
+            try:
+                quantity = int(raw_qty)
+            except ValueError:
+                print("Invalid quantity.")
+                continue
+            result = engine.execute(
+                {
+                    "type": "location_action",
+                    "action_id": "warehouse_deposit",
+                    "action_kwargs": {"sku_id": selected_sku_id, "quantity": quantity},
+                }
+            )
+            print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "3":
-            if profile.get("supports_rent"):
-                _execute_location_action_if_available(engine, action_id="rent_additional_space")
-            else:
-                print("Rent additional space is not available.")
+            raw_sku_id = input("SKU ID: ").strip()
+            raw_qty = input("Quantity: ").strip()
+            try:
+                quantity = int(raw_qty)
+            except ValueError:
+                print("Invalid quantity.")
+                continue
+            result = engine.execute(
+                {
+                    "type": "location_action",
+                    "action_id": "warehouse_withdraw",
+                    "action_kwargs": {"sku_id": raw_sku_id, "quantity": quantity},
+                }
+            )
+            print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "4":
             _return_to_destination(engine)
@@ -371,6 +606,9 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
 def main() -> None:
     seed = _prompt_seed()
     engine = GameEngine(world_seed=seed)
+    log_path = str((Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{seed}.log"))
+    _ = engine.execute({"type": "set_logging", "enabled": True, "log_path": log_path, "truncate": True})
+    print(f"Logging to {log_path}")
     _configure_cli_test_fuel(engine)
     print(json.dumps({"event": "engine_init", "seed": seed}, sort_keys=True))
     while True:
@@ -710,49 +948,36 @@ def _accept_mission_from_datanet(engine: GameEngine, profile: dict[str, object])
 
 def _build_warehouse_profile(engine: GameEngine) -> dict[str, object]:
     destination_id = str(engine.player_state.current_destination_id or "")
-    leases = list(getattr(engine.player_state, "warehouse_leases", []) or [])
-    stored_goods_raw = getattr(engine.player_state, "stored_goods", {}) or {}
-
-    stored_goods: dict[str, int] = {}
-    if isinstance(stored_goods_raw, dict):
-        target_bucket = stored_goods_raw.get(destination_id)
-        if isinstance(target_bucket, dict):
-            stored_goods = {
-                str(sku_id): int(quantity)
-                for sku_id, quantity in target_bucket.items()
-                if isinstance(quantity, int) and int(quantity) > 0
-            }
-        else:
-            stored_goods = {
-                str(sku_id): int(quantity)
-                for sku_id, quantity in stored_goods_raw.items()
-                if isinstance(quantity, int) and int(quantity) > 0
-            }
-
-    rented_capacity = _sum_numeric_fields(
-        rows=leases,
-        candidate_keys=("rented_capacity", "capacity", "total_capacity", "max_storage"),
+    warehouse = getattr(engine.player_state, "warehouses", {}).get(destination_id, {})
+    player_profile = _extract_detail_from_stage(
+        step_result=engine.execute({"type": "get_player_profile"}),
+        stage="player_profile",
     )
+    profile_row: dict[str, object] = {}
+    if isinstance(player_profile, dict):
+        for row in player_profile.get("warehouses", []):
+            if isinstance(row, dict) and row.get("destination_id") == destination_id:
+                profile_row = row
+                break
+    stored_goods: dict[str, int] = {}
+    if isinstance(warehouse, dict):
+        goods_raw = warehouse.get("goods", {})
+        if isinstance(goods_raw, dict):
+            stored_goods = {
+                str(sku_id): int(quantity)
+                for sku_id, quantity in goods_raw.items()
+                if isinstance(quantity, int) and int(quantity) > 0
+            }
+    rented_capacity = int((warehouse or {}).get("capacity", 0) or 0)
     used_storage = int(sum(int(value) for value in stored_goods.values()))
     available_storage = max(0, int(rented_capacity - used_storage))
-    rental_cost = _sum_numeric_fields(
-        rows=leases,
-        candidate_keys=("rental_cost_per_turn", "cost_per_turn", "recurring_cost", "rental"),
-    )
-
-    available_actions = _extract_actions_from_step_result(engine.execute({"type": "list_location_actions"}))
-    action_ids = {str(row.get("action_id")) for row in available_actions if isinstance(row, dict)}
-    supports_rent = any(
-        action_id in action_ids
-        for action_id in {"rent_additional_space", "rent_warehouse_space", "rent_space"}
-    )
+    rental_cost = int(profile_row.get("cost_per_turn", 0) or 0)
     return {
         "rented_capacity": rented_capacity,
         "used_storage": used_storage,
         "available_storage": available_storage,
         "rental_cost_per_turn": rental_cost,
         "stored_goods": stored_goods,
-        "supports_rent": supports_rent,
     }
 
 
@@ -771,34 +996,38 @@ def _print_warehouse_profile(profile: dict[str, object]) -> None:
         print("    none")
 
 
-def _execute_location_action_if_available(engine: GameEngine, action_id: str) -> None:
-    candidate_map = {
-        "deposit_cargo": ["deposit_cargo", "deposit", "store_goods"],
-        "withdraw_cargo": ["withdraw_cargo", "withdraw", "retrieve_goods"],
-        "rent_additional_space": ["rent_additional_space", "rent_warehouse_space", "rent_space"],
-    }
-    candidates = candidate_map.get(action_id, [action_id])
-    actions = _extract_actions_from_step_result(engine.execute({"type": "list_location_actions"}))
-    selected_action = next(
-        (
-            action
-            for action in actions
-            if isinstance(action, dict) and str(action.get("action_id")) in set(candidates)
-        ),
-        None,
+def _visited_system_ids(engine: GameEngine) -> set[str]:
+    raw = getattr(engine.player_state, "visited_system_ids", set())
+    if isinstance(raw, set):
+        return {entry for entry in raw if isinstance(entry, str)}
+    if isinstance(raw, list):
+        return {entry for entry in raw if isinstance(entry, str)}
+    return set()
+
+
+def _visited_destination_ids(engine: GameEngine) -> set[str]:
+    raw = getattr(engine.player_state, "visited_destination_ids", set())
+    if isinstance(raw, set):
+        return {entry for entry in raw if isinstance(entry, str)}
+    if isinstance(raw, list):
+        return {entry for entry in raw if isinstance(entry, str)}
+    return set()
+
+
+def _active_system_situations(*, engine: GameEngine, system_id: str) -> list[str]:
+    helper = getattr(engine, "_active_situation_rows_for_system", None)
+    if not callable(helper):
+        return []
+    rows = helper(system_id=system_id)
+    if not isinstance(rows, list):
+        return []
+    return sorted(
+        [
+            str(row.get("situation_id"))
+            for row in rows
+            if isinstance(row, dict) and isinstance(row.get("situation_id"), str)
+        ]
     )
-    if not isinstance(selected_action, dict):
-        print("Action is not available at this location.")
-        return
-    kwargs = _prompt_action_kwargs(selected_action)
-    result = engine.execute(
-        {
-            "type": "location_action",
-            "action_id": selected_action["action_id"],
-            "action_kwargs": kwargs,
-        }
-    )
-    print(json.dumps(result, sort_keys=True))
 
 
 def _compact_manifest(manifest: object) -> dict[str, int]:
