@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import hashlib
 import json
 import math
 import random
-from typing import Any
+from typing import Any, Union
 
 from combat_resolver import resolve_combat
 from data_catalog import load_data_catalog
@@ -36,7 +37,10 @@ from market_pricing import price_transaction
 from mission_factory import create_mission
 from mission_generator import select_weighted_mission_type
 from mission_manager import MissionManager
+from mission_entity import MissionState
+from mission_core import MissionCore
 from npc_ship_generator import generate_npc_ship
+from npc_entity import NPCEntity, NPCPersistenceTier
 from npc_placement import resolve_npcs_for_location
 from npc_registry import NPCRegistry
 from player_state import PlayerState
@@ -44,7 +48,7 @@ from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
-from ship_assembler import assemble_ship
+from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
 from ship_entity import ShipEntity
 from time_engine import (
     TimeEngine,
@@ -87,7 +91,7 @@ class LocationActionModel:
     time_cost_days: int = 0
     fuel_cost: int = 0
     requires_confirm: bool = False
-    parameters: list[str] = field(default_factory=list)
+    parameters: list[Union[str, dict[str, Any]]] = field(default_factory=list)
 
 
 class GameEngine:
@@ -155,9 +159,16 @@ class GameEngine:
         )
         self._active_encounters: list[Any] = []
         self._mission_manager = MissionManager()
+        self._mission_core = MissionCore(self._mission_manager)
+        # DIAGNOSTIC: Log mission_manager instance ID at engine init (will be logged when logging is enabled)
+        # Note: Logger may not be initialized yet, so we log this in _execute_set_logging
+        # Initialize persistent mission offer storage in player_state (duck-typed)
+        # mission_offers_by_location is the authoritative source of truth: dict[str, list[str]]
+        if not hasattr(self.player_state, "mission_offers_by_location"):
+            self.player_state.mission_offers_by_location = {}
         self._npc_registry = NPCRegistry()
-        self._location_offered_mission_ids: dict[str, list[str]] = {}
         self._location_npc_ids: dict[str, list[str]] = {}
+        # Mission offer caches removed - player_state.mission_offers_by_location is the only authoritative source
 
     def execute(self, command: dict) -> dict:
         turn_before = int(get_current_turn())
@@ -202,6 +213,74 @@ class GameEngine:
                 self._execute_list_destination_actions(context)
             elif command_type == "destination_action":
                 self._execute_destination_action(context, payload)
+            elif command_type == "mission_discuss":
+                # Internal MissionCore API - not a location action
+                mission_id = payload.get("mission_id")
+                if not isinstance(mission_id, str) or not mission_id:
+                    raise ValueError("mission_discuss requires mission_id")
+                # DIAGNOSTIC: Log mission_manager instance ID during mission_discuss
+                if self._logging_enabled and self._logger is not None:
+                    self._logger.log(
+                        turn=int(get_current_turn()),
+                        action="mission_discuss_instance_check",
+                        state_change=f"mission_manager_id={id(self._mission_manager)} mission_id={mission_id}"
+                    )
+                result = self._mission_core.get_details(mission_id)
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_core",
+                    detail={"action_id": "mission_discuss", "result": result},
+                )
+            elif command_type == "mission_accept":
+                # Internal MissionCore API - not a location action
+                location = self._current_location()
+                if location is None:
+                    raise ValueError("not_in_location")
+                location_id = str(getattr(location, "location_id", "") or "")
+                location_type = str(getattr(location, "location_type", "") or "")
+                mission_id = payload.get("mission_id")
+                if not isinstance(mission_id, str) or not mission_id:
+                    raise ValueError("mission_accept requires mission_id")
+                # DIAGNOSTIC: Log mission_manager instance ID during mission_accept
+                if self._logging_enabled and self._logger is not None:
+                    self._logger.log(
+                        turn=int(get_current_turn()),
+                        action="mission_accept_instance_check",
+                        state_change=f"mission_manager_id={id(self._mission_manager)} mission_id={mission_id} location_id={location_id}"
+                    )
+                # Validate against persisted offers (no regeneration)
+                # Source of truth: player_state.mission_offers_by_location
+                offered_ids = self.player_state.mission_offers_by_location.get(location_id, [])
+                if mission_id not in offered_ids:
+                    raise ValueError("mission_not_offered_here")
+                accepted, error_reason = self._mission_core.accept(
+                    mission_id=mission_id,
+                    player=self.player_state,
+                    location_id=location_id,
+                    location_type=location_type,
+                    ship=self._active_ship(),
+                    logger=self._logger if self._logging_enabled else None,
+                    turn=int(get_current_turn()),
+                    create_contact_npc_callback=self._create_mission_contact_npc,
+                )
+                if not accepted:
+                    # Raise with specific error reason
+                    if error_reason is not None:
+                        raise ValueError(error_reason)
+                    raise ValueError("mission_accept_failed")
+                
+                # Remove accepted mission from persistent storage
+                if location_id in self.player_state.mission_offers_by_location:
+                    if mission_id in self.player_state.mission_offers_by_location[location_id]:
+                        self.player_state.mission_offers_by_location[location_id].remove(mission_id)
+                
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_core",
+                    detail={"action_id": "mission_accept", "mission_id": mission_id, "accepted": True},
+                )
             elif command_type == "enter_location":
                 self._execute_enter_location(context, payload)
             elif command_type == "return_to_destination":
@@ -216,6 +295,14 @@ class GameEngine:
                 self._execute_market_buy(context, payload)
             elif command_type == "market_sell":
                 self._execute_market_sell(context, payload)
+            elif command_type == "shipdock_hull_list":
+                self._execute_shipdock_hull_list(context)
+            elif command_type == "shipdock_module_list":
+                self._execute_shipdock_module_list(context)
+            elif command_type == "shipdock_ship_list":
+                self._execute_shipdock_ship_list(context)
+            elif command_type == "shipdock_installed_modules_list":
+                self._execute_shipdock_installed_modules_list(context, payload)
             elif command_type == "get_player_profile":
                 self._execute_get_player_profile(context)
             elif command_type == "get_system_profile":
@@ -256,6 +343,9 @@ class GameEngine:
         system = self.sector.get_system(target_system_id)
         if system is None:
             raise ValueError(f"Unknown target_system_id: {target_system_id}")
+
+        # Capture credits before travel for bankruptcy warning safety
+        credits_before_travel = int(self.player_state.credits)
 
         inter_system = current_system.system_id != system.system_id
         distance_ly = self._warp_distance_ly(origin=current_system, target=system) if inter_system else 0.0
@@ -324,8 +414,7 @@ class GameEngine:
             self.player_state.visited_destination_ids.add(target_destination_id)
         active_ship.current_system_id = target_system_id
         active_ship.current_destination_id = target_destination_id
-        active_ship.current_location_id = target_destination_id
-        active_ship.location_id = target_destination_id
+        active_ship.destination_id = target_destination_id
 
         time_result = self._advance_time_in_chunks(days=days, reason=f"travel:{travel_id}")
         self._event(
@@ -386,6 +475,11 @@ class GameEngine:
             ]
             self._evaluate_hard_stop(context)
 
+        # Travel safety: Set bankruptcy warning only after arrival if credits reached 0 during travel
+        if self.player_state.credits == 0 and self.player_state.bankruptcy_warning_turn is None:
+            current_turn = int(get_current_turn())
+            self.player_state.bankruptcy_warning_turn = current_turn
+
     def _execute_wait(self, context: EngineContext, payload: dict[str, Any]) -> None:
         days_raw = payload.get("days")
         if not isinstance(days_raw, int):
@@ -440,6 +534,13 @@ class GameEngine:
         configured_path = self._logger.configure_file_logging(enabled=enabled, log_path=log_path, truncate=truncate)
         self._logging_enabled = bool(enabled and configured_path)
         self._log_path = configured_path if self._logging_enabled else None
+        # DIAGNOSTIC: Log mission_manager instance ID when logging is enabled
+        if enabled and self._logger is not None:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="engine_init",
+                state_change=f"mission_manager_id={id(self._mission_manager)}"
+            )
         if self._logging_enabled and isinstance(getattr(self, "_pending_initialization_event", None), dict):
             try:
                 self._logger.log(
@@ -565,9 +666,11 @@ class GameEngine:
             },
         )
 
-    def _mission_rng_for_location(self, *, location_id: str) -> random.Random:
+    def _mission_rng_for_location(self, *, location_id: str, turn: int | None = None) -> random.Random:
+        # Deterministic RNG for mission generation (turn parameter kept for backward compatibility but not used)
         seed_value = self.world_seed
         parts = [self.player_state.current_system_id, self.player_state.current_destination_id or "", location_id]
+        # Note: turn is no longer used for mission generation to ensure persistence
         for part in parts:
             for char in str(part):
                 seed_value = (seed_value * 31 + ord(char)) % (2**32)
@@ -581,13 +684,42 @@ class GameEngine:
         ]
 
     def _ensure_location_mission_offers(self, *, location_id: str) -> list[str]:
-        existing = self._location_offered_mission_ids.get(location_id, [])
-        if existing:
-            return list(existing)
-        rng = self._mission_rng_for_location(location_id=location_id)
-        offer_count = rng.randint(1, 3)
+        """Ensure mission offers exist for a location.
+        
+        Source of truth: player_state.mission_offers_by_location (dict[str, list[str]])
+        Offers are generated ONCE per location and persist until explicitly removed.
+        NO implicit regeneration based on turn or any other condition.
+        """
+        # If location_id exists in player_state.mission_offers_by_location, return those mission_ids
+        if location_id in self.player_state.mission_offers_by_location:
+            mission_ids = self.player_state.mission_offers_by_location[location_id]
+            # Return missions from MissionManager registry using those mission_ids
+            # Filter to only return missions that still exist and are OFFERED
+            valid_mission_ids = []
+            for mission_id in mission_ids:
+                mission = self._mission_manager.missions.get(mission_id)
+                if mission is not None and mission.mission_state == MissionState.OFFERED:
+                    valid_mission_ids.append(mission_id)
+            
+            # Update storage if any missions were removed (e.g., accepted elsewhere)
+            if len(valid_mission_ids) != len(mission_ids):
+                self.player_state.mission_offers_by_location[location_id] = valid_mission_ids
+            
+            return valid_mission_ids
+        
+        # No offers exist - generate ONCE
+        # Get destination population for deterministic mission count
+        destination = self._current_destination()
+        population = int(getattr(destination, "population", 0) or 0) if destination else 0
+        max_offers = population + 1
+        
+        # Deterministic mission count based on location (no turn dependency)
+        rng = self._mission_rng_for_location(location_id=location_id, turn=None)
+        mission_count = rng.randint(0, max_offers)
+        
+        # Generate new mission offers
         offered_ids: list[str] = []
-        for index in range(offer_count):
+        for index in range(mission_count):
             mission_type, _ = select_weighted_mission_type(
                 eligible_missions=self._mission_candidates(),
                 rng=rng,
@@ -595,6 +727,7 @@ class GameEngine:
                 system_id=self.player_state.current_system_id,
             )
             mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
+            # Deterministic mission_id seed (no turn dependency for persistence)
             mission = create_mission(
                 source_type="system",
                 source_id=f"{location_id}:{index}",
@@ -606,27 +739,37 @@ class GameEngine:
                 objectives=[f"{mission_type_id}:complete_objective"],
                 rewards=[{"type": "credits", "amount": 100 + (index * 50)}],
             )
+            # Set location_id on mission for location matching
+            mission.location_id = location_id
+            mission.mission_contact_seed = f"{self.world_seed}|{self.player_state.current_system_id}|{location_id}|{mission.mission_id}|contact"
             self._mission_manager.offer(mission)
             offered_ids.append(mission.mission_id)
-        self._location_offered_mission_ids[location_id] = list(offered_ids)
+        
+        # Store mission_ids in player_state.mission_offers_by_location[location_id]
+        self.player_state.mission_offers_by_location[location_id] = list(offered_ids)
         return offered_ids
 
-    def _mission_rows_for_location(self, *, location_id: str) -> list[dict[str, Any]]:
+    def _mission_rows_for_location(self, *, location_id: str, location_type: str | None = None) -> list[dict[str, Any]]:
         mission_ids = self._ensure_location_mission_offers(location_id=location_id)
         rows: list[dict[str, Any]] = []
         for mission_id in mission_ids:
             mission = self._mission_manager.missions.get(mission_id)
             if mission is None:
                 continue
-            rows.append(
-                {
-                    "mission_id": mission.mission_id,
-                    "mission_type": mission.mission_type,
-                    "mission_tier": int(mission.mission_tier),
-                    "mission_state": str(mission.mission_state),
-                    "rewards": list(mission.rewards),
-                }
-            )
+            row = {
+                "mission_id": mission.mission_id,
+                "mission_type": mission.mission_type,
+                "mission_tier": int(mission.mission_tier),
+                "mission_state": str(mission.mission_state),
+                "rewards": list(mission.rewards),
+            }
+            # Add giver information for Bar locations only
+            if location_type == "bar" and mission.mission_contact_seed is not None:
+                npc_hash = hashlib.md5(mission.mission_contact_seed.encode()).hexdigest()[:8]
+                giver_npc_id = f"NPC-MSN-{npc_hash}"
+                row["giver_npc_id"] = giver_npc_id
+                row["giver_display_name"] = f"Mission Contact ({mission.mission_type})"
+            rows.append(row)
         return rows
 
     def _execute_mission_list(self, context: EngineContext) -> None:
@@ -636,7 +779,30 @@ class GameEngine:
         location_id = str(getattr(location, "location_id", "") or "")
         if not location_id:
             raise ValueError("invalid_location")
-        rows = self._mission_rows_for_location(location_id=location_id)
+        location_type = str(getattr(location, "location_type", "") or "")
+        # DIAGNOSTIC: Log mission_manager instance ID during mission_list
+        if self._logging_enabled and self._logger is not None:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mission_list_instance_check",
+                state_change=f"mission_manager_id={id(self._mission_manager)} location_id={location_id}"
+            )
+        # Use MissionCore to list offered missions (uses persisted offers, no regeneration)
+        rows = self._mission_core.list_offered(
+            location_id=location_id,
+            location_type=location_type,
+            ensure_offers_callback=self._ensure_location_mission_offers,
+        )
+        # Deterministic regression safeguard: verify mission list consistency
+        if self._logging_enabled and self._logger is not None:
+            persisted_ids = self.player_state.mission_offers_by_location.get(location_id, [])
+            row_ids = [row.get("mission_id") for row in rows if row.get("mission_id")]
+            if set(row_ids) != set(persisted_ids):
+                self._logger.log(
+                    turn=int(get_current_turn()),
+                    action="mission_list_consistency_check",
+                    state_change=f"location_id={location_id} persisted_count={len(persisted_ids)} row_count={len(row_ids)}"
+                )
         self._event(
             context,
             stage="location_action",
@@ -644,25 +810,68 @@ class GameEngine:
             detail={"action_id": "mission_list", "missions": rows},
         )
 
+    def _create_mission_contact_npc(self, *, mission_id: str, location_id: str) -> None:
+        """Helper to create mission contact NPC for Bar locations."""
+        mission = self._mission_manager.missions.get(mission_id)
+        if mission is None:
+            return
+        if mission.mission_contact_seed is None or mission.mission_giver_npc_id is not None:
+            return
+        npc_hash = hashlib.md5(mission.mission_contact_seed.encode()).hexdigest()[:8]
+        npc_id = f"NPC-MSN-{npc_hash}"
+        system_id = self.player_state.current_system_id
+        npc = NPCEntity(
+            npc_id=npc_id,
+            persistence_tier=NPCPersistenceTier.TIER_2,
+            display_name=f"Mission Contact ({mission.mission_type})",
+            current_location_id=location_id,
+            current_system_id=system_id,
+            role_tags=["mission_giver"],
+        )
+        logger = self._logger if self._logging_enabled else None
+        turn = int(get_current_turn())
+        self._npc_registry.add(npc, logger=logger, turn=turn)
+        mission.mission_giver_npc_id = npc_id
+        if logger is not None:
+            logger.log(turn=turn, action="mission_contact_created", state_change=f"mission_id={mission_id} npc_id={npc_id}")
+
     def _execute_mission_accept(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
+        """Internal handler for mission acceptance (used by MissionCore)."""
         location = self._current_location()
         if location is None:
             raise ValueError("not_in_location")
         location_id = str(getattr(location, "location_id", "") or "")
+        location_type = str(getattr(location, "location_type", "") or "")
         mission_id = kwargs.get("mission_id")
         if not isinstance(mission_id, str) or not mission_id:
             raise ValueError("mission_accept requires mission_id")
-        offered = self._ensure_location_mission_offers(location_id=location_id)
-        if mission_id not in offered:
+        # Validate against persisted offers (no regeneration)
+        # Source of truth: player_state.mission_offers_by_location
+        offered_ids = self.player_state.mission_offers_by_location.get(location_id, [])
+        if mission_id not in offered_ids:
             raise ValueError("mission_not_offered_here")
-        accepted = self._mission_manager.accept(
+        # Use MissionCore to accept mission
+        accepted, error_reason = self._mission_core.accept(
             mission_id=mission_id,
             player=self.player_state,
-            location_type=str(getattr(location, "location_type", "") or ""),
+            location_id=location_id,
+            location_type=location_type,
             ship=self._active_ship(),
+            logger=self._logger if self._logging_enabled else None,
+            turn=int(get_current_turn()),
+            create_contact_npc_callback=self._create_mission_contact_npc,
         )
         if not accepted:
+            # Raise with specific error reason
+            if error_reason is not None:
+                raise ValueError(error_reason)
             raise ValueError("mission_accept_failed")
+        
+        # Remove accepted mission from persistent storage
+        if location_id in self.player_state.mission_offers_by_location:
+            if mission_id in self.player_state.mission_offers_by_location[location_id]:
+                self.player_state.mission_offers_by_location[location_id].remove(mission_id)
+        
         self._event(
             context,
             stage="location_action",
@@ -690,11 +899,105 @@ class GameEngine:
         )
 
     def _execute_bar_hire_crew(self, context: EngineContext) -> None:
+        """
+        Hire crew from bar location.
+        
+        Requirements:
+        - NPC must be is_crew=True and persistence_tier=TIER_2
+        - Ship must have available crew capacity
+        - Player must have sufficient credits
+        """
+        location = self._current_location()
+        if location is None:
+            raise ValueError("not_in_location")
+        location_id = str(getattr(location, "location_id", "") or "")
+        location_type = str(getattr(location, "location_type", "") or "")
+        
+        if location_type != "bar":
+            raise ValueError("bar_location_required")
+        
+        # Get available crew at this location
+        available_crew = [
+            npc for npc in self._list_current_location_npcs()
+            if isinstance(npc, NPCEntity) and npc.is_crew and npc.persistence_tier == NPCPersistenceTier.TIER_2
+            and npc.current_ship_id is None  # Not already hired
+        ]
+        
+        if not available_crew:
+            self._event(
+                context,
+                stage="location_action",
+                subsystem="interaction_layer",
+                detail={"action_id": "bar_hire_crew", "result": {"ok": False, "reason": "no_crew_available"}},
+            )
+            return
+        
+        # For now, hire the first available crew member
+        # TODO: In future, could add selection UI
+        crew_npc = available_crew[0]
+        
+        # Validate NPC contract
+        if not crew_npc.is_crew:
+            raise ValueError("npc_not_crew")
+        if crew_npc.persistence_tier != NPCPersistenceTier.TIER_2:
+            raise ValueError("crew_must_be_tier_2")
+        
+        # Get active ship
+        active_ship = self._active_ship()
+        
+        # Check crew capacity
+        current_crew_count = len(active_ship.crew)
+        if current_crew_count >= active_ship.crew_capacity:
+            self._event(
+                context,
+                stage="location_action",
+                subsystem="interaction_layer",
+                detail={"action_id": "bar_hire_crew", "result": {"ok": False, "reason": "crew_capacity_exceeded"}},
+            )
+            return
+        
+        # Check credits
+        hire_cost = int(crew_npc.hire_cost)
+        if int(self.player_state.credits) < hire_cost:
+            self._event(
+                context,
+                stage="location_action",
+                subsystem="interaction_layer",
+                detail={"action_id": "bar_hire_crew", "result": {"ok": False, "reason": "insufficient_credits", "required": hire_cost, "available": int(self.player_state.credits)}},
+            )
+            return
+        
+        # Success: hire the crew
+        credits_before = int(self.player_state.credits)
+        self.player_state.credits = max(0, credits_before - hire_cost)
+        
+        # Update NPC location/ship assignment
+        crew_npc.current_location_id = None
+        crew_npc.current_ship_id = active_ship.ship_id
+        
+        # Update registry
+        self._npc_registry.update(crew_npc, logger=self._logger if self._logging_enabled else None, turn=int(get_current_turn()))
+        
+        # Add to ship
+        active_ship.add_crew(crew_npc)
+        
         self._event(
             context,
             stage="location_action",
             subsystem="interaction_layer",
-            detail={"action_id": "bar_hire_crew", "result": {"ok": False, "reason": "not_implemented"}},
+            detail={
+                "action_id": "bar_hire_crew",
+                "result": {
+                    "ok": True,
+                    "reason": "ok",
+                    "npc_id": crew_npc.npc_id,
+                    "crew_role_id": crew_npc.crew_role_id,
+                    "hire_cost": hire_cost,
+                    "daily_wage": int(crew_npc.daily_wage),
+                    "credits_before": credits_before,
+                    "credits_after": int(self.player_state.credits),
+                },
+            },
         )
 
     def _execute_admin_talk(self, context: EngineContext) -> None:
@@ -737,6 +1040,10 @@ class GameEngine:
             detail={"action_id": "admin_turn_in", "result": result},
         )
 
+    def _execute_admin_mission_board(self, context: EngineContext) -> None:
+        # Use existing mission_list logic for Administration
+        self._execute_mission_list(context)
+
     def _execute_location_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
         location = self._current_location()
         if location is None:
@@ -745,11 +1052,9 @@ class GameEngine:
         action_id = payload.get("action_id")
         if not isinstance(action_id, str) or not action_id:
             raise ValueError("location_action requires action_id.")
-        kwargs = payload.get("action_kwargs", payload.get("kwargs", {}))
-        if kwargs is None:
-            kwargs = {}
+        kwargs = payload.get("kwargs") or payload.get("action_kwargs") or {}
         if not isinstance(kwargs, dict):
-            raise ValueError("location_action.action_kwargs must be an object.")
+            raise ValueError("location_action.kwargs must be an object.")
 
         available = {entry.action_id: entry for entry in self._available_location_actions(location)}
         if action_id not in available:
@@ -785,9 +1090,8 @@ class GameEngine:
         if action_id == "mission_list":
             self._execute_mission_list(context)
             return
-        if action_id == "mission_accept":
-            self._execute_mission_accept(context, kwargs)
-            return
+        # mission_accept and mission_discuss are internal-only, not exposed as location actions
+        # They are accessed through MissionCore API
         if action_id == "bar_talk":
             self._execute_bar_talk(context)
             return
@@ -809,6 +1113,9 @@ class GameEngine:
         if action_id == "admin_turn_in":
             self._execute_admin_turn_in(context)
             return
+        if action_id == "admin_mission_board":
+            self._execute_admin_mission_board(context)
+            return
 
         destination = self._current_destination()
         if destination is None:
@@ -820,7 +1127,7 @@ class GameEngine:
         action_kwargs = self._build_destination_action_kwargs(action_id=action_id, destination=destination, kwargs=kwargs)
         result = dispatch_destination_action(action_id=action_id, **action_kwargs)
         if action_id == "refuel" and isinstance(result.get("credits"), int):
-            self.player_state.credits = int(result["credits"])
+            self.player_state.credits = max(0, int(result["credits"]))
         fuel_after = int(active_ship.current_fuel)
         credits_after = int(self.player_state.credits)
         summary = {
@@ -909,6 +1216,33 @@ class GameEngine:
             result = self._build_bartender_rumor_payload(npc_id=npc_id)
         elif interaction_id == "admin_pay_fines":
             result = self._admin_pay_fines_result()
+        elif interaction_id == "admin_apply_license":
+            result = {"ok": False, "reason": "not_implemented"}
+        elif interaction_id == "admin_turn_in":
+            system_id = self.player_state.current_system_id
+            warrants = list(self.player_state.warrants_by_system.get(system_id, []))
+            if not warrants:
+                result = {"ok": True, "reason": "no_warrants"}
+            else:
+                self.player_state.warrants_by_system[system_id] = []
+                result = {"ok": True, "reason": "ok", "cleared_warrants": len(warrants)}
+        elif interaction_id == "admin_mission_board":
+            # Route to mission_list logic
+            location = self._current_location()
+            if location is None:
+                raise ValueError("not_in_location")
+            location_id = str(getattr(location, "location_id", "") or "")
+            if not location_id:
+                raise ValueError("invalid_location")
+            location_type = str(getattr(location, "location_type", "") or "")
+            rows = self._mission_rows_for_location(location_id=location_id, location_type=location_type)
+            result = {"ok": True, "missions": rows}
+        elif interaction_id == "mission_discuss":
+            # State-aware mission discussion (NPC path) - uses MissionCore
+            mission_id = self._mission_id_for_giver_npc_id(npc_id)
+            if mission_id is None:
+                raise ValueError("mission_not_found_for_giver")
+            result = self._mission_core.get_details(mission_id)
         else:
             raise ValueError("unknown_npc_interaction")
 
@@ -988,7 +1322,7 @@ class GameEngine:
         )
         result = dispatch_destination_action(action_id="refuel", **action_kwargs)
         if isinstance(result.get("credits"), int):
-            self.player_state.credits = int(result["credits"])
+            self.player_state.credits = max(0, int(result["credits"]))
         fuel_after = int(active_ship.current_fuel)
         credits_after = int(self.player_state.credits)
         units = int(result.get("units_purchased", 0) or 0)
@@ -1041,6 +1375,13 @@ class GameEngine:
             raise ValueError("enter_location requires location_id or location_index.")
 
         location_type = str(getattr(selected_location, "location_type", "") or "")
+        selected_location_id = str(getattr(selected_location, "location_id", "") or "")
+        
+        # Ensure mission offers exist for mission-capable locations (generated once and persisted)
+        if location_type in {"bar", "administration"} and selected_location_id:
+            # Offers are generated once per location and persist across engine re-init
+            self._ensure_location_mission_offers(location_id=selected_location_id)
+        
         if location_type == "market":
             customs = self._run_customs_with_guard(context=context, kind="auto_market_entry")
             outcome = customs.get("outcome")
@@ -1053,8 +1394,7 @@ class GameEngine:
         selected_location_id = str(getattr(selected_location, "location_id", ""))
         self.player_state.current_location_id = selected_location_id
         active_ship = self._active_ship()
-        active_ship.current_location_id = selected_location_id
-        active_ship.location_id = selected_location_id
+        # Ship remains at destination level, only player navigates to locations
         npcs = resolve_npcs_for_location(
             location_id=selected_location_id,
             location_type=location_type,
@@ -1086,8 +1426,7 @@ class GameEngine:
         destination_id = self.player_state.current_destination_id
         self.player_state.current_location_id = destination_id
         active_ship = self._active_ship()
-        active_ship.current_location_id = destination_id
-        active_ship.location_id = destination_id
+        # Ship remains at destination level, only player navigates to locations
         self._event(
             context,
             stage="location_navigation",
@@ -1148,6 +1487,272 @@ class GameEngine:
             detail={"destination_id": self.player_state.current_destination_id, "rows": rows},
         )
 
+    def _execute_shipdock_hull_list(self, context: EngineContext) -> None:
+        """List available hulls at shipdock with prices."""
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for shipdock_hull_list.")
+        from interaction_resolvers import destination_has_shipdock_service
+        if not destination_has_shipdock_service(destination):
+            raise ValueError("Current location does not have shipdock service.")
+        
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            raise ValueError("No current system for shipdock_hull_list.")
+        
+        from shipdock_inventory import generate_shipdock_inventory
+        inventory = generate_shipdock_inventory(
+            self.world_seed,
+            system.system_id,
+            int(system.population),
+            world_state_engine=self._world_state_engine(),
+        )
+        
+        from data_loader import load_hulls
+        from hull_utils import is_shipdock_sellable_hull
+        hulls_data = load_hulls()
+        hulls_by_id = {hull["hull_id"]: hull for hull in hulls_data.get("hulls", [])}
+        
+        rows = []
+        for hull_entry in inventory.get("hulls", []):
+            hull_id = hull_entry.get("hull_id", "")
+            if not hull_id:
+                continue
+            hull_data = hulls_by_id.get(hull_id)
+            if hull_data is None:
+                continue
+            
+            # Defense in depth: apply shipdock eligibility filter
+            if not is_shipdock_sellable_hull(hull_id, hull_data=hull_data):
+                continue
+            
+            # Calculate price using pricing contract
+            from market_pricing import price_hull_transaction
+            pricing = price_hull_transaction(
+                base_price_credits=int(hull_data.get("base_price_credits", 0)),
+                hull_id=hull_id,
+                system_id=system.system_id,
+                transaction_type="buy",
+                world_state_engine=self._world_state_engine(),
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            
+            # C) Apply shipdock price variance multiplier (locked per market)
+            final_price = pricing.final_price
+            if destination.market is not None:
+                final_price = final_price * destination.market.shipdock_price_multiplier
+                final_price = max(1.0, round(final_price))  # Round and ensure minimum 1
+            
+            rows.append({
+                "hull_id": hull_id,
+                "display_name": hull_data.get("name", hull_id),
+                "tier": int(hull_data.get("tier", 0)),
+                "price": int(final_price),
+            })
+        
+        self._event(
+            context,
+            stage="shipdock_hull_list",
+            subsystem="shipdock",
+            detail={"destination_id": self.player_state.current_destination_id, "rows": rows},
+        )
+
+    def _execute_shipdock_module_list(self, context: EngineContext) -> None:
+        """List available modules at shipdock with prices."""
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for shipdock_module_list.")
+        from interaction_resolvers import destination_has_shipdock_service
+        if not destination_has_shipdock_service(destination):
+            raise ValueError("Current location does not have shipdock service.")
+        
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            raise ValueError("No current system for shipdock_module_list.")
+        
+        from shipdock_inventory import generate_shipdock_inventory
+        inventory = generate_shipdock_inventory(
+            self.world_seed,
+            system.system_id,
+            int(system.population),
+            world_state_engine=self._world_state_engine(),
+        )
+        
+        from data_loader import load_modules
+        modules_data = load_modules()
+        modules_by_id = {module["module_id"]: module for module in modules_data.get("modules", [])}
+        
+        rows = []
+        for module_entry in inventory.get("modules", []):
+            module_id = module_entry.get("module_id", "")
+            if not module_id:
+                continue
+            module_data = modules_by_id.get(module_id)
+            if module_data is None:
+                continue
+            
+            # Calculate price using pricing contract
+            from market_pricing import price_module_transaction
+            pricing = price_module_transaction(
+                base_price_credits=int(module_data.get("base_price_credits", 0)),
+                module_id=module_id,
+                system_id=system.system_id,
+                transaction_type="buy",
+                secondary_tags=[],
+                world_state_engine=self._world_state_engine(),
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            
+            # C) Apply shipdock price variance multiplier (locked per market)
+            final_price = pricing.final_price
+            if destination.market is not None:
+                final_price = final_price * destination.market.shipdock_price_multiplier
+                final_price = max(1.0, round(final_price))  # Round and ensure minimum 1
+            
+            rows.append({
+                "module_id": module_id,
+                "display_name": module_data.get("name", module_id),
+                "slot_type": module_data.get("slot_type", ""),
+                "price": int(pricing.final_price),
+            })
+        
+        self._event(
+            context,
+            stage="shipdock_module_list",
+            subsystem="shipdock",
+            detail={"destination_id": self.player_state.current_destination_id, "rows": rows},
+        )
+
+    def _execute_shipdock_ship_list(self, context: EngineContext) -> None:
+        """List owned ships eligible to sell at current destination."""
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for shipdock_ship_list.")
+        from interaction_resolvers import destination_has_shipdock_service, _ship_present_at_destination
+        if not destination_has_shipdock_service(destination):
+            raise ValueError("Current location does not have shipdock service.")
+        
+        destination_id = self.player_state.current_destination_id
+        rows = []
+        for ship_id in self.player_state.owned_ship_ids:
+            ship = self.fleet_by_id.get(ship_id)
+            if ship is None:
+                continue
+            if not _ship_present_at_destination(ship, self.player_state):
+                continue
+            
+            from data_loader import load_hulls
+            hulls_data = load_hulls()
+            hull_data = None
+            for hull in hulls_data.get("hulls", []):
+                if hull.get("hull_id") == ship.model_id:
+                    hull_data = hull
+                    break
+            
+            if hull_data is None:
+                continue
+            
+            # Calculate sell price
+            system = self.sector.get_system(self.player_state.current_system_id)
+            if system is None:
+                continue
+            
+            from market_pricing import price_hull_transaction
+            pricing = price_hull_transaction(
+                base_price_credits=int(hull_data.get("base_price_credits", 0)),
+                hull_id=ship.model_id,
+                system_id=system.system_id,
+                transaction_type="sell",
+                world_state_engine=self._world_state_engine(),
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            
+            rows.append({
+                "ship_id": ship_id,
+                "hull_id": ship.model_id,
+                "display_name": f"{hull_data.get('name', ship.model_id)} ({ship_id})",
+                "tier": int(hull_data.get("tier", 0)),
+                "price": int(pricing.final_price),
+            })
+        
+        self._event(
+            context,
+            stage="shipdock_ship_list",
+            subsystem="shipdock",
+            detail={"destination_id": destination_id, "rows": rows},
+        )
+
+    def _execute_shipdock_installed_modules_list(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """List installed modules on a ship."""
+        ship_id = payload.get("ship_id")
+        if not isinstance(ship_id, str) or not ship_id:
+            # Default to active ship
+            ship_id = self.player_state.active_ship_id
+        
+        if not ship_id:
+            raise ValueError("No ship_id provided and no active ship.")
+        
+        ship = self.fleet_by_id.get(ship_id)
+        if ship is None:
+            raise ValueError(f"Ship {ship_id} not found.")
+        
+        module_instances = ship.persistent_state.get("module_instances", [])
+        if not isinstance(module_instances, list):
+            module_instances = []
+        
+        from data_loader import load_modules
+        modules_data = load_modules()
+        modules_by_id = {module["module_id"]: module for module in modules_data.get("modules", [])}
+        
+        rows = []
+        for instance in module_instances:
+            if not isinstance(instance, dict):
+                continue
+            module_id = instance.get("module_id", "")
+            if not module_id:
+                continue
+            module_data = modules_by_id.get(module_id)
+            if module_data is None:
+                continue
+            
+            # Calculate sell price
+            destination = self._current_destination()
+            if destination is None:
+                continue
+            system = self.sector.get_system(self.player_state.current_system_id)
+            if system is None:
+                continue
+            
+            secondary_tags = list(instance.get("secondary_tags", []))
+            from market_pricing import price_module_transaction
+            pricing = price_module_transaction(
+                base_price_credits=int(module_data.get("base_price_credits", 0)),
+                module_id=module_id,
+                system_id=system.system_id,
+                transaction_type="sell",
+                secondary_tags=secondary_tags,
+                world_state_engine=self._world_state_engine(),
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            
+            rows.append({
+                "module_id": module_id,
+                "display_name": module_data.get("name", module_id),
+                "slot_type": module_data.get("slot_type", ""),
+                "price": int(pricing.final_price),
+            })
+        
+        self._event(
+            context,
+            stage="shipdock_installed_modules_list",
+            subsystem="shipdock",
+            detail={"ship_id": ship_id, "rows": rows},
+        )
+
     def _execute_market_buy(self, context: EngineContext, payload: dict[str, Any]) -> None:
         self._require_market_location()
         sku_id = payload.get("sku_id")
@@ -1199,7 +1804,7 @@ class GameEngine:
 
         holdings = self.player_state.cargo_by_ship.setdefault("active", {})
         holdings[sku_id] = int(holdings.get(sku_id, 0) + quantity)
-        self.player_state.credits = credits_before - total_cost
+        self.player_state.credits = max(0, credits_before - total_cost)
         self._event(
             context,
             stage="market_trade",
@@ -1246,7 +1851,7 @@ class GameEngine:
         credits_before = int(self.player_state.credits)
 
         holdings[sku_id] = current_units - quantity
-        self.player_state.credits = credits_before + total_gain
+        self.player_state.credits = max(0, credits_before + total_gain)
         self._event(
             context,
             stage="market_trade",
@@ -1272,6 +1877,69 @@ class GameEngine:
         insurance_cost = int(self._insurance_cost_per_turn())
         crew_wages = int(self._crew_wages_per_turn())
         warehouse_cost = int(self._warehouse_cost_per_turn())
+        
+        # Project ship information from assembler output
+        hull_id = ship.model_id
+        module_instances = list(ship.persistent_state.get("module_instances", []))
+        degradation_state = ship.persistent_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+        assembled = assemble_ship(hull_id, module_instances, degradation_state)
+        
+        # Load hull data for tier, crew_capacity, and cargo base
+        from data_loader import load_hulls
+        hulls_data = load_hulls()
+        hull_data = None
+        for hull in hulls_data.get("hulls", []):
+            if hull.get("hull_id") == hull_id:
+                hull_data = hull
+                break
+        
+        # Compute cargo capacities: base from hull + module bonuses from assembler
+        cargo_base = hull_data.get("cargo", {}) if hull_data else {}
+        physical_cargo_base = int(cargo_base.get("physical_base", 0))
+        data_cargo_base = int(cargo_base.get("data_base", 0))
+        utility_effects = assembled.get("ship_utility_effects", {})
+        physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+        data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+        
+        # Get effective capacities (includes crew modifiers)
+        effective_physical_capacity = int(ship.get_effective_physical_capacity())
+        effective_data_capacity = int(ship.get_effective_data_capacity())
+        
+        # Extract subsystem bands from assembler
+        bands = assembled.get("bands", {})
+        effective_bands = bands.get("effective", {})
+        
+        # Extract crew list with IDs and wages
+        crew_list = []
+        for crew_member in ship.crew:
+            if hasattr(crew_member, "npc_id") and hasattr(crew_member, "daily_wage"):
+                crew_list.append({
+                    "npc_id": str(crew_member.npc_id),
+                    "daily_wage": int(crew_member.daily_wage),
+                })
+        
+        ship_info = {
+            "ship_id": ship.ship_id,
+            "hull_id": hull_id,
+            "model_id": hull_id,
+            "tier": int(hull_data.get("tier", 1)) if hull_data else None,
+            "crew_capacity": int(hull_data.get("crew_capacity", 0)) if hull_data else int(ship.crew_capacity),
+            "crew_current": len(ship.crew),
+            "physical_cargo_capacity": physical_cargo_capacity,
+            "data_cargo_capacity": data_cargo_capacity,
+            "effective_physical_cargo_capacity": effective_physical_capacity,
+            "effective_data_cargo_capacity": effective_data_capacity,
+            "fuel_capacity": int(ship.fuel_capacity),
+            "current_fuel": int(ship.current_fuel),
+            "subsystem_bands": {
+                "weapon": int(effective_bands.get("weapon", 0)),
+                "defense": int(effective_bands.get("defense", 0)),
+                "engine": int(effective_bands.get("engine", 0)),
+            },
+            "installed_modules": [str(inst.get("module_id", "")) for inst in module_instances if isinstance(inst, dict)],
+            "crew": crew_list,
+        }
+        
         self._event(
             context,
             stage="player_profile",
@@ -1300,6 +1968,7 @@ class GameEngine:
                 "warehouse_cost_per_turn": warehouse_cost,
                 "total_recurring_cost_per_turn": int(insurance_cost + crew_wages + warehouse_cost),
                 "warehouses": self._warehouse_profile_rows(),
+                "ship": ship_info,
             },
         )
 
@@ -1681,11 +2350,17 @@ class GameEngine:
         allowed.add("market_sell_list")
         allowed.add("market_buy")
         allowed.add("market_sell")
+        allowed.add("shipdock_hull_list")
+        allowed.add("shipdock_module_list")
+        allowed.add("shipdock_ship_list")
+        allowed.add("shipdock_installed_modules_list")
         allowed.add("get_player_profile")
         allowed.add("get_system_profile")
         allowed.add("get_destination_profile")
         allowed.add("warehouse_cancel")
         allowed.add("set_logging")
+        allowed.add("mission_discuss")
+        allowed.add("mission_accept")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -1738,6 +2413,8 @@ class GameEngine:
         finally:
             _set_player_action_context(False)
         self._apply_recurring_costs(days_completed=int(result.days_completed))
+        # Update bankruptcy warning after time advance completes
+        self._update_bankruptcy_warning()
         return result
 
     def _advance_time_in_chunks(self, *, days: int, reason: str) -> dict[str, Any]:
@@ -1765,21 +2442,71 @@ class GameEngine:
         self.player_state.current_location_id = destination_id
 
     def _build_default_fleet(self) -> dict[str, ShipEntity]:
-        assembled = assemble_ship("civ_t1_midge", [], {"weapon": 0, "defense": 0, "engine": 0})
+        """
+        Enforce starting ship: Midge (civ_t1_midge) with no modules.
+        
+        This is deterministic and occurs only on new game initialization.
+        All ship stats derive from assemble_ship() output.
+        """
+        hull_id = "civ_t1_midge"
+        module_instances = []
+        degradation_state = {"weapon": 0, "defense": 0, "engine": 0}
+        
+        assembled = assemble_ship(hull_id, module_instances, degradation_state)
+        
+        # Extract hull data for crew_capacity and cargo base
+        from data_loader import load_hulls
+        hulls_data = load_hulls()
+        hull_data = None
+        for hull in hulls_data.get("hulls", []):
+            if hull.get("hull_id") == hull_id:
+                hull_data = hull
+                break
+        
+        if hull_data is None:
+            raise ValueError(f"Hull data not found for {hull_id}")
+        
+        # Extract cargo capacities: base from hull + module bonuses from assembler
+        cargo_base = hull_data.get("cargo", {})
+        physical_cargo_base = int(cargo_base.get("physical_base", 0))
+        data_cargo_base = int(cargo_base.get("data_base", 0))
+        utility_effects = assembled.get("ship_utility_effects", {})
+        physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+        data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+        
+        # Extract crew capacity from hull data
+        crew_capacity = int(hull_data.get("crew_capacity", 0))
+        
+        # Extract subsystem bands from assembler
+        bands = assembled.get("bands", {})
+        effective_bands = bands.get("effective", {})
+        
         ship = ShipEntity(
             ship_id="PLAYER-SHIP-001",
-            model_id="civ_t1_midge",
+            model_id=hull_id,
             owner_id=self.player_state.player_id,
+            owner_type="player",
             activity_state="active",
-            location_id=self.player_state.current_destination_id or self.player_state.current_system_id,
+            destination_id=self.player_state.current_destination_id,
             current_system_id=self.player_state.current_system_id,
             current_destination_id=self.player_state.current_destination_id,
-            current_location_id=self.player_state.current_destination_id or self.player_state.current_system_id,
             fuel_capacity=int(assembled["fuel_capacity"]),
             current_fuel=int(assembled["fuel_capacity"]),
+            crew_capacity=crew_capacity,
+            physical_cargo_capacity=physical_cargo_capacity,
+            data_cargo_capacity=data_cargo_capacity,
         )
-        ship.persistent_state["module_instances"] = []
-        ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
+        ship.persistent_state["module_instances"] = list(module_instances)
+        ship.persistent_state["degradation_state"] = dict(degradation_state)
+        ship.persistent_state["max_hull_integrity"] = int(assembled.get("hull_max", 0))
+        ship.persistent_state["current_hull_integrity"] = int(assembled.get("hull_max", 0))
+        ship.persistent_state["assembled"] = assembled
+        ship.persistent_state["subsystem_bands"] = {
+            "weapon": int(effective_bands.get("weapon", 0)),
+            "defense": int(effective_bands.get("defense", 0)),
+            "engine": int(effective_bands.get("engine", 0)),
+        }
+        
         fleet = {ship.ship_id: ship}
         self.player_state.active_ship_id = ship.ship_id
         self.player_state.owned_ship_ids = [ship.ship_id]
@@ -1964,7 +2691,7 @@ class GameEngine:
                 "admin_pay_fines",
                 "admin_apply_license",
                 "admin_turn_in",
-                "mission_list",
+                "admin_mission_board",
                 "mission_accept",
             ]
         supported_ids = {
@@ -1987,6 +2714,7 @@ class GameEngine:
             "admin_pay_fines",
             "admin_apply_license",
             "admin_turn_in",
+            "admin_mission_board",
         }
         scoped_allowed = self._allowed_action_ids_for_location_type(location_type)
 
@@ -2035,7 +2763,7 @@ class GameEngine:
         if location_type == "bar":
             return {"bar_talk", "bar_rumors", "mission_list", "mission_accept", "bar_hire_crew"}
         if location_type == "administration":
-            return {"admin_talk", "admin_pay_fines", "admin_apply_license", "admin_turn_in", "mission_list", "mission_accept"}
+            return {"admin_talk", "admin_pay_fines", "admin_apply_license", "admin_turn_in", "admin_mission_board"}
         return set()
 
     def _location_action_model(self, action_id: str) -> LocationActionModel:
@@ -2053,22 +2781,37 @@ class GameEngine:
                 action_id="buy_hull",
                 display_name="Buy Hull",
                 description="Purchase a hull from shipdock inventory.",
+                parameters=[
+                    {"name": "ship_id", "type": "str", "prompt": "Ship ID to buy the hull for (example: PLAYER-SHIP-001)"},
+                    {"name": "hull_id", "type": "str", "prompt": "Hull ID to purchase (from shipdock inventory)"},
+                ],
             ),
             "sell_hull": LocationActionModel(
                 action_id="sell_hull",
                 display_name="Sell Hull",
                 description="Sell an owned hull currently present at destination.",
                 requires_confirm=True,
+                parameters=[
+                    {"name": "ship_id", "type": "str", "prompt": "Ship ID (hull) to sell"},
+                ],
             ),
             "buy_module": LocationActionModel(
                 action_id="buy_module",
                 display_name="Buy Module",
                 description="Purchase a module for an eligible ship.",
+                parameters=[
+                    {"name": "ship_id", "type": "str", "prompt": "Ship ID to install the module on (example: PLAYER-SHIP-001)"},
+                    {"name": "module_id", "type": "str", "prompt": "Module ID to purchase (from shipdock inventory)"},
+                ],
             ),
             "sell_module": LocationActionModel(
                 action_id="sell_module",
                 display_name="Sell Module",
                 description="Sell a module installed on an eligible ship.",
+                parameters=[
+                    {"name": "ship_id", "type": "str", "prompt": "Ship ID with the module to sell (example: PLAYER-SHIP-001)"},
+                    {"name": "module_id", "type": "str", "prompt": "Module ID to sell"},
+                ],
             ),
             "repair_ship": LocationActionModel(
                 action_id="repair_ship",
@@ -2151,6 +2894,11 @@ class GameEngine:
                 display_name="Turn In",
                 description="Turn in outstanding warrants.",
             ),
+            "admin_mission_board": LocationActionModel(
+                action_id="admin_mission_board",
+                display_name="View Mission Board",
+                description="Review officially posted contracts.",
+            ),
         }
         return catalog[action_id]
 
@@ -2194,14 +2942,32 @@ class GameEngine:
             self._location_npc_ids[location_id] = list(resolved_ids)
 
         by_id: dict[str, Any] = {}
-        for npc in self._npc_registry.list_by_location(location_id):
+        # B) Crew NPC Visibility Fix: Include all NPCs at this location, excluding hired crew
+        # Filter out any NPC with current_ship_id set (hired crew)
+        npc_list = [
+            n for n in self._npc_registry.list_by_location(location_id)
+            if not getattr(n, "current_ship_id", None)
+        ]
+        for npc in npc_list:
             npc_id = str(getattr(npc, "npc_id", "") or "")
             if npc_id:
                 by_id[npc_id] = npc
+        
+        # When merging resolved_ids, only add NPCs that:
+        # 1. Exist in registry
+        # 2. Are actually at this location (current_location_id == location_id)
+        # 3. Are not hired (current_ship_id is None)
         for npc_id in resolved_ids:
             npc = self._npc_registry.get(npc_id)
-            if npc is not None:
-                by_id[npc_id] = npc
+            if npc is None:
+                continue
+            # Ensure NPC is actually at this location
+            if str(getattr(npc, "current_location_id", "") or "") != str(location_id):
+                continue
+            # Exclude hired crew (those assigned to a ship)
+            if getattr(npc, "current_ship_id", None):
+                continue
+            by_id[npc_id] = npc
 
         ordered = sorted(by_id.values(), key=lambda row: str(getattr(row, "npc_id", "")))
         structural_role = "bartender" if location_type == "bar" else "administrator" if location_type == "administration" else ""
@@ -2213,14 +2979,188 @@ class GameEngine:
             if self._npc_primary_role(npc) == structural_role:
                 primary = npc
                 break
+        
+        # A) Mandatory Tier 3 NPC Enforcement
+        # Ensure required Tier 3 NPC exists for bar/administration locations
         if primary is None:
-            return ordered
-        return [primary] + [npc for npc in ordered if str(getattr(npc, "npc_id", "")) != str(getattr(primary, "npc_id", ""))]
+            # Create missing Tier 3 NPC using existing deterministic logic
+            from npc_placement import _deterministic_npc_id
+            required_npc_id = _deterministic_npc_id(location_id, structural_role)
+            required_npc = self._npc_registry.get(required_npc_id)
+            if required_npc is None:
+                required_npc = NPCEntity(
+                    npc_id=required_npc_id,
+                    persistence_tier=NPCPersistenceTier.TIER_3,
+                    display_name=structural_role.replace("_", " ").title(),
+                    role_tags=[structural_role],
+                    current_location_id=location_id,
+                    current_system_id=self.player_state.current_system_id,
+                )
+                self._npc_registry.add(
+                    required_npc,
+                    logger=self._logger if self._logging_enabled else None,
+                    turn=int(get_current_turn()),
+                )
+                if self._logging_enabled and self._logger:
+                    self._logger.log(
+                        turn=int(get_current_turn()),
+                        action="npc_enforcement",
+                        state_change=f"created_required_npc role={structural_role} location_id={location_id} npc_id={required_npc_id}",
+                    )
+            primary = required_npc
+            # Add to ordered list if not already present
+            if required_npc_id not in by_id:
+                by_id[required_npc_id] = required_npc
+                ordered = sorted(by_id.values(), key=lambda row: str(getattr(row, "npc_id", "")))
+        
+        # Ensure primary exists before building ordered_with_mission_givers
+        # Never inject None into the list
+        if primary is None:
+            ordered_with_mission_givers = ordered
+        else:
+            ordered_with_mission_givers = [primary] + [npc for npc in ordered if str(getattr(npc, "npc_id", "")) != str(getattr(primary, "npc_id", ""))]
+        
+        # Inject ephemeral mission giver NPCs and spawn crew for Bar locations only
+        if location_type == "bar":
+            mission_ids = self._ensure_location_mission_offers(location_id=location_id)
+            mission_givers: list[dict[str, Any]] = []
+            for mission_id in mission_ids:
+                mission = self._mission_manager.missions.get(mission_id)
+                if mission is None or mission.mission_contact_seed is None:
+                    continue
+                # Derive deterministic npc_id (matches accept-time creation)
+                npc_hash = hashlib.md5(mission.mission_contact_seed.encode()).hexdigest()[:8]
+                giver_npc_id = f"NPC-MSN-{npc_hash}"
+                # Only add if not already a persistent NPC (not yet accepted)
+                if giver_npc_id not in by_id:
+                    mission_givers.append({
+                        "npc_id": giver_npc_id,
+                        "display_name": f"Mission Contact ({mission.mission_type})",
+                        "persistence_tier": 1,
+                        "role": "mission_giver",
+                        "_ephemeral": True,
+                        "_mission_id": mission_id,
+                    })
+            # Sort mission givers by npc_id for determinism
+            mission_givers.sort(key=lambda x: x["npc_id"])
+            
+            # Spawn hireable crew at bar locations
+            # Filter out hired crew (those with current_ship_id set)
+            crew_npcs = self._spawn_crew_for_bar_location(location_id=location_id, system_id=self.player_state.current_system_id)
+            crew_npcs = [npc for npc in crew_npcs if not getattr(npc, "current_ship_id", None)]
+            return ordered_with_mission_givers + mission_givers + crew_npcs
+        
+        return ordered_with_mission_givers
+
+    def _spawn_crew_for_bar_location(self, *, location_id: str, system_id: str) -> list[NPCEntity]:
+        """
+        Spawn hireable crew at bar location with 20% chance and population-based cap.
+        
+        Returns list of crew NPCEntity objects (empty if spawn roll fails or cap is 0).
+        """
+        # Check for existing TIER_2 crew at this location
+        existing_crew = [
+            npc for npc in self._npc_registry.list_by_location(location_id)
+            if npc.is_crew and npc.persistence_tier == NPCPersistenceTier.TIER_2
+        ]
+        if existing_crew:
+            # Respect existing persistent crew - do not regenerate
+            return existing_crew
+        
+        # Deterministic spawn roll: 20% chance
+        # Use hash for deterministic seed (same as other deterministic RNG streams)
+        spawn_seed_token = repr((self.world_seed, location_id, "bar_spawn"))
+        spawn_seed = int(hashlib.sha256(spawn_seed_token.encode("ascii")).hexdigest()[:16], 16)
+        spawn_rng = random.Random(spawn_seed)
+        spawn_roll = spawn_rng.random()
+        
+        if spawn_roll >= 0.20:
+            # Spawn roll failed
+            return []
+        
+        # Get system population for cap
+        system = self.sector.get_system(system_id)
+        if system is None:
+            return []
+        
+        pop = int(system.population)
+        if pop in (1, 2):
+            max_spawn = 1
+        elif pop in (3, 4):
+            max_spawn = 2
+        else:
+            max_spawn = 3
+        
+        # Generate crew pool
+        from crew_generator import generate_hireable_crew
+        crew_pool = generate_hireable_crew(
+            world_seed=self.world_seed,
+            system_id=system_id,
+            pool_size=max_spawn * 2,  # Generate more than needed for selection
+            world_state_engine=self._world_state_engine(),
+        )
+        
+        # Limit to max_spawn
+        crew_pool = crew_pool[:max_spawn]
+        
+        # Create NPCEntity for each crew member
+        spawned_crew: list[NPCEntity] = []
+        for index, crew_data in enumerate(crew_pool):
+            # Deterministic npc_id based on location and index
+            crew_npc_id = f"NPC-CREW-{hashlib.md5(f'{location_id}:crew:{index}'.encode()).hexdigest()[:8]}"
+            
+            # Check if already exists in registry
+            existing = self._npc_registry.get(crew_npc_id)
+            if existing is not None:
+                if existing.is_crew and existing.persistence_tier == NPCPersistenceTier.TIER_2:
+                    spawned_crew.append(existing)
+                    continue
+            
+            # Create new crew NPC
+            role_id = str(crew_data.get("role_id", ""))
+            # Load crew roles to get display name
+            from crew_generator import _load_crew_roles
+            crew_roles = _load_crew_roles()
+            role_data = None
+            for role in crew_roles:
+                if str(role.get("role_id", "")) == role_id:
+                    role_data = role
+                    break
+            
+            display_name = str(role_data.get("name", role_id)) if role_data else f"Crew ({role_id})"
+            
+            crew_npc = NPCEntity(
+                npc_id=crew_npc_id,
+                persistence_tier=NPCPersistenceTier.TIER_2,
+                display_name=display_name,
+                role_tags=[role_id] if role_id else [],
+                current_location_id=location_id,
+                current_system_id=system_id,
+                is_crew=True,
+                crew_role_id=role_id,
+                hire_cost=int(crew_data.get("hire_cost", 0)),
+                daily_wage=int(crew_data.get("daily_wage", 0)),
+            )
+            
+                    # Crew entity contract: is_crew=True, persistence_tier=TIER_2, crew_role_id set
+                    # No explicit validate() method needed - contract enforced by construction
+            
+            # Add to registry
+            self._npc_registry.add(crew_npc, logger=self._logger if self._logging_enabled else None, turn=int(get_current_turn()))
+            
+            spawned_crew.append(crew_npc)
+        
+        return spawned_crew
 
     def _npc_for_current_location(self, npc_id: str) -> Any | None:
         for npc in self._list_current_location_npcs():
-            if str(getattr(npc, "npc_id", "")) == npc_id:
-                return npc
+            # Handle both NPCEntity objects and ephemeral dicts
+            if isinstance(npc, dict):
+                if str(npc.get("npc_id", "")) == npc_id:
+                    return npc
+            else:
+                if str(getattr(npc, "npc_id", "")) == npc_id:
+                    return npc
         return None
 
     def _role_npc_for_current_location(self, role: str) -> Any | None:
@@ -2230,6 +3170,9 @@ class GameEngine:
         return None
 
     def _npc_primary_role(self, npc: Any) -> str:
+        # Handle ephemeral mission giver dicts
+        if isinstance(npc, dict) and "role" in npc:
+            return str(npc["role"])
         role_tags = getattr(npc, "role_tags", [])
         if isinstance(role_tags, list):
             for role in role_tags:
@@ -2243,6 +3186,14 @@ class GameEngine:
         return "unknown"
 
     def _npc_summary(self, npc: Any) -> dict[str, Any]:
+        # Handle ephemeral mission giver dicts
+        if isinstance(npc, dict):
+            return {
+                "npc_id": str(npc.get("npc_id", "")),
+                "display_name": str(npc.get("display_name", "")),
+                "role": str(npc.get("role", "unknown")),
+                "persistence_tier": int(npc.get("persistence_tier", 1)),
+            }
         tier_raw = getattr(npc, "persistence_tier", 1)
         tier_value = int(getattr(tier_raw, "value", tier_raw))
         return {
@@ -2277,9 +3228,78 @@ class GameEngine:
                     "display_name": "Pay fines",
                     "description": "Pay outstanding fines in this system.",
                     "parameters": [],
+                },
+                {
+                    "action_id": "admin_apply_license",
+                    "display_name": "Apply license",
+                    "description": "Apply for restricted trade license.",
+                    "parameters": [],
+                },
+                {
+                    "action_id": "admin_turn_in",
+                    "display_name": "Turn in",
+                    "description": "Turn in outstanding warrants.",
+                    "parameters": [],
+                },
+                {
+                    "action_id": "admin_mission_board",
+                    "display_name": "View Mission Board",
+                    "description": "Review officially posted contracts.",
+                    "parameters": [],
+                },
+            ]
+        if role == "mission_giver":
+            return base + [
+                {
+                    "action_id": "mission_discuss",
+                    "display_name": "Discuss job",
+                    "description": "Ask about the available job.",
+                    "parameters": [],
                 }
             ]
         return base
+
+    def _mission_id_for_giver_npc_id(self, npc_id: str) -> str | None:
+        """Find mission_id for a mission giver npc_id by matching hash against mission_contact_seed or mission_giver_npc_id."""
+        location = self._current_location()
+        if location is None:
+            return None
+        location_id = str(getattr(location, "location_id", "") or "")
+        if not location_id:
+            return None
+        
+        # Search all missions (not just offered ones) to find ACTIVE missions after acceptance
+        for mission_id, mission in self._mission_manager.missions.items():
+            if mission is None:
+                continue
+            
+            # Match by mission_giver_npc_id (for ACTIVE missions after acceptance)
+            if mission.mission_giver_npc_id == npc_id:
+                # Verify mission is at current location
+                # Check source_id (contains location_id) or location_id field
+                mission_location_match = (
+                    (hasattr(mission, "location_id") and str(getattr(mission, "location_id", "") or "") == location_id) or
+                    (hasattr(mission, "source_id") and str(mission.source_id or "").startswith(location_id + ":"))
+                )
+                if mission_location_match:
+                    return mission_id
+            
+            # Match by mission_contact_seed hash (for OFFERED missions)
+            if mission.mission_contact_seed is not None:
+                npc_hash = hashlib.md5(mission.mission_contact_seed.encode()).hexdigest()[:8]
+                giver_npc_id = f"NPC-MSN-{npc_hash}"
+                if giver_npc_id == npc_id:
+                    # Verify mission is at current location by checking origin_location_id or location_id
+                    # Also check if mission was offered at this location via source_id
+                    mission_location_match = (
+                        (mission.origin_location_id is not None and str(mission.origin_location_id) == location_id) or
+                        (hasattr(mission, "location_id") and str(getattr(mission, "location_id", "") or "") == location_id) or
+                        (hasattr(mission, "source_id") and str(mission.source_id or "").startswith(location_id + ":"))
+                    )
+                    if mission_location_match:
+                        return mission_id
+        
+        return None
 
     def _npc_talk_text(self, *, npc: Any, role: str) -> str:
         name = str(getattr(npc, "display_name", "") or "Contact")
@@ -2296,7 +3316,7 @@ class GameEngine:
             return {"ok": True, "reason": "no_fines_due", "paid": 0}
         if int(self.player_state.credits) < due:
             return {"ok": False, "reason": "insufficient_credits", "paid": 0}
-        self.player_state.credits = int(self.player_state.credits) - due
+        self.player_state.credits = max(0, int(self.player_state.credits) - due)
         self.player_state.outstanding_fines[system_id] = 0
         return {"ok": True, "reason": "ok", "paid": due}
 
@@ -2468,7 +3488,16 @@ class GameEngine:
         per_turn = int(self._recurring_cost_per_turn())
         if per_turn <= 0:
             return
-        self.player_state.credits = int(self.player_state.credits) - (per_turn * int(days_completed))
+        self.player_state.credits = max(0, int(self.player_state.credits) - (per_turn * int(days_completed)))
+
+    def _update_bankruptcy_warning(self) -> None:
+        """Update bankruptcy warning turn based on current credits state."""
+        current_turn = int(get_current_turn())
+        if self.player_state.credits > 0:
+            self.player_state.bankruptcy_warning_turn = None
+        elif self.player_state.credits == 0:
+            if self.player_state.bankruptcy_warning_turn is None:
+                self.player_state.bankruptcy_warning_turn = current_turn
 
     def _warehouse_profile_rows(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
@@ -2517,12 +3546,25 @@ class GameEngine:
 
             action_kwargs.setdefault(
                 "inventory",
-                generate_shipdock_inventory(self.world_seed, system.system_id, int(system.population)),
+                generate_shipdock_inventory(
+                    self.world_seed,
+                    system.system_id,
+                    int(system.population),
+                    world_state_engine=self._world_state_engine(),
+                ),
             )
         if action_id == "repair_ship":
             action_kwargs.setdefault("system_population", int(system.population))
         if action_id in {"buy_module", "sell_module", "sell_hull", "repair_ship"}:
             action_kwargs.setdefault("ship_id", self.player_state.active_ship_id)
+        
+        # Pass world_state_engine, system_id, logger, and turn for pricing contract integration
+        if action_id in {"buy_hull", "sell_hull", "buy_module", "sell_module"}:
+            action_kwargs.setdefault("system_id", system.system_id)
+            action_kwargs.setdefault("world_state_engine", self._world_state_engine())
+            action_kwargs.setdefault("logger", self._logger if self._logging_enabled else None)
+            action_kwargs.setdefault("turn", int(get_current_turn()))
+        
         return action_kwargs
 
     def _is_market_scope_action(self, action_id: str) -> bool:

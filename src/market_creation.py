@@ -55,6 +55,8 @@ class MarketCreator:
         population_level: int,
         primary_economy: str,
         secondary_economies: Sequence[str],
+        world_seed: int | None = None,
+        has_shipdock: bool = False,
     ) -> Market:
         economies = self._economies_for(primary_economy, secondary_economies)
         self._log(
@@ -107,10 +109,26 @@ class MarketCreator:
             economies=economies,
         )
 
+        # C) Generate deterministic shipdock price variance multiplier
+        # Initialize to 1.0 (no variance) by default
+        shipdock_multiplier = 1.0
+        
+        # Only apply variance if destination has shipdock service
+        if has_shipdock and world_seed is not None:
+            import hashlib
+            import random
+            # Deterministic seed: hash(world_seed, destination_id, "shipdock_price_variance")
+            seed_token = repr((world_seed, destination_id, "shipdock_price_variance"))
+            seed_value = int(hashlib.sha256(seed_token.encode("ascii")).hexdigest()[:16], 16)
+            variance_rng = random.Random(seed_value)
+            # Apply +/-5% variance: multiplier in [0.95, 1.05]
+            shipdock_multiplier = 1.0 + variance_rng.uniform(-0.05, 0.05)
+        
         return Market(
             categories=categories,
             primary_economy=primary_economy,
             secondary_economies=tuple(secondary_economies),
+            shipdock_price_multiplier=shipdock_multiplier,
         )
 
     def _neutral_allowed(

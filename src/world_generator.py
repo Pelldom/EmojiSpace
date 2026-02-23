@@ -270,6 +270,31 @@ def _generate_destinations(
             economy_assignment = market_creator.assign_economies(population)
             primary_economy_id = economy_assignment.primary
             secondary_economy_ids = list(economy_assignment.secondary)
+            # Check if destination has shipdock service
+            from interaction_resolvers import destination_has_shipdock_service
+            # Create a temporary destination object to check for shipdock
+            temp_dest = Destination(
+                destination_id=destination_id,
+                system_id=system_id,
+                destination_type=destination_type,
+                display_name=display_name,
+                population=population,
+                primary_economy_id=primary_economy_id,
+                secondary_economy_ids=secondary_economy_ids,
+                locations=[],  # Will be populated later
+                market=None,
+            )
+            has_shipdock = destination_has_shipdock_service(temp_dest)
+            
+            # Pass world_seed for shipdock price variance generation
+            market = market_creator.create_market(
+                destination_id=destination_id,
+                population_level=population,
+                primary_economy=primary_economy_id,
+                secondary_economies=secondary_economy_ids,
+                world_seed=seed,
+                has_shipdock=has_shipdock,
+            )
         destination = Destination(
             destination_id=destination_id,
             system_id=system_id,
@@ -410,6 +435,7 @@ def _assign_locations_and_markets(
                 population_level=destination.population,
                 primary_economy=destination.primary_economy_id,
                 secondary_economies=destination.secondary_economy_ids,
+                world_seed=seed,
             )
         updated_destinations.append(
             Destination(
