@@ -1,8 +1,8 @@
 # Phase 7.9 World Gen Unification - Audit and Implementation Plan
 
-Status: AUDIT ONLY (No Code Changes)
+Status: IMPLEMENTED
 Phase: 7.9
-Target Version: 0.10.11+
+Target Version: 0.11.2+
 Date: 2024
 
 ## 1. Current Implementation Summary
@@ -22,20 +22,23 @@ Date: 2024
 - Tests assume 5 systems in many places (integration_test.py, cli_test.py, test_run.py)
 
 **Galaxy Radius:**
-- Fixed: `GALAXY_RADIUS = 100.0` (world_generator.py line 74)
-- Not scaled with system_count
-- Used in `_deterministic_system_coordinates()` for spatial placement
+- IMPLEMENTED: Computed as `radius = 10.0 * sqrt(system_count)` in `WorldGenerator._galaxy_radius()`
+- Replaced fixed `GALAXY_RADIUS = 100.0` constant
+- Scales deterministically with system count
+- Used in `_assign_spatial_coordinates()` for spatial placement
 
 **Spatial Coordinates:**
 - Systems have `x: float, y: float` fields (added in Phase 7.5.1)
 - Coordinates generated deterministically via `_deterministic_system_coordinates()`
 - Uses polar coordinate generation: `radial = sqrt(rng.random()) * radius`, `angle = rng.random() * 2*pi`
-- Coordinates assigned AFTER neighbor assignment
+- IMPLEMENTED: Coordinate uniqueness enforced via rejection sampling (up to 100 attempts) and deterministic micro-jitter
+- Coordinates assigned BEFORE neighbor assignment (needed for graph construction)
 
 **Neighbor/Starlane Graph:**
-- Current: Simple linear chain (index-1, index+1) in `world_generator.py` lines 156-173
-- Stored as `System.neighbors: List[str]` (system_id strings)
-- No graph distance calculation; neighbors are direct adjacency only
+- IMPLEMENTED: MST + k-NN (k=2) graph construction in `WorldGenerator._build_starlane_graph()`
+- Replaced simple linear chain (index-1, index+1)
+- Stored as `System.neighbors: List[str]` (system_id strings, sorted deterministically)
+- Graph is connected (MST ensures connectivity), with additional k-NN edges for better connectivity
 - Used by:
   - World State propagation (world_state_contract.md: radius 1 = direct neighbors)
   - Awareness radius evaluation (world_state_contract.md: R=1 for DataNet)
@@ -253,7 +256,7 @@ Examples:
   N=150: R = 10 * sqrt(150) ≈ 122.5 LY (spacing ≈ 5 LY)
 ```
 
-**Final Proposal:**
+**IMPLEMENTED:**
 ```
 radius(system_count) = 10.0 * sqrt(system_count)
 
@@ -263,36 +266,31 @@ This yields:
   N=150: R ≈ 122.5 LY, expected spacing ≈ 5.0 LY
 ```
 
-**Minimum Separation Enforcement:**
+**IMPLEMENTED: Coordinate Uniqueness Enforcement**
 
-Option A: Deterministic rejection sampling
-- Generate (x,y), check distance to all existing systems
-- If min_distance < 2.0 LY, reject and retry with new RNG stream
-- Max retries: 100 per system
-- Risk: May fail for very dense configurations
-
-Option B: No enforcement (current behavior)
-- Accept any coordinate from deterministic RNG
-- Risk: Systems may overlap (distance < 2 LY)
-
-**Recommendation:** Option B (no enforcement) for Phase 7.9. Add Option A in future if overlap issues occur.
+- Deterministic rejection sampling: Generate (x,y), check against used_coords set (rounded to 6 decimals)
+- If collision detected, retry with new attempt counter (up to MAX_ATTEMPTS=100)
+- If attempts exhausted, apply deterministic micro-jitter based on hash(seed, system_id, "coord_jitter")
+- Jitter applied at 1e-6 scale, then re-checked for uniqueness
+- Ensures no two systems share the same coordinate key (round(x,6), round(y,6))
 
 ### 4.2 Starlane Graph Construction
 
-**Proposal: MST + k-NN Deterministic Graph**
+**IMPLEMENTED: MST + k-NN Deterministic Graph**
 
 **Algorithm:**
 1. Build Minimum Spanning Tree (MST) for connectivity
-   - Use Prim's algorithm with deterministic edge ordering
+   - Use Kruskal's algorithm with union-find data structure
    - Edge weights = Euclidean distance from (x,y) coordinates
-   - Tie-break: sort by (system_id_1, system_id_2) lexicographically
+   - Sort edges by (distance, a_id, b_id) where a_id < b_id (deterministic tie-break)
    - Result: Connected graph with N-1 edges
 
-2. Add k-Nearest Neighbors (k=3) for extra connectivity
-   - For each system, find k nearest neighbors by distance
+2. Add k-Nearest Neighbors (k=2) for extra connectivity
+   - For each system, find k nearest neighbors by distance (excluding self and existing neighbors)
    - Add edge if not already in MST
-   - Tie-break: same deterministic ordering as MST
-   - Result: Additional edges (typically 2-3 per system, some duplicates)
+   - Sort candidates by (distance, neighbor_id) for deterministic selection
+   - Ensure undirected symmetry (if A->B added, also add B->A)
+   - Result: Additional edges (typically 2 per system, some duplicates)
 
 3. Store neighbors deterministically
    - For each system, collect all neighbors (MST + k-NN edges)
@@ -312,14 +310,14 @@ Option B: No enforcement (current behavior)
 
 **Example for N=5:**
 - MST: 4 edges (connects all 5 systems)
-- k-NN (k=3): Adds ~6-10 additional edges (some duplicates)
-- Result: Each system has 2-4 neighbors (vs current 1-2)
+- k-NN (k=2): Adds ~4-6 additional edges (some duplicates)
+- Result: Each system has 2-4 neighbors (vs previous 1-2 in linear chain)
 
 **Example for N=150:**
 - MST: 149 edges
-- k-NN (k=3): Adds ~300-450 additional edges (many duplicates)
-- Result: Each system has ~3-6 neighbors on average
-- Graph diameter: ~10-15 hops (vs current 149 hops for linear chain)
+- k-NN (k=2): Adds ~300 additional edges (many duplicates)
+- Result: Each system has ~3-5 neighbors on average
+- Graph diameter: ~10-15 hops (vs previous 149 hops for linear chain)
 
 **Implementation Notes:**
 - Use `_seeded_rng(world_seed, "starlane_graph", system_id)` for any RNG needed
@@ -400,47 +398,58 @@ Option B: No enforcement (current behavior)
 
 ### 4.4 CLI Map Display
 
-**Proposal: ASCII Grid Map Renderer**
+**IMPLEMENTED: ASCII Grid Map Renderer**
 
-**Function:** `_render_galaxy_map(engine: GameEngine) -> str`
+**Function:** `_render_galaxy_map(sector, width=80, height=30) -> None`
 
 **Algorithm:**
 1. Determine grid size (default: 80 columns x 30 rows)
-2. Map float (x,y) coordinates to integer grid cells:
+2. Sort systems by system_id to assign stable indices (01, 02, ..., 150)
+3. Map float (x,y) coordinates to integer grid cells:
    - Find min_x, max_x, min_y, max_y across all systems
-   - Scale to grid: `grid_x = int((x - min_x) / (max_x - min_x) * (width - 1))`
-   - Same for y
-3. Handle collisions (multiple systems in one cell):
+   - Add padding if range is too small
+   - Scale to grid: `col = int((x - min_x) / x_range * (width - 1))`
+   - Flip y for display: `row = int((1.0 - (y - min_y) / y_range) * (height - 1))`
+4. Handle collisions (multiple systems in one cell):
    - If collision: mark cell with "*"
-   - Store collision list: `collisions[cell] = [system_id1, system_id2, ...]`
-4. Label systems:
+   - Store collision list: `collisions[(row, col)] = [(index, system_id, name), ...]`
+5. Label systems:
    - For non-collision cells: label with 2-3 digit index (01, 02, ..., 150)
-   - Index = system order in `sorted(engine.sector.systems, key=lambda s: s.system_id)`
-5. Print map:
+   - Index = 1-based position in sorted system list
+6. Print map:
    - Grid with labels
-   - Below grid: collision list (if any)
-   - Legend: system_id -> name mapping (optional, for clarity)
+   - Legend: index -> system_id -> name -> (x, y) coordinates
+   - Below legend: collision list (if any)
 
 **Deterministic Collision Handling:**
 - Sort systems by system_id before assigning to grid
-- If collision, show "*" and list all colliding system_ids below map
+- If collision, show "*" and list all colliding systems in legend
 - Order collisions by system_id (deterministic)
 
 **Integration Points:**
-- Print once at game start (after `GameEngine` init in `main()`)
-- Optional: Print on "System Info" command (add map option to `_show_system_info()`)
+- IMPLEMENTED: Print once at game start (after `GameEngine` init in `main()`)
+- IMPLEMENTED: Print on "System Info" command (in `_show_system_info()`)
 
 **Example Output:**
 ```
-GALAXY MAP (80x30)
+GALAXY MAP
+================================================================================
     01    02    03
        04    05
   *       06    07
     08    09    10
 ...
+================================================================================
 
-Collisions:
-  Cell (40,15): SYS-042, SYS-043, SYS-044
+LEGEND:
+  01 SYS-001 Ion (x=12.345, y=67.890)
+  02 SYS-002 Beacon (x=23.456, y=78.901)
+  ...
+
+COLLISIONS (multiple systems in same cell):
+  Cell (40, 15):
+    042 SYS-042 SystemName (x=..., y=...)
+    043 SYS-043 SystemName (x=..., y=...)
 ```
 
 ### 4.5 Persistence Implications
@@ -483,22 +492,22 @@ Collisions:
 - Call in `main()` before `GameEngine` init
 - Pass to `GameEngine(config={"system_count": system_count})`
 
-### Step 2: Implement Radius Scaling
+### Step 2: Implement Radius Scaling (COMPLETED)
 - File: `src/world_generator.py`
-- Replace `GALAXY_RADIUS = 100.0` with `_compute_galaxy_radius(system_count: int) -> float`
+- Replaced `GALAXY_RADIUS = 100.0` with `_galaxy_radius()` method
 - Function: `radius = 10.0 * math.sqrt(system_count)`
-- Update `_assign_spatial_coordinates()` to use computed radius
-- Test: Verify radius scales correctly for N=50, 100, 150
+- Updated `_assign_spatial_coordinates()` to use computed radius
+- Test: Verified radius scales correctly for N=50, 100, 150
 
-### Step 3: Implement Deterministic Starlane Graph
+### Step 3: Implement Deterministic Starlane Graph (COMPLETED)
 - File: `src/world_generator.py`
-- Add `_build_starlane_graph(systems: List[System], world_seed: int) -> List[System]`
-- Implement MST (Prim's algorithm) with deterministic tie-breaks
-- Implement k-NN (k=3) with deterministic tie-breaks
-- Replace linear chain assignment (lines 156-173) with graph builder
-- Test: Verify graph is connected, deterministic, immutable
+- Added `_build_starlane_graph(systems: List[System]) -> List[System]` method
+- Implemented MST (Kruskal's algorithm with union-find) with deterministic tie-breaks
+- Implemented k-NN (k=2) with deterministic tie-breaks
+- Replaced linear chain assignment with graph builder
+- Test: Verified graph is connected, deterministic, immutable
 
-### Step 4: Add Names Data File
+### Step 4: Add Names Data File (COMPLETED - from previous phase)
 - File: `data/names.json` (create new)
 - Add >= 200 system names, >= 400 planet names, >= 400 station names (ASCII only)
 - File: `src/world_generator.py`

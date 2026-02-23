@@ -71,8 +71,6 @@ class Sector(Galaxy):
 
 
 class WorldGenerator:
-    GALAXY_RADIUS = 100.0
-
     def __init__(
         self,
         seed: int,
@@ -86,6 +84,10 @@ class WorldGenerator:
         self._government_ids = government_ids or []
         self._catalog = catalog or load_data_catalog()
         self._logger = logger
+
+    def _galaxy_radius(self) -> float:
+        """Compute galaxy radius deterministically: R = 10.0 * sqrt(system_count)"""
+        return 10.0 * math.sqrt(float(self._system_count))
 
     def generate(self) -> Galaxy:
         rng = random.Random(self._seed)
@@ -144,26 +146,12 @@ class WorldGenerator:
                 )
             )
 
-        for index, system in enumerate(systems):
-            neighbors: List[str] = []
-            if index > 0:
-                neighbors.append(systems[index - 1].system_id)
-            if index < len(systems) - 1:
-                neighbors.append(systems[index + 1].system_id)
-            systems[index] = System(
-                system_id=system.system_id,
-                name=system.name,
-                position=system.position,
-                population=system.population,
-                government_id=system.government_id,
-                destinations=system.destinations,
-                attributes=system.attributes,
-                neighbors=neighbors,
-                x=system.x,
-                y=system.y,
-            )
-
+        # Assign spatial coordinates first (needed for graph construction)
         systems = self._assign_spatial_coordinates(systems)
+        
+        # Build starlane graph (MST + k-NN)
+        systems = self._build_starlane_graph(systems)
+        
         return Galaxy(systems=systems)
 
     def _choose_government_id(self, rng: random.Random) -> str:
@@ -194,16 +182,66 @@ class WorldGenerator:
         return chosen
 
     def _assign_spatial_coordinates(self, systems: List[System]) -> List[System]:
+        """Assign unique spatial coordinates to all systems with deterministic uniqueness enforcement."""
+        radius = self._galaxy_radius()
         by_id = {system.system_id: system for system in systems}
         updated: Dict[str, System] = {}
+        used_coords: set[tuple[float, float]] = set()
+        MAX_ATTEMPTS = 100
+        EPS = 1e-6
+        
         for system_id in sorted(by_id):
             system = by_id[system_id]
-            x, y = _deterministic_system_coordinates(
-                world_seed=self._seed,
-                system_id=system_id,
-                stream_name="world_spatial_coordinates",
-                radius=float(self.GALAXY_RADIUS),
-            )
+            x, y = None, None
+            attempts = 0
+            
+            # Try to generate a unique coordinate
+            while attempts < MAX_ATTEMPTS:
+                candidate_x, candidate_y = _deterministic_system_coordinates(
+                    world_seed=self._seed,
+                    system_id=system_id,
+                    stream_name="sys_coords",
+                    radius=radius,
+                    attempt=attempts,
+                )
+                coord_key = (round(candidate_x, 6), round(candidate_y, 6))
+                
+                # Check for strict uniqueness
+                if coord_key not in used_coords:
+                    x, y = candidate_x, candidate_y
+                    used_coords.add(coord_key)
+                    break
+                attempts += 1
+            
+            # If attempts exhausted, apply deterministic micro-jitter
+            if x is None or y is None:
+                base_x, base_y = _deterministic_system_coordinates(
+                    world_seed=self._seed,
+                    system_id=system_id,
+                    stream_name="sys_coords",
+                    radius=radius,
+                    attempt=0,
+                )
+                # Apply deterministic jitter based on hash
+                jitter_seed = f"{self._seed}|{system_id}|coord_jitter"
+                jitter_hash = hashlib.sha256(jitter_seed.encode("ascii")).hexdigest()
+                jitter_rng = random.Random(int(jitter_hash[:16], 16))
+                jitter_x = (jitter_rng.random() - 0.5) * EPS
+                jitter_y = (jitter_rng.random() - 0.5) * EPS
+                x = base_x + jitter_x
+                y = base_y + jitter_y
+                coord_key = (round(x, 6), round(y, 6))
+                
+                # Ensure jittered coordinate is unique
+                while coord_key in used_coords:
+                    jitter_x += EPS * 0.1
+                    jitter_y += EPS * 0.1
+                    x = base_x + jitter_x
+                    y = base_y + jitter_y
+                    coord_key = (round(x, 6), round(y, 6))
+                
+                used_coords.add(coord_key)
+            
             updated[system_id] = System(
                 system_id=system.system_id,
                 name=system.name,
@@ -217,6 +255,108 @@ class WorldGenerator:
                 y=float(y),
             )
         return [updated[system.system_id] for system in systems]
+
+    def _build_starlane_graph(self, systems: List[System]) -> List[System]:
+        """Build deterministic starlane graph using MST + k-NN (k=2)."""
+        if len(systems) <= 1:
+            # Single system or empty: no neighbors needed
+            return systems
+        
+        # Build edge list: all pairs (i < j) with distance
+        edges: List[tuple[float, str, str]] = []  # (distance, a_id, b_id) where a_id < b_id
+        system_by_id = {s.system_id: s for s in systems}
+        
+        system_ids = sorted([s.system_id for s in systems])
+        for i, a_id in enumerate(system_ids):
+            a = system_by_id[a_id]
+            for b_id in system_ids[i + 1:]:
+                b = system_by_id[b_id]
+                dx = b.x - a.x
+                dy = b.y - a.y
+                distance = math.sqrt(dx * dx + dy * dy)
+                edges.append((distance, a_id, b_id))
+        
+        # Sort edges by (distance, a_id, b_id) for deterministic tie-break
+        edges.sort(key=lambda e: (e[0], e[1], e[2]))
+        
+        # Build MST using Kruskal's algorithm with union-find
+        parent: Dict[str, str] = {sid: sid for sid in system_ids}
+        
+        def find(x: str) -> str:
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+        
+        def union(x: str, y: str) -> bool:
+            px, py = find(x), find(y)
+            if px == py:
+                return False
+            # Deterministic tie-break: always use lexicographically smaller as parent
+            if px < py:
+                parent[py] = px
+            else:
+                parent[px] = py
+            return True
+        
+        mst_edges: set[tuple[str, str]] = set()
+        for distance, a_id, b_id in edges:
+            if union(a_id, b_id):
+                # Add edge in both directions for undirected graph
+                mst_edges.add((a_id, b_id))
+                mst_edges.add((b_id, a_id))
+        
+        # Build neighbor lists from MST
+        neighbors_by_id: Dict[str, set[str]] = {sid: set() for sid in system_ids}
+        for a_id, b_id in mst_edges:
+            neighbors_by_id[a_id].add(b_id)
+        
+        # Add k-NN edges (k=2 additional edges per node)
+        k = 2
+        for a_id in system_ids:
+            a = system_by_id[a_id]
+            # Find nearest neighbors sorted by (distance, neighbor_id)
+            candidates: List[tuple[float, str]] = []
+            for b_id in system_ids:
+                if b_id == a_id:
+                    continue
+                if b_id in neighbors_by_id[a_id]:
+                    continue  # Already connected
+                b = system_by_id[b_id]
+                dx = b.x - a.x
+                dy = b.y - a.y
+                distance = math.sqrt(dx * dx + dy * dy)
+                candidates.append((distance, b_id))
+            
+            # Sort by (distance, neighbor_id) for deterministic selection
+            candidates.sort(key=lambda c: (c[0], c[1]))
+            
+            # Add up to k nearest non-existing edges
+            added = 0
+            for distance, b_id in candidates:
+                if added >= k:
+                    break
+                neighbors_by_id[a_id].add(b_id)
+                neighbors_by_id[b_id].add(a_id)  # Undirected symmetry
+                added += 1
+        
+        # Update systems with sorted neighbor lists
+        updated: List[System] = []
+        for system in systems:
+            neighbor_list = sorted(list(neighbors_by_id[system.system_id]))
+            updated.append(System(
+                system_id=system.system_id,
+                name=system.name,
+                position=system.position,
+                population=system.population,
+                government_id=system.government_id,
+                destinations=system.destinations,
+                attributes=system.attributes,
+                neighbors=neighbor_list,
+                x=system.x,
+                y=system.y,
+            ))
+        
+        return updated
 
 
 def _load_location_availability() -> Dict[str, dict]:
@@ -702,8 +842,9 @@ def _deterministic_system_coordinates(
     system_id: str,
     stream_name: str,
     radius: float,
+    attempt: int = 0,
 ) -> tuple[float, float]:
-    seed_token = f"{world_seed}|{system_id}|{stream_name}"
+    seed_token = f"{world_seed}|{system_id}|{stream_name}|{attempt}"
     digest = hashlib.sha256(seed_token.encode("ascii")).hexdigest()
     rng = random.Random(int(digest[:16], 16))
     angle = rng.random() * (2.0 * math.pi)

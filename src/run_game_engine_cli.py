@@ -238,6 +238,9 @@ def _show_system_info(engine: GameEngine) -> None:
             f"    {row.get('system_id')} {row.get('name')} "
             f"distance_ly={row.get('distance_ly'):.3f} in_range={row.get('in_range')}"
         )
+    # Display galaxy map
+    print()
+    _render_galaxy_map(engine.sector)
 
 
 def _show_destination_info(engine: GameEngine) -> None:
@@ -1031,6 +1034,8 @@ def main() -> None:
     print(f"Logging to {log_path}")
     _configure_cli_test_fuel(engine)
     print(json.dumps({"event": "engine_init", "seed": seed}, sort_keys=True))
+    # Display galaxy map at game start
+    _render_galaxy_map(engine.sector)
     while True:
         destination = _current_destination_object(engine)
         destination_name = str(getattr(destination, "display_name", "Unknown Destination"))
@@ -1077,6 +1082,111 @@ def _reachable_systems(*, engine: GameEngine, current_system, fuel_limit: int) -
                 }
             )
     return rows
+
+
+def _render_galaxy_map(sector, width: int = 80, height: int = 30) -> None:
+    """Render ASCII grid map of galaxy systems."""
+    if not sector.systems:
+        print("No systems to display.")
+        return
+    
+    # Sort systems by system_id to assign stable indices
+    sorted_systems = sorted(sector.systems, key=lambda s: s.system_id)
+    
+    # Find coordinate bounds
+    min_x = min(s.x for s in sorted_systems)
+    max_x = max(s.x for s in sorted_systems)
+    min_y = min(s.y for s in sorted_systems)
+    max_y = max(s.y for s in sorted_systems)
+    
+    # Add small padding to avoid edge issues
+    x_range = max_x - min_x
+    y_range = max_y - min_y
+    if x_range < 1e-6:
+        x_range = 1.0
+        min_x -= 0.5
+        max_x += 0.5
+    if y_range < 1e-6:
+        y_range = 1.0
+        min_y -= 0.5
+        max_y += 0.5
+    
+    # Create grid
+    grid: List[List[str | None]] = [[None for _ in range(width)] for _ in range(height)]
+    collisions: List[tuple[int, int, List[tuple[int, str, str]]]] = []  # (row, col, [(index, system_id, name)])
+    
+    # Map systems to grid cells
+    for index, system in enumerate(sorted_systems, start=1):
+        # Normalize coordinates to [0, 1]
+        norm_x = (system.x - min_x) / x_range
+        norm_y = (system.y - min_y) / y_range
+        
+        # Map to grid coordinates (flip y for display: top is max_y)
+        col = int(norm_x * (width - 1))
+        row = int((1.0 - norm_y) * (height - 1))
+        
+        # Clamp to grid bounds
+        col = max(0, min(width - 1, col))
+        row = max(0, min(height - 1, row))
+        
+        # Format label (2-3 digits)
+        if index <= 99:
+            label = f"{index:02d}"
+        else:
+            label = f"{index:03d}"
+        
+        # Handle collisions
+        if grid[row][col] is not None:
+            # Find or create collision entry
+            collision_entry = None
+            for i, (r, c, systems_list) in enumerate(collisions):
+                if r == row and c == col:
+                    collision_entry = i
+                    break
+            if collision_entry is None:
+                # First collision at this cell - mark existing system
+                existing_label = grid[row][col]
+                existing_index = int(existing_label) if existing_label and existing_label.isdigit() else 0
+                if existing_index > 0:
+                    existing_sys = sorted_systems[existing_index - 1]
+                    collisions.append((row, col, [(existing_index, existing_sys.system_id, existing_sys.name)]))
+                    collision_entry = len(collisions) - 1
+                else:
+                    collisions.append((row, col, []))
+                    collision_entry = len(collisions) - 1
+            collisions[collision_entry][2].append((index, system.system_id, system.name))
+            grid[row][col] = "*"
+        else:
+            grid[row][col] = label
+    
+    # Print grid
+    print("\nGALAXY MAP")
+    print("=" * width)
+    for row in grid:
+        line = ""
+        for cell in row:
+            if cell is None:
+                line += " "
+            else:
+                line += str(cell)
+        print(line)
+    print("=" * width)
+    
+    # Print legend
+    print("\nLEGEND:")
+    for index, system in enumerate(sorted_systems, start=1):
+        label = f"{index:02d}" if index <= 99 else f"{index:03d}"
+        print(f"  {label} {system.system_id} {system.name} (x={system.x:.3f}, y={system.y:.3f})")
+    
+    # Print collisions if any
+    if collisions:
+        print("\nCOLLISIONS (multiple systems in same cell):")
+        for row, col, systems_list in collisions:
+            print(f"  Cell ({row}, {col}):")
+            for idx, sys_id, sys_name in systems_list:
+                label = f"{idx:02d}" if idx <= 99 else f"{idx:03d}"
+                print(f"    {label} {sys_id} {sys_name}")
+    print()
 
 
 def _print_current_system_destinations(engine: GameEngine) -> None:
