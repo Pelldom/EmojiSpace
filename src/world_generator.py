@@ -651,6 +651,17 @@ def _generate_destinations(
         )
         destinations.append(destination)
 
+    # Post-process population assignment: ensure at least one populated destination
+    # has population equal to system.population
+    destinations = _ensure_max_population_destination(
+        seed=seed,
+        system_id=system_id,
+        system_population=system_population,
+        destinations=destinations,
+        catalog=catalog,
+        logger=logger,
+    )
+    
     destinations = _assign_locations_and_markets(
         seed=seed,
         system_id=system_id,
@@ -911,6 +922,163 @@ def _destination_population(
         return max(system_population, 1)
     rng = _seeded_rng(seed, "destination_population", system_id, destination_id)
     return rng.randint(1, system_population)
+
+
+def _ensure_max_population_destination(
+    *,
+    seed: int,
+    system_id: str,
+    system_population: int,
+    destinations: List[Destination],
+    catalog: DataCatalog,
+    logger: Logger | None,
+) -> List[Destination]:
+    """Ensure at least one populated destination has population equal to system.population.
+    
+    After initial population assignment, this function:
+    1. Identifies all populated destinations (excludes stubs)
+    2. Checks if any already has max population
+    3. If not, deterministically selects one and sets it to max population
+    4. For remaining populated destinations, reassigns uniform random population (1 to system_population)
+    
+    For destinations whose population changes, economy and market are recreated using
+    the same RNG stream seeds (deterministic) but with the new population value.
+    """
+    if system_population <= 1:
+        # For pop 1, all populated destinations already have pop 1
+        return destinations
+    
+    # Identify populated destinations (exclude stubs)
+    populated_destinations = [
+        d for d in destinations
+        if d.population >= 1 and d.destination_type not in {"explorable_stub", "mining_stub", "asteroid_field", "contact"}
+    ]
+    
+    if not populated_destinations:
+        # No populated destinations, nothing to adjust
+        return destinations
+    
+    # Check if any destination already has max population
+    has_max_pop = any(d.population == system_population for d in populated_destinations)
+    
+    # Determine which destination gets max population
+    if has_max_pop:
+        # One already has max, keep it
+        max_pop_dest = next(d for d in populated_destinations if d.population == system_population)
+    else:
+        # Select one deterministically to have max population
+        selection_rng = _seeded_rng(seed, "max_population_selection", system_id)
+        # Sort by destination_id for deterministic selection
+        sorted_populated = sorted(populated_destinations, key=lambda d: d.destination_id)
+        max_pop_dest = selection_rng.choice(sorted_populated)
+    
+    # Update all destinations
+    updated_destinations = []
+    for dest in destinations:
+        if dest.destination_id == max_pop_dest.destination_id:
+            # This destination gets max population
+            if dest.population != system_population:
+                # Need to update population and recreate economy/market
+                assignment_rng = _seeded_rng(seed, "economies", system_id, dest.destination_id)
+                market_creator = MarketCreator(catalog, assignment_rng, logger)
+                economy_assignment = market_creator.assign_economies(system_population)
+                primary_economy_id = economy_assignment.primary
+                secondary_economy_ids = list(economy_assignment.secondary)
+                
+                from interaction_resolvers import destination_has_shipdock_service
+                temp_dest = Destination(
+                    destination_id=dest.destination_id,
+                    system_id=dest.system_id,
+                    destination_type=dest.destination_type,
+                    display_name=dest.display_name,
+                    population=system_population,
+                    primary_economy_id=primary_economy_id,
+                    secondary_economy_ids=secondary_economy_ids,
+                    locations=[],
+                    market=None,
+                )
+                has_shipdock = destination_has_shipdock_service(temp_dest)
+                market = market_creator.create_market(
+                    destination_id=dest.destination_id,
+                    population_level=system_population,
+                    primary_economy=primary_economy_id,
+                    secondary_economies=secondary_economy_ids,
+                    world_seed=seed,
+                    has_shipdock=has_shipdock,
+                )
+                
+                updated_dest = Destination(
+                    destination_id=dest.destination_id,
+                    system_id=dest.system_id,
+                    destination_type=dest.destination_type,
+                    display_name=dest.display_name,
+                    population=system_population,
+                    primary_economy_id=primary_economy_id,
+                    secondary_economy_ids=secondary_economy_ids,
+                    locations=dest.locations,
+                    market=market,
+                    tags=dest.tags,
+                )
+                updated_destinations.append(updated_dest)
+            else:
+                # Already has max population, keep as-is
+                updated_destinations.append(dest)
+        elif dest in populated_destinations:
+            # Other populated destination - reassign uniform population
+            uniform_rng = _seeded_rng(seed, "destination_population_uniform", system_id, dest.destination_id)
+            new_population = uniform_rng.randint(1, system_population)
+            
+            if new_population != dest.population:
+                # Population changed, recreate economy and market
+                assignment_rng = _seeded_rng(seed, "economies", system_id, dest.destination_id)
+                market_creator = MarketCreator(catalog, assignment_rng, logger)
+                economy_assignment = market_creator.assign_economies(new_population)
+                primary_economy_id = economy_assignment.primary
+                secondary_economy_ids = list(economy_assignment.secondary)
+                
+                from interaction_resolvers import destination_has_shipdock_service
+                temp_dest = Destination(
+                    destination_id=dest.destination_id,
+                    system_id=dest.system_id,
+                    destination_type=dest.destination_type,
+                    display_name=dest.display_name,
+                    population=new_population,
+                    primary_economy_id=primary_economy_id,
+                    secondary_economy_ids=secondary_economy_ids,
+                    locations=[],
+                    market=None,
+                )
+                has_shipdock = destination_has_shipdock_service(temp_dest)
+                market = market_creator.create_market(
+                    destination_id=dest.destination_id,
+                    population_level=new_population,
+                    primary_economy=primary_economy_id,
+                    secondary_economies=secondary_economy_ids,
+                    world_seed=seed,
+                    has_shipdock=has_shipdock,
+                )
+                
+                updated_dest = Destination(
+                    destination_id=dest.destination_id,
+                    system_id=dest.system_id,
+                    destination_type=dest.destination_type,
+                    display_name=dest.display_name,
+                    population=new_population,
+                    primary_economy_id=primary_economy_id,
+                    secondary_economy_ids=secondary_economy_ids,
+                    locations=dest.locations,
+                    market=market,
+                    tags=dest.tags,
+                )
+                updated_destinations.append(updated_dest)
+            else:
+                # Population didn't change, keep as-is
+                updated_destinations.append(dest)
+        else:
+            # Not a populated destination (stub), keep as-is
+            updated_destinations.append(dest)
+    
+    return updated_destinations
 
 
 def _seeded_rng(seed: int, *parts: str) -> random.Random:
