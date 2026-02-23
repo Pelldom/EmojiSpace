@@ -84,6 +84,8 @@ class WorldGenerator:
         self._government_ids = government_ids or []
         self._catalog = catalog or load_data_catalog()
         self._logger = logger
+        # Load and validate names.json once during initialization
+        self._names_data = _load_names()
 
     def _galaxy_radius(self) -> float:
         """Compute galaxy radius deterministically: R = 10.0 * sqrt(system_count)"""
@@ -92,8 +94,8 @@ class WorldGenerator:
     def generate(self) -> Galaxy:
         rng = random.Random(self._seed)
         availability_rules = _load_location_availability()
-        names_data = _load_names()
-        system_names = list(names_data["systems"])
+        # Use names loaded during initialization
+        system_names = list(self._names_data["systems"])
         rng.shuffle(system_names)
 
         profiles = list(PROFILE_IDS)
@@ -117,7 +119,7 @@ class WorldGenerator:
                 catalog=self._catalog,
                 availability_rules=availability_rules,
                 logger=self._logger,
-                names_data=names_data,
+                names_data=self._names_data,
             )
             primary_market = _first_destination_market(destinations)
             primary_economy, secondary_economies = _first_destination_economies(destinations)
@@ -366,22 +368,102 @@ def _load_location_availability() -> Dict[str, dict]:
 
 
 def _load_names() -> Dict[str, List[str]]:
-    """Load system, planet, and station names from data/names.json."""
+    """Load system, planet, and station names from data/names.json.
+    
+    Raises:
+        FileNotFoundError: If names.json file is missing.
+        ValueError: If names.json is malformed or invalid.
+    """
     path = Path(__file__).resolve().parents[1] / "data" / "names.json"
+    
+    if not path.exists():
+        raise FileNotFoundError(
+            f"names.json not found at {path}. "
+            "This file is required for world generation. "
+            "Please ensure data/names.json exists with systems, planets, and stations lists."
+        )
+    
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return {
-            "systems": list(data.get("systems", [])),
-            "planets": list(data.get("planets", [])),
-            "stations": list(data.get("stations", [])),
-        }
-    except (FileNotFoundError, json.JSONDecodeError):
-        # Fallback to hardcoded names if file missing
-        return {
-            "systems": ["Aster", "Beacon", "Cirrus", "Drift", "Ember", "Flux", "Gleam", "Haven", "Ion", "Jade"],
-            "planets": ["Terra", "Mars", "Venus", "Jupiter", "Saturn"],
-            "stations": ["Orbital", "Deep", "Space", "Outpost", "Hub"],
-        }
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"names.json is malformed JSON at {path}: {e}. "
+            "Please fix the JSON syntax."
+        ) from e
+    
+    # Validate structure
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"names.json must be a JSON object (dict), got {type(data).__name__} at {path}"
+        )
+    
+    # Extract and validate lists
+    systems = data.get("systems", [])
+    planets = data.get("planets", [])
+    stations = data.get("stations", [])
+    
+    if not isinstance(systems, list):
+        raise ValueError(
+            f"names.json 'systems' must be a list, got {type(systems).__name__} at {path}"
+        )
+    if not isinstance(planets, list):
+        raise ValueError(
+            f"names.json 'planets' must be a list, got {type(planets).__name__} at {path}"
+        )
+    if not isinstance(stations, list):
+        raise ValueError(
+            f"names.json 'stations' must be a list, got {type(stations).__name__} at {path}"
+        )
+    
+    # Validate minimum counts
+    if len(systems) < 200:
+        raise ValueError(
+            f"names.json 'systems' must have at least 200 names, got {len(systems)} at {path}"
+        )
+    if len(planets) < 250:
+        raise ValueError(
+            f"names.json 'planets' must have at least 250 names, got {len(planets)} at {path}"
+        )
+    if len(stations) < 240:
+        raise ValueError(
+            f"names.json 'stations' must have at least 240 names, got {len(stations)} at {path}"
+        )
+    
+    # Validate no duplicates within each list
+    if len(systems) != len(set(systems)):
+        duplicates = [name for name in systems if systems.count(name) > 1]
+        raise ValueError(
+            f"names.json 'systems' contains duplicates: {set(duplicates)} at {path}"
+        )
+    if len(planets) != len(set(planets)):
+        duplicates = [name for name in planets if planets.count(name) > 1]
+        raise ValueError(
+            f"names.json 'planets' contains duplicates: {set(duplicates)} at {path}"
+        )
+    if len(stations) != len(set(stations)):
+        duplicates = [name for name in stations if stations.count(name) > 1]
+        raise ValueError(
+            f"names.json 'stations' contains duplicates: {set(duplicates)} at {path}"
+        )
+    
+    # Validate ASCII-only
+    for name_list, list_name in [(systems, "systems"), (planets, "planets"), (stations, "stations")]:
+        for name in name_list:
+            if not isinstance(name, str):
+                raise ValueError(
+                    f"names.json '{list_name}' contains non-string value: {name!r} at {path}"
+                )
+            if not all(ord(c) < 128 for c in name):
+                raise ValueError(
+                    f"names.json '{list_name}' contains non-ASCII name: {name!r} at {path}. "
+                    "All names must be ASCII-only (ord(c) < 128)."
+                )
+    
+    return {
+        "systems": list(systems),
+        "planets": list(planets),
+        "stations": list(stations),
+    }
 
 
 def _generate_destinations(

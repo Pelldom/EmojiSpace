@@ -2,7 +2,7 @@ EMOJISPACE PLAYTEST TRANSCRIPT
 seed=12345
 turns_requested=5
 bias=B
-version=0.11.1
+version=0.11.2
 
 Step 1
 Command: {"days": 1, "type": "wait"}

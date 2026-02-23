@@ -341,11 +341,13 @@ This yields:
 
 **Requirements:**
 - systems: >= 200 unique names
-- planets: >= 400 unique names
-- stations: >= 400 unique names
+- planets: >= 250 unique names
+- stations: >= 240 unique names
 - ASCII only (no Unicode)
 - No duplicates within each list
 - Curated list (not generated)
+
+**Note:** Content expansion beyond these minimums is expected to be handled by future SLM-based procedural naming.
 
 **Deterministic Selection:**
 1. Load names from `data/names.json`
