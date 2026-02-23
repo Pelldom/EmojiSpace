@@ -206,3 +206,21 @@ This is documentation only.
   - Large: 150 systems
   - Custom: User-specified count (with validation)
 - Design notes: Should be part of Game Setup / Settings system. Selection should be stored in save game/config. Default currently set to 50 systems for production testing.
+
+## Interactive Galaxy Map (UI Phase)
+- Feature: Interactive galaxy map with emoji-based visual representation
+- Current: ASCII grid map in CLI (debug visibility only)
+- Future: Full UI layer implementation with:
+  - **System Selection Behavior:**
+    - Visited systems: show full details (name, government, economies, discovered destinations)
+    - Unvisited systems: name only (no data leakage)
+  - **Map Emoji Markers:**
+    - Stars (standard system representation)
+    - Wormholes (once implemented)
+    - Black holes (once implemented)
+    - Special anomalies (future)
+    - Player location indicator
+  - **Emoji Registry:** Centralized in data/emoji.json (presentation-layer only, no game logic)
+  - **Fog of War Rules:** Unvisited systems show minimal info; discovered systems reveal structural metadata only
+  - **Future Extension Hooks:** Dynamic event overlays (Phase 6 situations) may appear as temporary map indicators
+- Design notes: Map is presentation-layer only. No new game logic. Emoji selection centralized. Icons are visual indicators only.

@@ -61,6 +61,8 @@ All expansion must originate here.
 | Phase 5 - Crew and Social Systems (COMPLETED) | 0.9.10 | Crew and Social Systems |
 | Phase 6 - World State, Situations, and Events Execution (COMPLETED) | 0.10.1 | World State, Situations, and Events Execution |
 | Phase 7.5 | 0.10.2 | Game Engine Unification (Authoritative Orchestration Layer) |
+| Phase 7.9 (LOCKED) | 0.11.x | World Generation Unification |
+| Phase 7.10 (IN PROGRESS) | 0.12.x | Combat System Unification |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -369,7 +371,7 @@ NPC Entity, Registry, Placement, and deterministic guarantees implemented. NPCs 
 
 ---
 
-## Phase 3.1 - Time Engine (COMPLETED)
+## Phase 3.1 - Time Engine (COMPLETED & LOCKED)
 
 **Target:** 0.4.x
 
@@ -386,6 +388,9 @@ Establish the authoritative time system with explicit turn progression and daily
 ### Benchmark to Advance
 - Time advances only via explicit player actions
 - Daily tick order is deterministic and logged
+
+### Completion Status (LOCKED)
+Time Engine is complete and locked. Contract-defined deterministic time progression is authoritative. Situation durations are deterministic and expire properly. Events expire properly. Modifier cleanup confirmed. All time-based systems validated and functioning as designed.
 
 ---
 
@@ -673,17 +678,18 @@ Completion Summary:
 - Integrates with Time Engine via daily evaluation
 - Maintains strict authority boundaries (Government, Pricing, Population, Travel, Ship Systems)
 
-### Completion Summary
+### Completion Summary (LOCKED)
 - Deterministic spawn-gate with 70/30 type split and weighted severity tiers
-- Spawn cooldown model (5-day lockout, scheduled bypass)
-- Structural mutation rate limiter (1 per system per 10 days)
+- Spawn cooldown model (5-day lockout, scheduled bypass) - **CONFIRMED**
+- Structural mutation rate limiter (1 per system per 10 days) - **CONFIRMED**
 - Structural executor (destroyed tag, population delta, government swap)
-- Tag-only structural mutation (no deletion)
-- Contract-correct propagation (situation-only, deterministic neighbor selection)
+- Tag-only structural mutation (no deletion) - **No system deletions confirmed**
+- Contract-correct propagation (situation-only, deterministic neighbor selection) - **CONFIRMED**
 - Scheduled event handling with deterministic deferral
 - Ownership boundaries enforced (Government, NPC, Pricing separation)
 - Long-horizon deterministic audit (300-day simulation test)
 - All tests passing
+
 Phase 6 - Slice 1 Core WorldStateEngine (COMPLETED)
 Phase 6 - Slice 2 Random Situation Spawn (COMPLETED)
 Patch: unified spawn gate implements 70/30 Situation vs Event outcome split per contract.
@@ -700,6 +706,9 @@ Phase 6 - Slice 11 Crew Domain Consumption (COMPLETED)
 Phase 6 - Slice 12 Travel Domain Consumption (COMPLETED)
 Phase 6 - Slice 13 Encounter Domain Consumption (COMPLETED)
 Phase 6 - Structural Mutation Drain Hook (COMPLETED)
+
+### Lock Status
+World State Engine and Time Engine are LOCKED. All contract requirements validated. Situation durations deterministic and expire properly. Events expire properly. Modifier cleanup confirmed. Structural mutation rate limiter (10 days) confirmed. Spawn gate cooldown (5 days) confirmed. Deterministic propagation confirmed. No system deletions — destruction is tag-based only.
 
 ### Objective
 Expand simulation continuity through persistent event pressure, mission progression, and narrative consequence layering.
@@ -841,6 +850,66 @@ Add a deterministic extended simulation harness and test platform that exercises
 - No gameplay logic changes.
 - No RNG model changes.
 - No enforcement or market formula changes.
+
+---
+
+## Phase 7.9 - World Generation Unification (LOCKED)
+
+**Target:** 0.11.x
+
+### Objective
+Unify world generation systems with deterministic scaling, coordinate uniqueness, starlane graph construction, and destination population structural anchors.
+
+### Completed Components (LOCKED)
+- **Default galaxy size:** 50 systems (production default)
+- **Radius scaling:** R = 10.0 * sqrt(system_count) - deterministic and validated
+- **Unique coordinates:** Enforced via deterministic rejection sampling and micro-jitter fallback
+- **Starlane graph:** MST + k-NN (k=2) construction, immutable after worldgen
+- **Deterministic RNG streams:** All random choices derived from world_seed + stable salts, preserved across all changes
+- **Destination population structural anchor:** At least one destination per system matches system population; remaining destinations use equal-weight uniform distribution (1 to system_population)
+- **Primary + Secondary economies:** Functioning correctly, market blending confirmed
+- **Situation modifiers:** Applied to markets correctly, contract-aligned
+- **Structural mutation logic:** Validated (population, government, destruction tags)
+- **Curated naming:** data/names.json with systems (200+), planets (250+), stations (240+)
+- **Destination typing:** planets (2-4), stations (1-2), explorable_stub (0-2), mining_stub (0-2) per system
+- **CLI improvements:** Galaxy summary, travel header enhancements, destination context block
+
+### Contract Alignment
+- All world generation contract requirements met
+- World State contract alignment confirmed (starlane graph immutability, awareness radius usage)
+- Economy system functioning as designed
+- Full contract audit passed (see `design/world_generation_contract_audit.md`)
+
+### Lock Status
+World Generation is LOCKED. All contract requirements validated. Determinism preserved. No regressions detected. Economy system functioning correctly.
+
+---
+
+## Phase 7.10 - Combat System Unification (IN PROGRESS)
+
+**Target:** 0.12.x
+
+### Objective
+Unify and consolidate combat system components into a single authoritative combat resolution layer within GameEngine.
+
+### Includes
+- Combat resolver integration with GameEngine
+- Deterministic combat outcome resolution
+- Combat event logging and state tracking
+- Integration with ship assembler outputs
+- Combat reward materialization
+
+### Excludes
+- No new combat mechanics
+- No changes to existing combat math
+- No UI framework work
+
+### Benchmark to Advance
+- Combat outcomes are deterministic and reproducible
+- All combat tests pass
+- Combat integration with GameEngine validated
+
+---
 
 ## Phase 8 - Monetization and Play Store Deployment
 

@@ -121,19 +121,39 @@ observe the sector → identify opportunity or risk → act → systems react �
 
 World structure
 
-The game world is a sector-scale map composed of systems and planets.
+The game world is a procedurally generated sector-scale map composed of systems and destinations.
 
-Each planet/system is defined by:
+**World Generation (Locked):**
+- Default galaxy size: 50 systems (configurable for production)
+- Galaxy radius scales deterministically: R = 10.0 * sqrt(system_count)
+- Unique spatial coordinates enforced for all systems
+- Deterministic starlane graph (MST + k-NN) connects systems
+- At least one destination per system matches system population
+- Remaining destinations use uniform population distribution
+- Primary and secondary economies assigned per destination
+- Market blending and situation modifiers functioning correctly
+
+Each system is defined by:
 
 government type
 
-cultural tendencies
+population level (1-5)
 
-resource profile
+spatial coordinates (x, y)
 
-legality matrix
+starlane connections (neighbors)
 
-current situations
+Each destination within a system is defined by:
+
+destination type (planet, station, explorable_stub, mining_stub)
+
+population (0-5, must be <= system population)
+
+primary economy
+
+secondary economies (0-3 based on population)
+
+current situations (system-scoped or destination-scoped)
 
 These factors directly affect:
 
@@ -144,6 +164,8 @@ NPC behavior and professions present
 legality of player actions
 
 contracts and story triggers
+
+location availability
 
 Scope boundaries for a first playable version
 
