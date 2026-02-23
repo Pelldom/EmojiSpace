@@ -196,3 +196,13 @@ This is documentation only.
 - Current: Curated name lists in data/names.json
 - Future: Generate names procedurally using SLM, potentially with thematic consistency
 - Design notes: SLM naming should be deterministic from world_seed. May require name caching or pre-generation. Consider performance implications.
+
+## Phase 7.9 - Galaxy Size Selection (Future)
+- Feature: Galaxy size selection (Small/Normal/Large/Custom) as Game Setup / Settings configuration option
+- Current: Default set to 50 systems for production testing
+- Future: Add interactive prompt at game creation for galaxy size selection
+  - Small: 50 systems
+  - Normal: 100 systems
+  - Large: 150 systems
+  - Custom: User-specified count (with validation)
+- Design notes: Should be part of Game Setup / Settings system. Selection should be stored in save game/config. Default currently set to 50 systems for production testing.

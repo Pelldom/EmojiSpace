@@ -289,7 +289,13 @@ def _travel_menu(engine: GameEngine) -> None:
     current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
 
     while True:
+        # Get current destination info
+        current_destination = engine._current_destination()
+        current_destination_id = engine.player_state.current_destination_id
+        current_destination_name = current_destination.display_name if current_destination else "Unknown"
+        
         print(f"Current system: {current_system.system_id} ({current_system.name})")
+        print(f"Current destination: {current_destination_id or 'None'} ({current_destination_name})")
         print("1) Inter-system warp")
         print("2) Intra-system destination travel")
         print("3) Back")
@@ -1034,7 +1040,7 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
 
 def main() -> None:
     seed = _prompt_seed()
-    engine = GameEngine(world_seed=seed)
+    engine = GameEngine(world_seed=seed, config={"system_count": 50})
     log_path = str((Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{seed}.log"))
     _ = engine.execute({"type": "set_logging", "enabled": True, "log_path": log_path, "truncate": True})
     print(f"Logging to {log_path}")
@@ -1050,7 +1056,8 @@ def main() -> None:
         print("3) Travel")
         print("4) Destination Actions")
         print("5) Locations")
-        print("6) Quit")
+        print("6) Galaxy Summary")
+        print("7) Quit")
         choice = input("Select: ").strip()
         if choice == "1":
             _show_player_info(engine)
@@ -1063,6 +1070,8 @@ def main() -> None:
         elif choice == "5":
             _location_entry_menu(engine)
         elif choice == "6":
+            _galaxy_summary(engine)
+        elif choice == "7":
             print(json.dumps(engine.execute({"type": "quit"}), sort_keys=True))
             break
         else:
@@ -1267,13 +1276,74 @@ def _print_destination_context(engine: GameEngine) -> None:
                 economy_str += f" ({', '.join(secondary_economies)})"
             print(f"Economy: {economy_str}")
         
-        situations = ctx.get('active_situations', [])
-        if situations:
-            print(f"Situations: {', '.join(situations)}")
+        # Separate system and destination situations
+        system_id = ctx.get('system_id', '')
+        destination_id = engine.player_state.current_destination_id
+        
+        # Get situation rows and separate by scope
+        situation_rows = engine._active_situation_rows_for_system(system_id=system_id) if system_id else []
+        system_situations = []
+        destination_situations = []
+        
+        for row in situation_rows:
+            situation_id = row.get('situation_id')
+            scope = row.get('scope')
+            target_id = row.get('target_id')
+            
+            if isinstance(situation_id, str) and situation_id:
+                if scope == 'system':
+                    system_situations.append(situation_id)
+                elif scope == 'destination' and target_id == destination_id:
+                    destination_situations.append(situation_id)
+        
+        system_situations = sorted(set(system_situations))
+        destination_situations = sorted(set(destination_situations))
+        
+        if system_situations:
+            print(f"System situations: {', '.join(system_situations)}")
         else:
-            print("Situations: None")
+            print("System situations: None")
+        
+        if destination_situations:
+            print(f"Destination situations: {', '.join(destination_situations)}")
+        else:
+            print("Destination situations: None")
     
     print("-" * 40)
+
+
+def _galaxy_summary(engine: GameEngine) -> None:
+    """Print galaxy summary for debug visibility."""
+    sector = engine.sector
+    systems = sorted(sector.systems, key=lambda s: s.system_id)
+    
+    print("\n" + "=" * 60)
+    print("GALAXY SUMMARY")
+    print("=" * 60)
+    print(f"Total systems: {len(systems)}\n")
+    
+    for system in systems:
+        government = engine.government_registry.get_government(system.government_id)
+        government_name = government.name if government else system.government_id
+        
+        print(f"System: {system.system_id} - {system.name}")
+        print(f"  Government: {government_name}")
+        print(f"  Population: {system.population}")
+        print(f"  Destinations:")
+        
+        destinations = sorted(system.destinations, key=lambda d: d.destination_id)
+        for dest in destinations:
+            secondary_str = ", ".join(dest.secondary_economy_ids) if dest.secondary_economy_ids else "-"
+            primary_str = dest.primary_economy_id if dest.primary_economy_id else "None"
+            
+            print(f"    {dest.destination_id} - {dest.display_name}")
+            print(f"      Type: {dest.destination_type}")
+            print(f"      Population: {dest.population}")
+            print(f"      Primary Economy: {primary_str}")
+            print(f"      Secondary Economies: {secondary_str}")
+        print()
+    
+    print("=" * 60 + "\n")
 
 
 def _destination_actions_menu(engine: GameEngine) -> None:
