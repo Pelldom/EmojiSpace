@@ -1043,9 +1043,8 @@ def main() -> None:
     # Display galaxy map at game start
     _render_galaxy_map(engine.sector)
     while True:
-        destination = _current_destination_object(engine)
-        destination_name = str(getattr(destination, "display_name", "Unknown Destination"))
-        print(f"DESTINATION: {destination_name} ({engine.player_state.current_system_id})")
+        # Display destination context block
+        _print_destination_context(engine)
         print("1) Player / Ship Info")
         print("2) System Info")
         print("3) Travel")
@@ -1239,36 +1238,40 @@ def _return_to_destination(engine: GameEngine) -> None:
 
 def _print_destination_context(engine: GameEngine) -> None:
     """Print standardized destination context block."""
-    context = engine.get_current_destination_context()
+    ctx = engine.get_current_destination_context()
+    
+    system_visited = ctx.get('system_government', '') != '' or ctx.get('primary_economy') is not None
     
     print("-" * 40)
-    print(f"Destination: {context.get('destination_name', 'Unknown')} ({context.get('destination_type', 'unknown')})")
-    print(f"System: {context.get('system_name', 'Unknown')}", end="")
+    print(f"Destination: {ctx.get('destination_name', 'Unknown')} ({ctx.get('destination_type', 'unknown')})")
+    print(f"System: {ctx.get('system_name', 'Unknown')}", end="")
     
-    system_government = context.get('system_government', '')
+    system_government = ctx.get('system_government', '')
     if system_government:
         print(f" ({system_government})")
     else:
         print()
     
-    population = context.get('population', 0)
-    if population > 0:
-        print(f"Population: {population}")
-    
-    primary_economy = context.get('primary_economy')
-    secondary_economies = context.get('secondary_economies', [])
-    
-    if primary_economy:
-        economy_str = primary_economy
-        if secondary_economies:
-            economy_str += f" ({', '.join(secondary_economies)})"
-        print(f"Economy: {economy_str}")
-    
-    situations = context.get('active_situations', [])
-    if situations:
-        print(f"Situations: {', '.join(situations)}")
-    else:
-        print("Situations: None")
+    # Only show sensitive data if system is visited
+    if system_visited:
+        population = ctx.get('population', 0)
+        if population > 0:
+            print(f"Population: {population}")
+        
+        primary_economy = ctx.get('primary_economy')
+        secondary_economies = ctx.get('secondary_economies', [])
+        
+        if primary_economy:
+            economy_str = primary_economy
+            if secondary_economies:
+                economy_str += f" ({', '.join(secondary_economies)})"
+            print(f"Economy: {economy_str}")
+        
+        situations = ctx.get('active_situations', [])
+        if situations:
+            print(f"Situations: {', '.join(situations)}")
+        else:
+            print("Situations: None")
     
     print("-" * 40)
 
