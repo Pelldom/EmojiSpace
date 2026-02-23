@@ -42,7 +42,6 @@ class ShipEntity:
     name: str = ""
     emoji: str | None = None
     system_id: str = ""
-    location_id: str | None = None
     roles: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     affiliations: List[str] = field(default_factory=list)
@@ -65,7 +64,7 @@ class ShipEntity:
     storage_context: str = "station"
     current_system_id: str = ""
     current_destination_id: str | None = None
-    current_location_id: str | None = None
+    destination_id: str | None = None
 
     # Cargo capacities
     crew_capacity: int = 0
@@ -108,7 +107,6 @@ class ShipEntity:
             "name": self.name,
             "emoji": self.emoji,
             "system_id": self.system_id,
-            "location_id": self.location_id,
             "roles": list(self.roles),
             "tags": list(self.tags),
             "affiliations": list(self.affiliations),
@@ -125,7 +123,7 @@ class ShipEntity:
             "storage_context": _enum_to_str(self.storage_context),
             "current_system_id": self.current_system_id,
             "current_destination_id": self.current_destination_id,
-            "current_location_id": self.current_location_id,
+            "destination_id": self.destination_id,
             "crew_capacity": self.crew_capacity,
             "physical_cargo_capacity": self.physical_cargo_capacity,
             "data_cargo_capacity": self.data_cargo_capacity,
@@ -199,9 +197,9 @@ class ShipEntity:
         self.current_destination_id = value
         _log_state_change(logger, turn, "current_destination_id", value)
 
-    def set_current_location_id(self, value: str | None, logger=None, turn: int = 0) -> None:
-        self.current_location_id = value
-        _log_state_change(logger, turn, "current_location_id", value)
+    def set_destination_id(self, value: str | None, logger=None, turn: int = 0) -> None:
+        self.destination_id = value
+        _log_state_change(logger, turn, "destination_id", value)
 
     def set_current_fuel(self, value: int, logger=None, turn: int = 0) -> None:
         self.current_fuel = value

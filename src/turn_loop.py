@@ -337,6 +337,7 @@ class TurnLoop:
             action=action,
             world_seed=self._world_seed,
             system_id=system_id,
+            destination_id=str(getattr(self._player_state, "current_destination_id", "") or ""),
             scarcity_modifier=scarcity,
             logger=self._logger,
             turn=turn,

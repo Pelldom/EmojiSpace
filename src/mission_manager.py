@@ -30,21 +30,78 @@ class MissionManager:
         turn: int = 0,
         location_type: str | None = None,
         ship: Any | None = None,
-    ) -> bool:
+    ) -> tuple[bool, str | None]:
+        """Accept a mission with tier-based and global cap validation.
+        
+        Returns:
+            Tuple of (accepted: bool, error_reason: str | None)
+            error_reason will be "mission_accept_failed_total_cap" or 
+            "mission_accept_failed_tier_cap" if rejected.
+        """
         mission = self.missions.get(mission_id)
         if mission is None:
-            return False
-        mission_slots = _effective_mission_slots(player=player, location_type=location_type, ship=ship)
-        if len(player.active_missions) >= mission_slots:
-            _log_manager(logger, turn, "accept_failed_slots", mission_id)
-            return False
+            return False, "mission_not_found"
+        
+        # DIAGNOSTIC: Log mission_manager instance ID during accept
+        if logger is not None:
+            _log_manager(logger, turn, "accept_instance_check", mission_id, detail=f"mission_manager_id={id(self)}")
+        
+        # Tier-based inverse caps
+        TIER_CAPS = {
+            1: 5,
+            2: 4,
+            3: 3,
+            4: 2,
+            5: 1,
+        }
+        GLOBAL_CAP = 5
+        
+        # Collect ALL ACTIVE missions across entire galaxy (not just player.active_missions)
+        # Count ALL missions in manager with state == ACTIVE (galaxy-wide, not filtered by location/system)
+        active_missions: list[MissionEntity] = []
+        for m in self.missions.values():
+            if m.mission_state == MissionState.ACTIVE:
+                active_missions.append(m)
+        
+        # Diagnostic logging
+        total_active_before = len(active_missions)
+        tier_counts_before: dict[int, int] = {}
+        for active_mission in active_missions:
+            tier = int(active_mission.mission_tier)
+            tier_counts_before[tier] = tier_counts_before.get(tier, 0) + 1
+        
+        mission_tier = int(mission.mission_tier)
+        tier_cap = TIER_CAPS.get(mission_tier, 1)  # Default to 1 if tier not in mapping
+        active_count_for_tier_before = tier_counts_before.get(mission_tier, 0)
+        
+        if logger is not None:
+            _log_manager(
+                logger, turn, "accept_validation", mission_id,
+                detail=(
+                    f"total_active_before={total_active_before} "
+                    f"tier_active_before={active_count_for_tier_before} "
+                    f"tier_cap={tier_cap} global_cap={GLOBAL_CAP}"
+                )
+            )
+        
+        # Check global cap
+        if total_active_before >= GLOBAL_CAP:
+            _log_manager(logger, turn, "accept_failed_total_cap", mission_id)
+            return False, "mission_accept_failed_total_cap"
+        
+        # Check tier cap for the mission being accepted
+        if active_count_for_tier_before >= tier_cap:
+            _log_manager(logger, turn, "accept_failed_tier_cap", mission_id)
+            return False, "mission_accept_failed_tier_cap"
+        
+        # Validation passed - proceed with acceptance
         mission.mission_state = MissionState.ACTIVE
         if mission_id in self.offered:
             self.offered.remove(mission_id)
         if mission_id not in player.active_missions:
             player.active_missions.append(mission_id)
         _log_manager(logger, turn, "accept", mission_id)
-        return True
+        return True, None
 
     def complete(self, mission_id: str, player: PlayerState, logger=None, turn: int = 0) -> None:
         mission = self.missions.get(mission_id)

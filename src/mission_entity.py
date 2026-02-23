@@ -46,7 +46,7 @@ class MissionEntity:
     mission_type: str = ""
     mission_tier: int = 1
     persistence_scope: str = "ephemeral"
-    mission_state: str = "offered"
+    mission_state: MissionState = MissionState.OFFERED
 
     # Outcome tracking
     outcome: str | None = None
@@ -62,6 +62,7 @@ class MissionEntity:
     player_ship_id: str | None = None
     related_sku_ids: List[str] = field(default_factory=list)
     related_event_ids: List[str] = field(default_factory=list)
+    mission_contact_seed: str | None = None
 
     # Objective and progress tracking
     objectives: List[str] = field(default_factory=list)
@@ -78,6 +79,27 @@ class MissionEntity:
         state = cls()
         for key, value in payload.items():
             if hasattr(state, key):
+                # Normalize mission_state to enum if it's a string
+                if key == "mission_state" and isinstance(value, str):
+                    try:
+                        # Try direct value match first
+                        value = MissionState(value)
+                    except ValueError:
+                        # Try uppercase name match
+                        try:
+                            value = MissionState[value.upper()]
+                        except (KeyError, AttributeError):
+                            # Fallback to OFFERED if invalid
+                            value = MissionState.OFFERED
+                # Normalize outcome to enum if it's a string
+                elif key == "outcome" and isinstance(value, str) and value:
+                    try:
+                        value = MissionOutcome(value)
+                    except ValueError:
+                        try:
+                            value = MissionOutcome[value.upper()]
+                        except (KeyError, AttributeError):
+                            value = None
                 setattr(state, key, value)
         return state
 
@@ -116,6 +138,7 @@ class MissionEntity:
             "progress": dict(self.progress),
             "rewards": list(self.rewards),
             "assigned_player_id": self.assigned_player_id,
+            "mission_contact_seed": self.mission_contact_seed,
         }
 
 

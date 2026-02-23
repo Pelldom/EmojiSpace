@@ -1,0 +1,3 @@
+[v0.11.1][turn 0] action=engine_init change=mission_manager_id=2550514816032
+[v0.11.1][turn 0] action=engine:initialization change={"detail": {"starting_destination_marked_visited": true, "starting_system_marked_visited": true}, "stage": "initialization", "subsystem": "engine"}
+[v0.11.1][turn 0] action=engine:logging change={"command_type": "set_logging", "detail": {"enabled": true, "log_path": "D:\\GitHub\\EmojiSpace\\logs\\gameplay_seed_12345.log", "truncate": true}, "stage": "logging", "subsystem": "engine", "turn": 0, "world_seed": 12345}

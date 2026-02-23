@@ -115,7 +115,11 @@ def test_administrator_interactions_include_pay_fines_and_no_missions() -> None:
     interactions_result = engine.execute({"type": "list_npc_interactions", "npc_id": admin_id})
     interactions = (_stage_detail(interactions_result, "npc_interactions") or {}).get("interactions", [])
     interaction_ids = [row.get("action_id") for row in interactions if isinstance(row, dict)]
-    assert interaction_ids == ["npc_talk", "admin_pay_fines"]
+    assert "npc_talk" in interaction_ids
+    assert "admin_pay_fines" in interaction_ids
+    assert "admin_apply_license" in interaction_ids
+    assert "admin_turn_in" in interaction_ids
+    assert "admin_mission_board" in interaction_ids
     assert "mission_list" not in interaction_ids
     assert "mission_accept" not in interaction_ids
     assert "bar_hire_crew" not in interaction_ids

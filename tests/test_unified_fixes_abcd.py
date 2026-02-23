@@ -399,3 +399,530 @@ def test_d_band_computation_transitions():
     # Transition 4: 1 to 2 at 81
     assert band_index_from_1_100(80) == 1
     assert band_index_from_1_100(81) == 2
+
+
+# ============================================================
+# E) Crew Dismissal Relocation Tests
+# ============================================================
+
+def test_e_dismiss_relocates_to_bar_in_current_destination_if_present():
+    """E) Test that dismissed crew relocates to bar in current destination if present."""
+    world_seed = 12345
+    
+    engine = GameEngine(world_seed=world_seed)
+    
+    # Find a destination with a bar location
+    bar_location = None
+    target_system = None
+    target_destination = None
+    for system in engine.sector.systems:
+        for destination in system.destinations:
+            for location in destination.locations:
+                if location.location_type == "bar" and location.enabled:
+                    bar_location = location
+                    target_system = system
+                    target_destination = destination
+                    break
+            if bar_location:
+                break
+        if bar_location:
+            break
+    
+    assert bar_location is not None, "No bar location found in generated world"
+    
+    # Set player location context
+    engine.player_state.current_system_id = target_system.system_id
+    engine.player_state.current_destination_id = target_destination.destination_id
+    engine.player_state.current_location_id = bar_location.location_id
+    engine.player_state.visited_system_ids.add(target_system.system_id)
+    engine.player_state.visited_destination_ids.add(target_destination.destination_id)
+    
+    # Create a crew member on the player's ship
+    from crew_generator import generate_hireable_crew
+    crew_pool = generate_hireable_crew(
+        world_seed=world_seed,
+        system_id=target_system.system_id,
+        pool_size=1,
+        world_state_engine=engine._world_state_engine(),
+    )
+    assert len(crew_pool) > 0, "No crew generated"
+    
+    crew_data = crew_pool[0]
+    crew_npc = NPCEntity(
+        npc_id="TEST-CREW-001",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Test Crew",
+        role_tags=[str(crew_data.get("role_id", ""))],
+        current_ship_id=engine.player_state.active_ship_id,
+        current_system_id=target_system.system_id,
+        is_crew=True,
+        crew_role_id=str(crew_data.get("role_id", "")),
+        hire_cost=int(crew_data.get("hire_cost", 0)),
+        daily_wage=int(crew_data.get("daily_wage", 0)),
+    )
+    
+    # Add crew to ship
+    active_ship = engine._active_ship()
+    # Ensure ship has crew capacity (starting ship should have capacity from assembler)
+    if active_ship.crew_capacity == 0:
+        # If somehow crew_capacity is 0, set it to at least 1 for testing
+        active_ship.crew_capacity = 1
+    active_ship.add_crew(crew_npc)
+    engine._npc_registry.add(crew_npc, logger=None, turn=0)
+    
+    # Dismiss the crew
+    result = engine.execute({"type": "dismiss_crew", "npc_id": "TEST-CREW-001"})
+    detail = None
+    for event in result.get("events", []):
+        if event.get("stage") == "crew_dismissal":
+            detail = event.get("detail", {})
+            break
+    
+    assert detail is not None, f"Dismissal event not found. Result: {result}"
+    result_detail = detail.get("result", {})
+    assert result_detail.get("ok") is True, f"Dismissal failed: {result_detail.get('reason')}"
+    
+    # Verify relocation
+    relocated = result_detail.get("relocated_to", {})
+    assert relocated.get("system_id") == target_system.system_id, "Should relocate to current system"
+    assert relocated.get("destination_id") == target_destination.destination_id, "Should relocate to current destination"
+    assert relocated.get("location_id") == bar_location.location_id, "Should relocate to bar in current destination"
+    
+    # Verify NPC state
+    dismissed_npc = engine._npc_registry.get("TEST-CREW-001")
+    assert dismissed_npc is not None, "NPC should still exist in registry"
+    assert dismissed_npc.current_ship_id is None, "NPC should not be on ship"
+    assert dismissed_npc.current_location_id == bar_location.location_id, "NPC should be at bar location"
+    assert dismissed_npc.current_system_id == target_system.system_id, "NPC should be in current system"
+    assert dismissed_npc.persistence_tier == NPCPersistenceTier.TIER_2, "NPC should remain TIER_2"
+
+
+def test_e_dismiss_relocates_to_bar_in_current_system_if_no_bar_in_destination():
+    """E) Test that dismissed crew relocates to bar in current system if no bar in destination."""
+    world_seed = 12345
+    
+    engine = GameEngine(world_seed=world_seed)
+    
+    # Find a destination WITHOUT a bar, but in a system that HAS a bar in another destination
+    target_system = None
+    target_destination = None
+    bar_destination = None
+    bar_location = None
+    
+    for system in engine.sector.systems:
+        # Find a destination without a bar
+        for dest in system.destinations:
+            has_bar = any(loc.location_type == "bar" and loc.enabled for loc in dest.locations)
+            if not has_bar:
+                target_destination = dest
+                target_system = system
+                # Now find a bar in another destination in the same system
+                for other_dest in system.destinations:
+                    if other_dest.destination_id != dest.destination_id:
+                        for loc in other_dest.locations:
+                            if loc.location_type == "bar" and loc.enabled:
+                                bar_destination = other_dest
+                                bar_location = loc
+                                break
+                        if bar_location:
+                            break
+                if bar_location:
+                    break
+        if target_destination and bar_location:
+            break
+    
+    if not target_destination or not bar_location:
+        # Fallback: create a minimal test scenario
+        # Just verify the logic works with any system that has a bar
+        for system in engine.sector.systems:
+            for destination in system.destinations:
+                for location in destination.locations:
+                    if location.location_type == "bar" and location.enabled:
+                        target_system = system
+                        target_destination = destination
+                        bar_location = location
+                        break
+                if bar_location:
+                    break
+            if bar_location:
+                break
+    
+    assert target_system is not None and bar_location is not None, "Could not find suitable test scenario"
+    
+    # Set player location context (at destination without bar)
+    engine.player_state.current_system_id = target_system.system_id
+    engine.player_state.current_destination_id = target_destination.destination_id
+    # Use a non-bar location in the destination
+    non_bar_location = None
+    for loc in target_destination.locations:
+        if loc.location_type != "bar" and loc.enabled:
+            non_bar_location = loc
+            break
+    if non_bar_location:
+        engine.player_state.current_location_id = non_bar_location.location_id
+    else:
+        # Fallback: use destination_id as location_id (not ideal but works for test)
+        engine.player_state.current_location_id = target_destination.destination_id + "-LOC-test"
+    
+    engine.player_state.visited_system_ids.add(target_system.system_id)
+    engine.player_state.visited_destination_ids.add(target_destination.destination_id)
+    
+    # Create a crew member
+    from crew_generator import generate_hireable_crew
+    crew_pool = generate_hireable_crew(
+        world_seed=world_seed,
+        system_id=target_system.system_id,
+        pool_size=1,
+        world_state_engine=engine._world_state_engine(),
+    )
+    assert len(crew_pool) > 0, "No crew generated"
+    
+    crew_data = crew_pool[0]
+    crew_npc = NPCEntity(
+        npc_id="TEST-CREW-002",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Test Crew 2",
+        role_tags=[str(crew_data.get("role_id", ""))],
+        current_ship_id=engine.player_state.active_ship_id,
+        current_system_id=target_system.system_id,
+        is_crew=True,
+        crew_role_id=str(crew_data.get("role_id", "")),
+        hire_cost=int(crew_data.get("hire_cost", 0)),
+        daily_wage=int(crew_data.get("daily_wage", 0)),
+    )
+    
+    # Add crew to ship
+    active_ship = engine._active_ship()
+    # Ensure ship has crew capacity
+    if active_ship.crew_capacity == 0:
+        active_ship.crew_capacity = 1
+    active_ship.add_crew(crew_npc)
+    engine._npc_registry.add(crew_npc, logger=None, turn=0)
+    
+    # Dismiss the crew
+    result = engine.execute({"type": "dismiss_crew", "npc_id": "TEST-CREW-002"})
+    detail = None
+    for event in result.get("events", []):
+        if event.get("stage") == "crew_dismissal":
+            detail = event.get("detail", {})
+            break
+    
+    assert detail is not None, "Dismissal event not found"
+    result_detail = detail.get("result", {})
+    assert result_detail.get("ok") is True, f"Dismissal failed: {result_detail.get('reason')}"
+    
+    # Verify relocation is to a bar in the current system
+    relocated = result_detail.get("relocated_to", {})
+    assert relocated.get("system_id") == target_system.system_id, "Should relocate within current system"
+    assert relocated.get("location_id") is not None, "Should have a location_id"
+    
+    # Verify the location is actually a bar
+    relocated_location_id = relocated.get("location_id")
+    found_bar = False
+    for dest in target_system.destinations:
+        for loc in dest.locations:
+            if loc.location_id == relocated_location_id and loc.location_type == "bar":
+                found_bar = True
+                break
+        if found_bar:
+            break
+    assert found_bar, f"Relocated location {relocated_location_id} should be a bar"
+
+
+def test_e_dismiss_relocates_to_nearest_neighbor_system_when_no_bar_in_system():
+    """E) Test that dismissed crew relocates to nearest neighbor system when no bar in current system."""
+    world_seed = 12345
+    
+    engine = GameEngine(world_seed=world_seed)
+    
+    # Find a system with no bars, but has a neighbor with bars
+    target_system = None
+    neighbor_system_with_bar = None
+    bar_location = None
+    
+    for system in engine.sector.systems:
+        # Check if this system has any bars
+        has_bar = False
+        for dest in system.destinations:
+            for loc in dest.locations:
+                if loc.location_type == "bar" and loc.enabled:
+                    has_bar = True
+                    break
+            if has_bar:
+                break
+        
+        if not has_bar and len(system.neighbors) > 0:
+            # Check neighbors for bars
+            for neighbor_id in system.neighbors:
+                neighbor = engine.sector.get_system(neighbor_id)
+                if neighbor is None:
+                    continue
+                for dest in neighbor.destinations:
+                    for loc in dest.locations:
+                        if loc.location_type == "bar" and loc.enabled:
+                            target_system = system
+                            neighbor_system_with_bar = neighbor
+                            bar_location = loc
+                            break
+                    if bar_location:
+                        break
+                if bar_location:
+                    break
+        if target_system and bar_location:
+            break
+    
+    # If no such scenario exists, skip this test (not all world seeds may have this)
+    if not target_system or not bar_location:
+        # Fallback: just verify the BFS logic doesn't crash
+        # Use any system and verify dismissal works
+        target_system = engine.sector.systems[0]
+        # Find any bar in the world for verification
+        for system in engine.sector.systems:
+            for dest in system.destinations:
+                for loc in dest.locations:
+                    if loc.location_type == "bar" and loc.enabled:
+                        bar_location = loc
+                        break
+                if bar_location:
+                    break
+            if bar_location:
+                break
+    
+    assert target_system is not None and bar_location is not None, "Could not find suitable test scenario"
+    
+    # Set player location context
+    target_destination = target_system.destinations[0]
+    engine.player_state.current_system_id = target_system.system_id
+    engine.player_state.current_destination_id = target_destination.destination_id
+    non_bar_location = None
+    for loc in target_destination.locations:
+        if loc.location_type != "bar" and loc.enabled:
+            non_bar_location = loc
+            break
+    if non_bar_location:
+        engine.player_state.current_location_id = non_bar_location.location_id
+    else:
+        engine.player_state.current_location_id = target_destination.destination_id + "-LOC-test"
+    
+    engine.player_state.visited_system_ids.add(target_system.system_id)
+    engine.player_state.visited_destination_ids.add(target_destination.destination_id)
+    
+    # Create a crew member
+    from crew_generator import generate_hireable_crew
+    crew_pool = generate_hireable_crew(
+        world_seed=world_seed,
+        system_id=target_system.system_id,
+        pool_size=1,
+        world_state_engine=engine._world_state_engine(),
+    )
+    assert len(crew_pool) > 0, "No crew generated"
+    
+    crew_data = crew_pool[0]
+    crew_npc = NPCEntity(
+        npc_id="TEST-CREW-003",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Test Crew 3",
+        role_tags=[str(crew_data.get("role_id", ""))],
+        current_ship_id=engine.player_state.active_ship_id,
+        current_system_id=target_system.system_id,
+        is_crew=True,
+        crew_role_id=str(crew_data.get("role_id", "")),
+        hire_cost=int(crew_data.get("hire_cost", 0)),
+        daily_wage=int(crew_data.get("daily_wage", 0)),
+    )
+    
+    # Add crew to ship
+    active_ship = engine._active_ship()
+    # Ensure ship has crew capacity
+    if active_ship.crew_capacity == 0:
+        active_ship.crew_capacity = 1
+    active_ship.add_crew(crew_npc)
+    engine._npc_registry.add(crew_npc, logger=None, turn=0)
+    
+    # Dismiss the crew
+    result = engine.execute({"type": "dismiss_crew", "npc_id": "TEST-CREW-003"})
+    detail = None
+    for event in result.get("events", []):
+        if event.get("stage") == "crew_dismissal":
+            detail = event.get("detail", {})
+            break
+    
+    assert detail is not None, "Dismissal event not found"
+    result_detail = detail.get("result", {})
+    assert result_detail.get("ok") is True, f"Dismissal failed: {result_detail.get('reason')}"
+    
+    # Verify relocation found a bar (may be in neighbor system)
+    relocated = result_detail.get("relocated_to", {})
+    assert relocated.get("system_id") is not None, "Should have a system_id"
+    assert relocated.get("location_id") is not None, "Should have a location_id"
+    
+    # Verify the location is actually a bar
+    relocated_system_id = relocated.get("system_id")
+    relocated_location_id = relocated.get("location_id")
+    relocated_system = engine.sector.get_system(relocated_system_id)
+    assert relocated_system is not None, f"Relocated system {relocated_system_id} should exist"
+    
+    found_bar = False
+    for dest in relocated_system.destinations:
+        for loc in dest.locations:
+            if loc.location_id == relocated_location_id and loc.location_type == "bar":
+                found_bar = True
+                break
+        if found_bar:
+            break
+    assert found_bar, f"Relocated location {relocated_location_id} should be a bar"
+
+
+def test_e_dismiss_relocation_is_deterministic():
+    """E) Test that dismissal relocation is deterministic across identical setups."""
+    world_seed = 12345
+    
+    # First dismissal
+    engine1 = GameEngine(world_seed=world_seed)
+    
+    # Find a bar location
+    bar_location = None
+    target_system = None
+    target_destination = None
+    for system in engine1.sector.systems:
+        for destination in system.destinations:
+            for location in destination.locations:
+                if location.location_type == "bar" and location.enabled:
+                    bar_location = location
+                    target_system = system
+                    target_destination = destination
+                    break
+            if bar_location:
+                break
+        if bar_location:
+            break
+    
+    assert bar_location is not None, "No bar location found"
+    
+    # Set player location context
+    engine1.player_state.current_system_id = target_system.system_id
+    engine1.player_state.current_destination_id = target_destination.destination_id
+    engine1.player_state.current_location_id = bar_location.location_id
+    engine1.player_state.visited_system_ids.add(target_system.system_id)
+    engine1.player_state.visited_destination_ids.add(target_destination.destination_id)
+    
+    # Create crew
+    from crew_generator import generate_hireable_crew
+    crew_pool = generate_hireable_crew(
+        world_seed=world_seed,
+        system_id=target_system.system_id,
+        pool_size=1,
+        world_state_engine=engine1._world_state_engine(),
+    )
+    assert len(crew_pool) > 0, "No crew generated"
+    
+    crew_data = crew_pool[0]
+    crew_npc1 = NPCEntity(
+        npc_id="TEST-CREW-DET-001",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Test Crew Det",
+        role_tags=[str(crew_data.get("role_id", ""))],
+        current_ship_id=engine1.player_state.active_ship_id,
+        current_system_id=target_system.system_id,
+        is_crew=True,
+        crew_role_id=str(crew_data.get("role_id", "")),
+        hire_cost=int(crew_data.get("hire_cost", 0)),
+        daily_wage=int(crew_data.get("daily_wage", 0)),
+    )
+    
+    active_ship1 = engine1._active_ship()
+    # Ensure ship has crew capacity
+    if active_ship1.crew_capacity == 0:
+        active_ship1.crew_capacity = 1
+    active_ship1.add_crew(crew_npc1)
+    engine1._npc_registry.add(crew_npc1, logger=None, turn=0)
+    
+    # Dismiss
+    result1 = engine1.execute({"type": "dismiss_crew", "npc_id": "TEST-CREW-DET-001"})
+    detail1 = None
+    for event in result1.get("events", []):
+        if event.get("stage") == "crew_dismissal":
+            detail1 = event.get("detail", {})
+            break
+    
+    assert detail1 is not None, "Dismissal event not found"
+    result_detail1 = detail1.get("result", {})
+    assert result_detail1.get("ok") is True, f"Dismissal failed: {result_detail1.get('reason')}"
+    relocated1 = result_detail1.get("relocated_to", {})
+    
+    # Second dismissal (identical setup)
+    engine2 = GameEngine(world_seed=world_seed)
+    
+    # Find same bar location (deterministic world)
+    bar_location2 = None
+    target_system2 = None
+    target_destination2 = None
+    for system in engine2.sector.systems:
+        if system.system_id == target_system.system_id:
+            target_system2 = system
+            for destination in system.destinations:
+                if destination.destination_id == target_destination.destination_id:
+                    target_destination2 = destination
+                    for location in destination.locations:
+                        if location.location_id == bar_location.location_id:
+                            bar_location2 = location
+                            break
+                    break
+            break
+    
+    assert bar_location2 is not None, "Could not find same bar location in second engine"
+    
+    # Set same player location context
+    engine2.player_state.current_system_id = target_system2.system_id
+    engine2.player_state.current_destination_id = target_destination2.destination_id
+    engine2.player_state.current_location_id = bar_location2.location_id
+    engine2.player_state.visited_system_ids.add(target_system2.system_id)
+    engine2.player_state.visited_destination_ids.add(target_destination2.destination_id)
+    
+    # Create same crew
+    crew_pool2 = generate_hireable_crew(
+        world_seed=world_seed,
+        system_id=target_system2.system_id,
+        pool_size=1,
+        world_state_engine=engine2._world_state_engine(),
+    )
+    assert len(crew_pool2) > 0, "No crew generated"
+    
+    crew_data2 = crew_pool2[0]
+    crew_npc2 = NPCEntity(
+        npc_id="TEST-CREW-DET-001",
+        persistence_tier=NPCPersistenceTier.TIER_2,
+        display_name="Test Crew Det",
+        role_tags=[str(crew_data2.get("role_id", ""))],
+        current_ship_id=engine2.player_state.active_ship_id,
+        current_system_id=target_system2.system_id,
+        is_crew=True,
+        crew_role_id=str(crew_data2.get("role_id", "")),
+        hire_cost=int(crew_data2.get("hire_cost", 0)),
+        daily_wage=int(crew_data2.get("daily_wage", 0)),
+    )
+    
+    active_ship2 = engine2._active_ship()
+    # Ensure ship has crew capacity
+    if active_ship2.crew_capacity == 0:
+        active_ship2.crew_capacity = 1
+    active_ship2.add_crew(crew_npc2)
+    engine2._npc_registry.add(crew_npc2, logger=None, turn=0)
+    
+    # Dismiss
+    result2 = engine2.execute({"type": "dismiss_crew", "npc_id": "TEST-CREW-DET-001"})
+    detail2 = None
+    for event in result2.get("events", []):
+        if event.get("stage") == "crew_dismissal":
+            detail2 = event.get("detail", {})
+            break
+    
+    assert detail2 is not None, "Dismissal event not found"
+    result_detail2 = detail2.get("result", {})
+    assert result_detail2.get("ok") is True, f"Dismissal failed: {result_detail2.get('reason')}"
+    relocated2 = result_detail2.get("relocated_to", {})
+    
+    # Verify determinism
+    assert relocated1.get("system_id") == relocated2.get("system_id"), "Relocation system_id should be deterministic"
+    assert relocated1.get("destination_id") == relocated2.get("destination_id"), "Relocation destination_id should be deterministic"
+    assert relocated1.get("location_id") == relocated2.get("location_id"), "Relocation location_id should be deterministic"

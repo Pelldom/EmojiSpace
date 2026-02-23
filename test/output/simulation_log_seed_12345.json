@@ -1,0 +1,17 @@
+{
+  "buy_count": 66,
+  "credit_delta": 0,
+  "determinism_verified": true,
+  "enforcement_triggers": 0,
+  "engine_version": "0.10.10",
+  "hard_stop": false,
+  "hard_stop_reason": null,
+  "heat_delta": 0,
+  "max_turns": 250,
+  "refuel_count": 0,
+  "reputation_delta": 0,
+  "seed": 12345,
+  "sell_count": 66,
+  "travel_count": 0,
+  "turns_completed": 250
+}

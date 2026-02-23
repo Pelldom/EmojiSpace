@@ -10,7 +10,7 @@ def apply_materialized_reward(*, player: PlayerState, reward_payload, context: s
     if reward_payload is None:
         return applied
     if isinstance(getattr(reward_payload, "credits", None), int):
-        player.credits += int(reward_payload.credits)
+        player.credits = max(0, int(player.credits) + int(reward_payload.credits))
         applied["credits"] = int(reward_payload.credits)
     sku_id = getattr(reward_payload, "sku_id", None)
     quantity = getattr(reward_payload, "quantity", None)

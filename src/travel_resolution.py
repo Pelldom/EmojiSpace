@@ -94,7 +94,7 @@ def resolve_travel(
                 route_id=resolved_route_id,
                 special=travel_modifiers["special"],
             )
-        player_state.credits = int(player_state.credits) - wage_cost
+        player_state.credits = max(0, int(player_state.credits) - wage_cost)
 
     base_fuel_cost = compute_fuel_cost(inter_system=inter_system, distance_ly=distance_ly)
     crew_modifiers = compute_crew_modifiers(ship)

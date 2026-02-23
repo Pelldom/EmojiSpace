@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -16,6 +16,7 @@ class PlayerState:
     # Financial state
     credits: int = 0
     outstanding_fines: Dict[str, int] = field(default_factory=dict)
+    bankruptcy_warning_turn: Optional[int] = None
 
     # Legal state (system-scoped)
     reputation_by_system: Dict[str, int] = field(default_factory=dict)
@@ -29,10 +30,9 @@ class PlayerState:
 
     # Cargo and storage references
     cargo_by_ship: Dict[str, Dict[str, int]] = field(default_factory=dict)
-    stored_goods: Dict[str, Dict[str, int]] = field(default_factory=dict)
-
-    # Warehousing
-    warehouse_leases: List[Dict[str, Any]] = field(default_factory=list)
+    warehouses: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    visited_system_ids: set[str] = field(default_factory=set)
+    visited_destination_ids: set[str] = field(default_factory=set)
 
     # Financial instruments
     loans: List[Dict[str, Any]] = field(default_factory=list)
@@ -79,9 +79,62 @@ class PlayerState:
         for key, value in payload.items():
             if hasattr(state, key):
                 setattr(state, key, value)
+        # Backward compatibility: older payloads may contain warehouse_leases/stored_goods.
+        # For Phase 7.5.7, authoritative warehouse state is destination-scoped "warehouses".
+        if not isinstance(getattr(state, "warehouses", None), dict):
+            state.warehouses = {}
+        if "warehouses" not in payload and ("warehouse_leases" in payload or "stored_goods" in payload):
+            state.warehouses = {}
+        normalized_warehouses: Dict[str, Dict[str, Any]] = {}
+        for destination_id, row in state.warehouses.items():
+            if not isinstance(row, dict):
+                continue
+            goods_raw = row.get("goods", {})
+            goods: Dict[str, int] = {}
+            if isinstance(goods_raw, dict):
+                goods = {
+                    str(sku_id): int(quantity)
+                    for sku_id, quantity in goods_raw.items()
+                    if isinstance(quantity, int)
+                }
+            normalized_warehouses[str(destination_id)] = {
+                "capacity": int(row.get("capacity", 0) or 0),
+                "goods": goods,
+            }
+        state.warehouses = normalized_warehouses
+        raw_visited_system_ids = getattr(state, "visited_system_ids", set())
+        if isinstance(raw_visited_system_ids, list) or isinstance(raw_visited_system_ids, set):
+            state.visited_system_ids = {str(system_id) for system_id in raw_visited_system_ids if isinstance(system_id, str)}
+        else:
+            state.visited_system_ids = set()
+        raw_visited_destination_ids = getattr(state, "visited_destination_ids", set())
+        if isinstance(raw_visited_destination_ids, list) or isinstance(raw_visited_destination_ids, set):
+            state.visited_destination_ids = {
+                str(destination_id)
+                for destination_id in raw_visited_destination_ids
+                if isinstance(destination_id, str)
+            }
+        else:
+            state.visited_destination_ids = set()
         return state
 
     def to_dict(self) -> Dict[str, Any]:
+        warehouses_payload: Dict[str, Dict[str, Any]] = {}
+        for destination_id, row in self.warehouses.items():
+            if not isinstance(row, dict):
+                continue
+            goods_raw = row.get("goods", {})
+            goods_payload: Dict[str, int] = {}
+            if isinstance(goods_raw, dict):
+                goods_payload = {
+                    str(sku_id): int(quantity)
+                    for sku_id, quantity in goods_raw.items()
+                    if isinstance(quantity, int)
+                }
+            warehouses_payload[str(destination_id)] = {
+                "capacity": int(row.get("capacity", 0) or 0),
+                "goods": goods_payload,
+            }
         return {
             "player_id": self.player_id,
             "display_name": self.display_name,
@@ -97,8 +150,9 @@ class PlayerState:
             "active_ship_id": self.active_ship_id,
             "owned_ship_ids": list(self.owned_ship_ids),
             "cargo_by_ship": {k: dict(v) for k, v in self.cargo_by_ship.items()},
-            "stored_goods": {k: dict(v) for k, v in self.stored_goods.items()},
-            "warehouse_leases": list(self.warehouse_leases),
+            "warehouses": warehouses_payload,
+            "visited_system_ids": sorted(self.visited_system_ids),
+            "visited_destination_ids": sorted(self.visited_destination_ids),
             "loans": list(self.loans),
             "insurance_policies": list(self.insurance_policies),
             "mission_slots": self.mission_slots,
@@ -122,6 +176,7 @@ class PlayerState:
             "last_customs_turn": self.last_customs_turn,
             "last_customs_destination_id": self.last_customs_destination_id,
             "last_customs_kind": self.last_customs_kind,
+            "bankruptcy_warning_turn": self.bankruptcy_warning_turn,
         }
 
     def set_arrest_state(self, value: str, logger=None, turn: int = 0) -> None:

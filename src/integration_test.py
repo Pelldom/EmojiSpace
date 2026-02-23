@@ -375,7 +375,8 @@ def mission_system_tests(collector: ResultCollector) -> None:
             rewards=[{"field": "credits", "delta": 5}],
         )
         manager.offer(mission)
-        assert manager.accept(mission.mission_id, player)
+        accepted, _ = manager.accept(mission.mission_id, player)
+        assert accepted
         manager.complete(mission.mission_id, player)
         assert mission.mission_id in player.completed_missions
         assert player.credits == 5
@@ -393,12 +394,13 @@ def end_game_goal_tests(collector: ResultCollector) -> None:
         player.progression_tracks["trust"] = 100
         player.progression_tracks["notoriety"] = 0
         player.credits = 1
+        from mission_entity import MissionState, MissionOutcome
         mission = MissionEntity(
             mission_id="MIS-VICTORY",
             mission_type="victory:charter_of_authority",
             mission_tier=5,
-            mission_state="resolved",
-            outcome="completed",
+            mission_state=MissionState.RESOLVED,
+            outcome=MissionOutcome.COMPLETED,
             persistent_state={"victory_id": "charter_of_authority"},
         )
         result = evaluate_end_game(player=player, missions=[mission])

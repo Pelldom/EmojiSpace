@@ -110,8 +110,8 @@ class SimulationController:
         current_system = self._sector.get_system(self._player.current_system_id)
         destination = _find_shipdock_destination(current_system)
         self._player.current_destination_id = getattr(destination, "destination_id", None)
-        active_ship.location_id = self._player.current_destination_id or self._player.current_system_id
-        active_ship.current_location_id = active_ship.location_id
+        active_ship.destination_id = self._player.current_destination_id
+        active_ship.current_destination_id = self._player.current_destination_id
         events.append(
             {
                 "event_type": "travel_applied",
@@ -163,7 +163,13 @@ class SimulationController:
             raise ValueError("No destination available for location_action.")
         from shipdock_inventory import generate_shipdock_inventory
 
-        inventory = generate_shipdock_inventory(self._world_seed, current_system.system_id, current_system.population)
+        world_state_engine = _state_get(self._world_state, "world_state_engine")
+        inventory = generate_shipdock_inventory(
+            self._world_seed,
+            current_system.system_id,
+            current_system.population,
+            world_state_engine=world_state_engine,
+        )
         action_kwargs = {
             "destination": destination,
             "player": self._player,
@@ -187,10 +193,18 @@ class SimulationController:
                 inventory=inventory,
                 hull_id=hull_id,
                 ship_id=ship_id,
+                system_id=current_system.system_id,
+                world_state_engine=world_state_engine,
             )
         elif action_id == "sell_hull":
             ship_id = payload.get("ship_id", self._player.active_ship_id)
-            result = dispatch_destination_action(action_id, **action_kwargs, ship_id=ship_id)
+            result = dispatch_destination_action(
+                action_id,
+                **action_kwargs,
+                ship_id=ship_id,
+                system_id=current_system.system_id,
+                world_state_engine=world_state_engine,
+            )
         elif action_id == "buy_module":
             module_id = payload.get("module_id") or inventory.get("modules", [{}])[0].get("module_id")
             ship_id = payload.get("ship_id", self._player.active_ship_id)
@@ -200,6 +214,8 @@ class SimulationController:
                 inventory=inventory,
                 ship_id=ship_id,
                 module_id=module_id,
+                system_id=current_system.system_id,
+                world_state_engine=world_state_engine,
             )
         elif action_id == "sell_module":
             ship_id = payload.get("ship_id", self._player.active_ship_id)
@@ -209,6 +225,8 @@ class SimulationController:
                 **action_kwargs,
                 ship_id=ship_id,
                 module_id=module_id,
+                system_id=current_system.system_id,
+                world_state_engine=world_state_engine,
             )
         elif action_id == "repair_ship":
             ship_id = payload.get("ship_id", self._player.active_ship_id)

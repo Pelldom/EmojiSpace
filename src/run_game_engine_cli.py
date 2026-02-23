@@ -46,6 +46,42 @@ def _show_player_info(engine: GameEngine) -> None:
     print(f"  Warrants: {detail.get('warrants')}")
     print(f"  Location: {detail.get('system_id')} / {detail.get('destination_id')} / {detail.get('location_id')}")
     print(f"  Turn: {detail.get('turn')}")
+    
+    # Display ship information from engine-provided profile
+    ship_info = detail.get("ship")
+    if ship_info:
+        # Get display name for hull
+        try:
+            from hull_utils import get_hull_display_name
+        except ModuleNotFoundError:
+            from src.hull_utils import get_hull_display_name
+        
+        hull_id = ship_info.get('hull_id', 'N/A')
+        hull_display_name = get_hull_display_name(hull_id) if isinstance(hull_id, str) else 'N/A'
+        
+        print("\nSHIP:")
+        print(f"  Hull: {hull_display_name} ({hull_id})" if hull_id != 'N/A' else f"  Hull: {hull_display_name}")
+        print(f"  Tier: {ship_info.get('tier', 'N/A')}")
+        print(f"  Crew: {ship_info.get('crew_current', 0)}/{ship_info.get('crew_capacity', 0)}")
+        print(f"  Cargo capacity: Physical {ship_info.get('effective_physical_cargo_capacity', 0)}, Data {ship_info.get('effective_data_cargo_capacity', 0)}")
+        print(f"  Fuel capacity: {ship_info.get('fuel_capacity', 0)}")
+        subsystem_bands = ship_info.get("subsystem_bands", {})
+        if subsystem_bands:
+            print(f"  Subsystem bands: Weapon {subsystem_bands.get('weapon', 0)}, Defense {subsystem_bands.get('defense', 0)}, Engine {subsystem_bands.get('engine', 0)}")
+        installed_modules = ship_info.get("installed_modules", [])
+        if installed_modules:
+            print(f"  Installed modules: {', '.join(installed_modules)}")
+        else:
+            print("  Installed modules: None")
+        crew_list = ship_info.get("crew", [])
+        if crew_list:
+            print("  Crew members:")
+            for index, crew_member in enumerate(crew_list, start=1):
+                npc_id = crew_member.get('npc_id', 'N/A')
+                daily_wage = crew_member.get('daily_wage', 0)
+                print(f"    {index}) {npc_id} (wage: {daily_wage})")
+        else:
+            print("  Crew: None")
     if isinstance(destination_profile, dict):
         print(f"  Active crew: {destination_profile.get('active_crew')}")
         print(f"  Active missions: {destination_profile.get('active_missions')}")
@@ -60,35 +96,109 @@ def _show_player_info(engine: GameEngine) -> None:
     print("WAREHOUSE RENTALS")
     if not warehouses:
         print("  none")
+    else:
+        for index, row in enumerate(warehouses, start=1):
+            destination_id = row.get("destination_id")
+            capacity = int(row.get("capacity", 0) or 0)
+            used = int(row.get("used", 0) or 0)
+            available = int(row.get("available", 0) or 0)
+            cost = int(row.get("cost_per_turn", 0) or 0)
+            goods = row.get("goods", {})
+            print(
+                f"  {index}) destination={destination_id} capacity={capacity} "
+                f"used={used} available={available} cost/turn={cost} goods={goods}"
+            )
+    
+    # Crew dismissal option (same menu grouping as warehouse rental management)
+    crew_list = ship_info.get("crew", []) if ship_info else []
+    if crew_list:
+        print("\nCREW MANAGEMENT")
+        print("  [d] Dismiss crew member")
+        raw_action = input("Action [Enter skip]: ").strip().lower()
+        if raw_action == "d":
+            _dismiss_crew_menu(engine)
+            return
+    
+    # Warehouse cancellation
+    if warehouses:
+        raw_cancel = input("Cancel warehouse rental index [0 skip]: ").strip()
+        if raw_cancel in {"", "0"}:
+            return
+        try:
+            selected = int(raw_cancel)
+        except ValueError:
+            print("Invalid warehouse cancel index.")
+            return
+        if selected < 1 or selected > len(warehouses):
+            print("Invalid warehouse cancel index.")
+            return
+        destination_id = warehouses[selected - 1].get("destination_id")
+        if not isinstance(destination_id, str) or not destination_id:
+            print("Invalid warehouse destination.")
+            return
+        result = engine.execute({"type": "warehouse_cancel", "destination_id": destination_id})
+        print(json.dumps(result, sort_keys=True))
+
+
+def _dismiss_crew_menu(engine: GameEngine) -> None:
+    """Handle crew dismissal from Player / Ship Info menu."""
+    # Get player profile to access crew list
+    result = engine.execute({"type": "get_player_profile"})
+    detail = _extract_detail_from_stage(step_result=result, stage="player_profile")
+    if not isinstance(detail, dict):
+        print("Error: Could not retrieve player profile.")
         return
-    for index, row in enumerate(warehouses, start=1):
-        destination_id = row.get("destination_id")
-        capacity = int(row.get("capacity", 0) or 0)
-        used = int(row.get("used", 0) or 0)
-        available = int(row.get("available", 0) or 0)
-        cost = int(row.get("cost_per_turn", 0) or 0)
-        goods = row.get("goods", {})
-        print(
-            f"  {index}) destination={destination_id} capacity={capacity} "
-            f"used={used} available={available} cost/turn={cost} goods={goods}"
-        )
-    raw_cancel = input("Cancel warehouse rental index [0 skip]: ").strip()
-    if raw_cancel in {"", "0"}:
+    
+    ship_info = detail.get("ship")
+    if not ship_info:
+        print("Error: No active ship.")
         return
+    
+    crew_list = ship_info.get("crew", [])
+    if not crew_list:
+        print("No crew members to dismiss.")
+        return
+    
+    print("CREW DISMISSAL")
+    for index, crew_member in enumerate(crew_list, start=1):
+        npc_id = crew_member.get('npc_id', 'N/A')
+        daily_wage = crew_member.get('daily_wage', 0)
+        print(f"  {index}) {npc_id} (wage: {daily_wage})")
+    
+    raw_selection = input("Dismiss crew member index [0 cancel]: ").strip()
+    if raw_selection in {"", "0"}:
+        return
+    
     try:
-        selected = int(raw_cancel)
+        selected = int(raw_selection)
     except ValueError:
-        print("Invalid warehouse cancel index.")
+        print("Invalid crew member index.")
         return
-    if selected < 1 or selected > len(warehouses):
-        print("Invalid warehouse cancel index.")
+    
+    if selected < 1 or selected > len(crew_list):
+        print("Invalid crew member index.")
         return
-    destination_id = warehouses[selected - 1].get("destination_id")
-    if not isinstance(destination_id, str) or not destination_id:
-        print("Invalid warehouse destination.")
+    
+    npc_id = crew_list[selected - 1].get("npc_id")
+    if not isinstance(npc_id, str) or not npc_id:
+        print("Invalid crew member ID.")
         return
-    result = engine.execute({"type": "warehouse_cancel", "destination_id": destination_id})
-    print(json.dumps(result, sort_keys=True))
+    
+    result = engine.execute({"type": "dismiss_crew", "npc_id": npc_id})
+    detail = _extract_detail_from_stage(step_result=result, stage="crew_dismissal")
+    if isinstance(detail, dict):
+        result_detail = detail.get("result", {})
+        if result_detail.get("ok"):
+            relocated = result_detail.get("relocated_to", {})
+            print(f"Crew member {npc_id} dismissed and relocated to:")
+            print(f"  System: {relocated.get('system_id')}")
+            print(f"  Destination: {relocated.get('destination_id')}")
+            print(f"  Location: {relocated.get('location_id')}")
+        else:
+            reason = result_detail.get("reason", "unknown_error")
+            print(f"Dismissal failed: {reason}")
+    else:
+        print(json.dumps(result, sort_keys=True))
 
 
 def _show_system_info(engine: GameEngine) -> None:
@@ -230,7 +340,7 @@ def _travel_menu(engine: GameEngine) -> None:
                 print("No intra-system destinations available.")
                 continue
             for index, destination in enumerate(destinations, start=1):
-                print(f"{index}) {destination.destination_id} {destination.display_name}")
+                print(f"{index}) {destination.destination_id} {destination.display_name} type={destination.destination_type}")
             raw_index = input("Select destination index: ").strip()
             try:
                 selected = int(raw_index)
@@ -317,6 +427,19 @@ def _location_entry_menu(engine: GameEngine) -> None:
 
 
 def _location_actions_menu(engine: GameEngine) -> None:
+    # Check if this is a shipdock location
+    list_result = engine.execute({"type": "list_location_actions"})
+    actions = _extract_actions_from_step_result(list_result)
+    is_shipdock = any(
+        action.get("action_id") in {"buy_hull", "buy_module", "sell_hull", "sell_module", "repair_ship"}
+        for action in actions
+    )
+    
+    if is_shipdock:
+        _shipdock_menu(engine)
+        return
+    
+    # Non-shipdock location actions (original flow)
     while True:
         list_result = engine.execute({"type": "list_location_actions"})
         actions = _extract_actions_from_step_result(list_result)
@@ -348,16 +471,44 @@ def _location_actions_menu(engine: GameEngine) -> None:
         if selected < 1 or selected > len(actions):
             print("Invalid action index.")
             continue
-        action = actions[selected - 1]
-        action_kwargs = _prompt_action_kwargs(action)
-        result = engine.execute(
-            {
-                "type": "location_action",
-                "action_id": action["action_id"],
-                "action_kwargs": action_kwargs,
-            }
-        )
+        selected_action = actions[selected - 1]
+        
+        # Collect parameters if action has them
+        action_kwargs = {}
+        if selected_action.get("parameters"):
+            action_kwargs = _prompt_action_kwargs(selected_action)
+        
+        # Handle confirmation if required
+        confirmed = True
+        if selected_action.get("requires_confirm"):
+            confirmed = input("Confirm action? (y/n): ").strip().lower() == "y"
+            if not confirmed:
+                print("Action cancelled.")
+                continue
+        
+        payload = {
+            "type": "location_action",
+            "action_id": selected_action["action_id"],
+            "kwargs": action_kwargs,
+            "confirm": confirmed,
+        }
+        result = engine.execute(payload)
         print(json.dumps(result, sort_keys=True))
+
+
+def _current_location_type(engine: GameEngine) -> str | None:
+    """Get the location_type of the current location."""
+    destination = _current_destination_object(engine)
+    if destination is None:
+        return None
+    location_id = engine.player_state.current_location_id
+    if not location_id:
+        return None
+    locations = list(getattr(destination, "locations", []) or [])
+    for location in locations:
+        if getattr(location, "location_id", None) == location_id:
+            return str(getattr(location, "location_type", "") or "")
+    return None
 
 
 def _npc_first_location_menu(engine: GameEngine) -> None:
@@ -367,25 +518,55 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
         npcs = detail.get("npcs", [])
         if not isinstance(npcs, list):
             npcs = []
+        
+        location_type = _current_location_type(engine)
+        is_administration = location_type == "administration"
+        
         print(f"LOCATION: {engine.player_state.current_location_id}")
-        if not npcs:
-            print("No NPCs present.")
+        
+        # Get location actions for administration (filtered to admin_mission_board only)
+        location_actions: list[dict[str, object]] = []
+        if is_administration:
+            list_actions_result = engine.execute({"type": "list_location_actions"})
+            all_actions = _extract_actions_from_step_result(list_actions_result)
+            location_actions = [a for a in all_actions if isinstance(a, dict) and str(a.get("action_id", "")) == "admin_mission_board"]
+        
+        if not npcs and not location_actions:
+            print("No NPCs or actions present.")
             print("0) Return to destination")
-            if input("Select NPC index: ").strip() == "0":
+            if input("Select option: ").strip() == "0":
                 _return_to_destination(engine)
                 print(f"Returned to destination: {engine.player_state.current_location_id}")
                 return
-            print("Invalid NPC index.")
+            print("Invalid selection.")
             continue
-
-        for index, row in enumerate(npcs, start=1):
-            if not isinstance(row, dict):
-                continue
-            name = str(row.get("display_name", "Unknown"))
-            role = str(row.get("role", "unknown"))
-            print(f"{index}) {name} ({role})")
+        
+        # Display NPCs
+        npc_count = 0
+        if npcs:
+            print("NPCs:")
+            for index, row in enumerate(npcs, start=1):
+                if not isinstance(row, dict):
+                    continue
+                name = str(row.get("display_name", "Unknown"))
+                role = str(row.get("role", "unknown"))
+                print(f"  {index}) {name} ({role})")
+                npc_count = index
+        
+        # Display Location Actions (administration only, filtered to admin_mission_board)
+        action_start_index = npc_count + 1
+        if location_actions:
+            print("Location Actions:")
+            for action in location_actions:
+                if not isinstance(action, dict):
+                    continue
+                action_id = str(action.get("action_id", ""))
+                display_name = str(action.get("display_name", action_id))
+                print(f"  {action_start_index}) {display_name}")
+                action_start_index += 1
+        
         print("0) Return to destination")
-        raw_choice = input("Select NPC index: ").strip()
+        raw_choice = input("Select option: ").strip()
         if raw_choice == "0":
             _return_to_destination(engine)
             print(f"Returned to destination: {engine.player_state.current_location_id}")
@@ -393,20 +574,204 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
         try:
             selected = int(raw_choice)
         except ValueError:
-            print("Invalid NPC index.")
+            print("Invalid selection.")
             continue
-        if selected < 1 or selected > len(npcs):
-            print("Invalid NPC index.")
+        
+        # Handle NPC selection
+        if 1 <= selected <= npc_count:
+            row = npcs[selected - 1]
+            if not isinstance(row, dict):
+                print("Invalid NPC selection.")
+                continue
+            npc_id = row.get("npc_id")
+            if not isinstance(npc_id, str) or not npc_id:
+                print("Invalid NPC selection.")
+                continue
+            _npc_interactions_menu(engine, npc_id=npc_id)
             continue
-        row = npcs[selected - 1]
-        if not isinstance(row, dict):
-            print("Invalid NPC index.")
+        
+        # Handle Location Action selection (administration only)
+        action_index = selected - npc_count - 1
+        if 0 <= action_index < len(location_actions):
+            action = location_actions[action_index]
+            if not isinstance(action, dict):
+                print("Invalid action selection.")
+                continue
+            action_id = str(action.get("action_id", ""))
+            if not action_id:
+                print("Invalid action selection.")
+                continue
+            # Execute location action
+            if action_id == "admin_mission_board":
+                # Special handling for mission board: allow direct mission acceptance
+                action_kwargs = {}
+                if action.get("parameters"):
+                    action_kwargs = _prompt_action_kwargs(action)
+                confirmed = True
+                if action.get("requires_confirm"):
+                    confirmed = input("Confirm action? (y/n): ").strip().lower() == "y"
+                    if not confirmed:
+                        print("Action cancelled.")
+                        continue
+                payload = {"type": "location_action", "action_id": action_id, "kwargs": action_kwargs, "confirm": confirmed}
+                result = engine.execute(payload)
+                if result.get("ok"):
+                    # Extract missions from result["detail"]["missions"] or from events
+                    missions = []
+                    # First try result["detail"]["missions"]
+                    detail = result.get("detail", {})
+                    if isinstance(detail, dict):
+                        missions_raw = detail.get("missions")
+                        if isinstance(missions_raw, list):
+                            missions = missions_raw
+                    # If not found, try extracting from events
+                    if not missions:
+                        event_detail = _extract_detail_from_stage(step_result=result, stage="location_action")
+                        if event_detail and isinstance(event_detail, dict):
+                            missions_raw = event_detail.get("missions")
+                            if isinstance(missions_raw, list):
+                                missions = missions_raw
+                    # Only print "No missions available" if missions list is empty
+                    if len(missions) == 0:
+                        print("No missions available on the board.")
+                        continue
+                    # Display numbered list
+                    print("MISSION BOARD")
+                    for index, mission in enumerate(missions, start=1):
+                        mission_type = mission.get("mission_type", "Unknown")
+                        mission_tier = mission.get("mission_tier", 0)
+                        rewards = mission.get("rewards", [])
+                        # Format reward summary
+                        reward_summary = []
+                        for reward in rewards:
+                            if isinstance(reward, dict):
+                                reward_type = reward.get("type", "")
+                                reward_amount = reward.get("amount", 0)
+                                if reward_type == "credits":
+                                    reward_summary.append(f"{reward_amount} credits")
+                                else:
+                                    reward_summary.append(f"{reward_type}: {reward_amount}")
+                        reward_text = ", ".join(reward_summary) if reward_summary else "No rewards"
+                        print(f"  {index}) {mission_type} (Tier {mission_tier}) – {reward_text}")
+                    print()
+                    # Prompt for selection
+                    raw_choice = input("Select mission index to discuss (0 to cancel): ").strip()
+                    if raw_choice == "0":
+                        continue
+                    try:
+                        selected = int(raw_choice)
+                    except ValueError:
+                        print("Invalid selection.")
+                        continue
+                    if selected < 1 or selected > len(missions):
+                        print("Invalid selection.")
+                        continue
+                    # Get mission_id from selected mission
+                    selected_mission = missions[selected - 1]
+                    mission_id = selected_mission.get("mission_id")
+                    if not isinstance(mission_id, str) or not mission_id:
+                        print("Invalid mission selection.")
+                        continue
+                    # Call MissionCore.get_details via engine command
+                    discuss_result = engine.execute({"type": "mission_discuss", "mission_id": mission_id})
+                    if not discuss_result.get("ok"):
+                        print(f"Failed to discuss mission: {discuss_result.get('error', 'unknown error')}")
+                        continue
+                    # Extract mission details from discuss result
+                    discuss_detail = _extract_detail_from_stage(step_result=discuss_result, stage="mission")
+                    if discuss_detail and isinstance(discuss_detail, dict):
+                        result_data = discuss_detail.get("result", {})
+                        if isinstance(result_data, dict):
+                            # Display mission details
+                            mission_type = result_data.get("mission_type", "Unknown")
+                            mission_tier = result_data.get("mission_tier", 0)
+                            rewards = result_data.get("rewards", [])
+                            status = result_data.get("status")
+                            text = result_data.get("text")
+                            offer_only = result_data.get("offer_only", False)
+                            
+                            print(f"\nMISSION DETAILS")
+                            print(f"  Type: {mission_type}")
+                            print(f"  Tier: {mission_tier}")
+                            if rewards:
+                                reward_summary = []
+                                for reward in rewards:
+                                    if isinstance(reward, dict):
+                                        reward_type = reward.get("type", "")
+                                        reward_amount = reward.get("amount", 0)
+                                        if reward_type == "credits":
+                                            reward_summary.append(f"{reward_amount} credits")
+                                        else:
+                                            reward_summary.append(f"{reward_type}: {reward_amount}")
+                                if reward_summary:
+                                    print(f"  Rewards: {', '.join(reward_summary)}")
+                            if status:
+                                print(f"  Status: {status}")
+                            if text:
+                                print(f"  {text}")
+                            print()
+                            
+                            # Only prompt for acceptance if offer_only is True
+                            if offer_only:
+                                confirm = input("Accept this mission? (y/n): ").strip().lower()
+                                if confirm == "y":
+                                    # Call MissionCore.accept via engine command
+                                    accept_result = engine.execute({"type": "mission_accept", "mission_id": mission_id})
+                                    if accept_result.get("ok"):
+                                        accept_detail = _extract_detail_from_stage(step_result=accept_result, stage="mission")
+                                        if accept_detail and isinstance(accept_detail, dict):
+                                            if accept_detail.get("accepted"):
+                                                print(f"Mission accepted: {mission_id}")
+                                            else:
+                                                print(f"Mission accept result: {json.dumps(accept_detail, sort_keys=True)}")
+                                        else:
+                                            print(f"Mission accepted: {mission_id}")
+                                    else:
+                                        error = accept_result.get('error', 'unknown error')
+                                        if error == "mission_accept_failed_total_cap":
+                                            print("Cannot accept: total mission limit reached.")
+                                        elif error == "mission_accept_failed_tier_cap":
+                                            print("Cannot accept: tier limit reached.")
+                                        else:
+                                            print(f"Failed to accept mission: {error}")
+                                else:
+                                    print("Mission discussion cancelled.")
+                            else:
+                                # Mission is not in OFFERED state, cannot accept
+                                print("This mission cannot be accepted at this time.")
+                    else:
+                        print("Failed to retrieve mission details.")
+                else:
+                    print(f"Action failed: {result.get('error', 'unknown error')}")
+            else:
+                action_kwargs = {}
+                if action.get("parameters"):
+                    action_kwargs = _prompt_action_kwargs(action)
+                confirmed = True
+                if action.get("requires_confirm"):
+                    confirmed = input("Confirm action? (y/n): ").strip().lower() == "y"
+                    if not confirmed:
+                        print("Action cancelled.")
+                        continue
+                payload = {"type": "location_action", "action_id": action_id, "kwargs": action_kwargs, "confirm": confirmed}
+                result = engine.execute(payload)
+                if result.get("ok"):
+                    detail = _extract_detail_from_stage(step_result=result, stage="location_action")
+                    if detail and detail.get("missions"):
+                        missions = detail.get("missions", [])
+                        print("Available Missions:")
+                        for mission in missions:
+                            if isinstance(mission, dict):
+                                print(f"  Mission ID: {mission.get('mission_id')}")
+                                print(f"  Type: {mission.get('mission_type')}")
+                                print(f"  Tier: {mission.get('mission_tier')}")
+                                print(f"  Rewards: {mission.get('rewards')}")
+                                print()
+                else:
+                    print(f"Action failed: {result.get('error', 'unknown error')}")
             continue
-        npc_id = row.get("npc_id")
-        if not isinstance(npc_id, str) or not npc_id:
-            print("Invalid NPC selection.")
-            continue
-        _npc_interactions_menu(engine, npc_id=npc_id)
+        
+        print("Invalid selection.")
 
 
 def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
@@ -457,8 +822,63 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                             print(f"Hint: system={system_id} destination={destination_id}")
                         else:
                             print(f"Hint: system={system_id}")
-            elif isinstance(interaction_result.get("text"), str):
+            elif interaction_result.get("offer_only") is True:
+                # Mission offer - show details and prompt for confirmation
+                mission_id = interaction_result.get("mission_id")
+                mission_type = interaction_result.get("mission_type")
+                mission_tier = interaction_result.get("mission_tier")
+                rewards = interaction_result.get("rewards")
+                print("MISSION OFFER")
+                print(f"  Mission ID: {mission_id}")
+                print(f"  Type: {mission_type}")
+                print(f"  Tier: {mission_tier}")
+                print(f"  Rewards: {rewards}")
+                print()
+                confirm = input("Accept this mission? (y/n): ").strip().lower()
+                if confirm == "y":
+                    # Call MissionCore.accept via engine command
+                    accept_result = engine.execute({"type": "mission_accept", "mission_id": mission_id})
+                    if accept_result.get("ok"):
+                        accept_detail = _extract_detail_from_stage(step_result=accept_result, stage="mission")
+                        if accept_detail and isinstance(accept_detail, dict):
+                            if accept_detail.get("accepted"):
+                                print(f"Mission accepted: {mission_id}")
+                            else:
+                                print(f"Mission accept result: {json.dumps(accept_detail, sort_keys=True)}")
+                        else:
+                            print(f"Mission accepted: {mission_id}")
+                    else:
+                        error = accept_result.get('error', 'unknown error')
+                        if error == "mission_accept_failed_total_cap":
+                            print("Cannot accept: total mission limit reached.")
+                        elif error == "mission_accept_failed_tier_cap":
+                            print("Cannot accept: tier limit reached.")
+                        else:
+                            print(f"Failed to accept mission: {error}")
+                else:
+                    print("Mission offer declined.")
+            elif isinstance(interaction_result.get("missions"), list):
+                missions = interaction_result.get("missions", [])
+                print("Available Missions:")
+                for mission in missions:
+                    if isinstance(mission, dict):
+                        print(f"  Mission ID: {mission.get('mission_id')}")
+                        print(f"  Type: {mission.get('mission_type')}")
+                        print(f"  Tier: {mission.get('mission_tier')}")
+                        print(f"  Rewards: {mission.get('rewards')}")
+                        print()
+            elif interaction_result.get("status") == "active" and isinstance(interaction_result.get("text"), str):
+                # Active mission status message
                 print(str(interaction_result.get("text")))
+            elif isinstance(interaction_result.get("text"), str):
+                # Generic text response (e.g., resolved mission placeholder)
+                print(str(interaction_result.get("text")))
+            elif interaction_result.get("paid") is not None:
+                print(f"Fines paid: {interaction_result.get('paid')}")
+            elif interaction_result.get("cleared_warrants") is not None:
+                print(f"Warrants cleared: {interaction_result.get('cleared_warrants')}")
+            elif interaction_result.get("accepted"):
+                print(f"Mission accepted: {interaction_result.get('mission_id')}")
             else:
                 print(json.dumps(interaction_result, sort_keys=True))
         else:
@@ -531,13 +951,13 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
             except ValueError:
                 print("Invalid units.")
                 continue
-            result = engine.execute(
-                {
-                    "type": "location_action",
-                    "action_id": "warehouse_rent",
-                    "action_kwargs": {"units": units},
-                }
-            )
+            payload = {
+                "type": "location_action",
+                "action_id": "warehouse_rent",
+                "kwargs": {"units": units},
+                "confirm": True,
+            }
+            result = engine.execute(payload)
             print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "2":
@@ -570,13 +990,13 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
             except ValueError:
                 print("Invalid quantity.")
                 continue
-            result = engine.execute(
-                {
-                    "type": "location_action",
-                    "action_id": "warehouse_deposit",
-                    "action_kwargs": {"sku_id": selected_sku_id, "quantity": quantity},
-                }
-            )
+            payload = {
+                "type": "location_action",
+                "action_id": "warehouse_deposit",
+                "kwargs": {"sku_id": selected_sku_id, "quantity": quantity},
+                "confirm": True,
+            }
+            result = engine.execute(payload)
             print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "3":
@@ -587,13 +1007,13 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
             except ValueError:
                 print("Invalid quantity.")
                 continue
-            result = engine.execute(
-                {
-                    "type": "location_action",
-                    "action_id": "warehouse_withdraw",
-                    "action_kwargs": {"sku_id": raw_sku_id, "quantity": quantity},
-                }
-            )
+            payload = {
+                "type": "location_action",
+                "action_id": "warehouse_withdraw",
+                "kwargs": {"sku_id": raw_sku_id, "quantity": quantity},
+                "confirm": True,
+            }
+            result = engine.execute(payload)
             print(json.dumps(result, sort_keys=True))
             continue
         if raw_action == "4":
@@ -666,7 +1086,7 @@ def _print_current_system_destinations(engine: GameEngine) -> None:
     destinations = sorted(system.destinations, key=lambda destination: destination.destination_id)
     print("Intra-system destinations:")
     for index, destination in enumerate(destinations, start=1):
-        print(f"  {index}) {destination.destination_id} {destination.display_name}")
+        print(f"  {index}) {destination.destination_id} {destination.display_name} type={destination.destination_type}")
 
 
 def _configure_cli_test_fuel(engine: GameEngine) -> None:
@@ -815,6 +1235,241 @@ def _market_sell_menu(engine: GameEngine) -> None:
         return
     sku_id = rows[selected - 1]["sku_id"]
     print(json.dumps(engine.execute({"type": "market_sell", "sku_id": sku_id, "quantity": quantity}), sort_keys=True))
+
+
+def _shipdock_menu(engine: GameEngine) -> None:
+    """Shipdock location menu with numbered lists for all actions."""
+    while True:
+        print(f"SHIPDOCK: {engine.player_state.current_location_id}")
+        print("1) Buy Hull")
+        print("2) Buy Module")
+        print("3) Sell Hull")
+        print("4) Sell Module")
+        print("5) Repair Ship")
+        print("6) Return to Destination")
+        
+        raw_choice = input("Select action: ").strip()
+        if raw_choice == "6":
+            _return_to_destination(engine)
+            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            return
+        elif raw_choice == "1":
+            _shipdock_buy_hull(engine)
+        elif raw_choice == "2":
+            _shipdock_buy_module(engine)
+        elif raw_choice == "3":
+            _shipdock_sell_hull(engine)
+        elif raw_choice == "4":
+            _shipdock_sell_module(engine)
+        elif raw_choice == "5":
+            _shipdock_repair_ship(engine)
+        else:
+            print("Invalid selection.")
+
+
+def _shipdock_buy_hull(engine: GameEngine) -> None:
+    """Buy hull from shipdock - shows numbered list."""
+    result = engine.execute({"type": "shipdock_hull_list"})
+    rows = _extract_rows_from_stage(step_result=result, stage="shipdock_hull_list")
+    if not rows:
+        print("No hulls available at this shipdock.")
+        return
+    
+    print("AVAILABLE HULLS:")
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row.get('display_name', row.get('hull_id', 'Unknown'))} "
+            f"(Tier {row.get('tier', 0)}) - {row.get('price', 0)} credits"
+        )
+    
+    raw_index = input("Select hull index (0 to cancel): ").strip()
+    if raw_index == "0":
+        return
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print("Invalid index.")
+        return
+    if selected < 1 or selected > len(rows):
+        print("Invalid index.")
+        return
+    
+    hull_id = rows[selected - 1]["hull_id"]
+    # Auto-select active ship
+    ship_id = engine.player_state.active_ship_id
+    if not ship_id:
+        print("No active ship available.")
+        return
+    
+    # Handle confirmation
+    confirmed = True
+    print(f"Purchase {rows[selected - 1].get('display_name', hull_id)} for {rows[selected - 1].get('price', 0)} credits?")
+    confirmed = input("Confirm? (y/n): ").strip().lower() == "y"
+    if not confirmed:
+        print("Purchase cancelled.")
+        return
+    
+    payload = {
+        "type": "location_action",
+        "action_id": "buy_hull",
+        "kwargs": {"hull_id": hull_id, "ship_id": ship_id},
+        "confirm": confirmed,
+    }
+    result = engine.execute(payload)
+    print(json.dumps(result, sort_keys=True))
+
+
+def _shipdock_buy_module(engine: GameEngine) -> None:
+    """Buy module from shipdock - shows numbered list."""
+    result = engine.execute({"type": "shipdock_module_list"})
+    rows = _extract_rows_from_stage(step_result=result, stage="shipdock_module_list")
+    if not rows:
+        print("No modules available at this shipdock.")
+        return
+    
+    print("AVAILABLE MODULES:")
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row.get('display_name', row.get('module_id', 'Unknown'))} "
+            f"({row.get('slot_type', 'unknown')}) - {row.get('price', 0)} credits"
+        )
+    
+    raw_index = input("Select module index (0 to cancel): ").strip()
+    if raw_index == "0":
+        return
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print("Invalid index.")
+        return
+    if selected < 1 or selected > len(rows):
+        print("Invalid index.")
+        return
+    
+    module_id = rows[selected - 1]["module_id"]
+    # Auto-select active ship
+    ship_id = engine.player_state.active_ship_id
+    if not ship_id:
+        print("No active ship available.")
+        return
+    
+    payload = {
+        "type": "location_action",
+        "action_id": "buy_module",
+        "kwargs": {"module_id": module_id, "ship_id": ship_id},
+        "confirm": True,
+    }
+    result = engine.execute(payload)
+    print(json.dumps(result, sort_keys=True))
+
+
+def _shipdock_sell_hull(engine: GameEngine) -> None:
+    """Sell hull at shipdock - shows numbered list of owned ships."""
+    result = engine.execute({"type": "shipdock_ship_list"})
+    rows = _extract_rows_from_stage(step_result=result, stage="shipdock_ship_list")
+    if not rows:
+        print("No ships available to sell at this destination.")
+        return
+    
+    print("OWNED SHIPS (eligible to sell):")
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row.get('display_name', row.get('ship_id', 'Unknown'))} "
+            f"(Tier {row.get('tier', 0)}) - {row.get('price', 0)} credits"
+        )
+    
+    raw_index = input("Select ship index to sell (0 to cancel): ").strip()
+    if raw_index == "0":
+        return
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print("Invalid index.")
+        return
+    if selected < 1 or selected > len(rows):
+        print("Invalid index.")
+        return
+    
+    ship_id = rows[selected - 1]["ship_id"]
+    
+    # Handle confirmation
+    print(f"Sell {rows[selected - 1].get('display_name', ship_id)} for {rows[selected - 1].get('price', 0)} credits?")
+    confirmed = input("Confirm? (y/n): ").strip().lower() == "y"
+    if not confirmed:
+        print("Sale cancelled.")
+        return
+    
+    payload = {
+        "type": "location_action",
+        "action_id": "sell_hull",
+        "kwargs": {"ship_id": ship_id},
+        "confirm": confirmed,
+    }
+    result = engine.execute(payload)
+    print(json.dumps(result, sort_keys=True))
+
+
+def _shipdock_sell_module(engine: GameEngine) -> None:
+    """Sell module at shipdock - shows numbered list of installed modules."""
+    # Default to active ship
+    ship_id = engine.player_state.active_ship_id
+    if not ship_id:
+        print("No active ship available.")
+        return
+    
+    result = engine.execute({"type": "shipdock_installed_modules_list", "ship_id": ship_id})
+    rows = _extract_rows_from_stage(step_result=result, stage="shipdock_installed_modules_list")
+    if not rows:
+        print("No modules installed on active ship.")
+        return
+    
+    print("INSTALLED MODULES:")
+    for index, row in enumerate(rows, start=1):
+        print(
+            f"{index}) {row.get('display_name', row.get('module_id', 'Unknown'))} "
+            f"({row.get('slot_type', 'unknown')}) - {row.get('price', 0)} credits"
+        )
+    
+    raw_index = input("Select module index to sell (0 to cancel): ").strip()
+    if raw_index == "0":
+        return
+    try:
+        selected = int(raw_index)
+    except ValueError:
+        print("Invalid index.")
+        return
+    if selected < 1 or selected > len(rows):
+        print("Invalid index.")
+        return
+    
+    module_id = rows[selected - 1]["module_id"]
+    
+    payload = {
+        "type": "location_action",
+        "action_id": "sell_module",
+        "kwargs": {"module_id": module_id, "ship_id": ship_id},
+        "confirm": True,
+    }
+    result = engine.execute(payload)
+    print(json.dumps(result, sort_keys=True))
+
+
+def _shipdock_repair_ship(engine: GameEngine) -> None:
+    """Repair ship - single step action."""
+    # Default to active ship
+    ship_id = engine.player_state.active_ship_id
+    if not ship_id:
+        print("No active ship available.")
+        return
+    
+    payload = {
+        "type": "location_action",
+        "action_id": "repair_ship",
+        "kwargs": {"ship_id": ship_id},
+        "confirm": True,
+    }
+    result = engine.execute(payload)
+    print(json.dumps(result, sort_keys=True))
 
 
 def _print_market_sku_overlay(engine: GameEngine) -> None:
@@ -1123,18 +1778,35 @@ def _prompt_action_kwargs(action: dict[str, object]) -> dict[str, object]:
         return {}
     kwargs: dict[str, object] = {}
     for param in params:
-        if not isinstance(param, str):
-            continue
-        raw = input(f"{param}: ").strip()
-        if param in {"quantity", "requested_units", "location_index"}:
-            try:
-                kwargs[param] = int(raw)
-            except ValueError:
+        # Handle dict parameters (new format: {"name": "...", "type": "...", "prompt": "..."})
+        if isinstance(param, dict):
+            param_name = param.get("name", "")
+            param_prompt = param.get("prompt", param_name)
+            param_type = param.get("type", "str")
+            if not param_name:
+                continue
+            raw = input(f"{param_prompt}: ").strip()
+            if param_type == "int":
+                try:
+                    kwargs[param_name] = int(raw)
+                except ValueError:
+                    kwargs[param_name] = raw
+            elif param_type == "bool":
+                kwargs[param_name] = raw.lower() in {"1", "true", "yes", "y"}
+            else:
+                kwargs[param_name] = raw
+        # Handle string parameters (legacy format for backward compatibility)
+        elif isinstance(param, str):
+            raw = input(f"{param}: ").strip()
+            if param in {"quantity", "requested_units", "location_index"}:
+                try:
+                    kwargs[param] = int(raw)
+                except ValueError:
+                    kwargs[param] = raw
+            elif param == "allow_repeat":
+                kwargs[param] = raw.lower() in {"1", "true", "yes", "y"}
+            else:
                 kwargs[param] = raw
-        elif param == "allow_repeat":
-            kwargs[param] = raw.lower() in {"1", "true", "yes", "y"}
-        else:
-            kwargs[param] = raw
     return kwargs
 
 

@@ -20,13 +20,13 @@ def test_ship_entity_defaults() -> None:
         name="Test Ship",
         emoji=None,
         system_id="SYS-1",
-        location_id=None,
+        current_destination_id=None,
     )
     assert ship.ship_id == ""
     assert ship.owner_id == ""
     assert ship.model_id == ""
     assert ship.activity_state == ShipActivityState.INACTIVE
-    assert ship.current_location_id is None
+    assert ship.current_destination_id is None
     assert ship.current_system_id == ""
     assert ship.physical_cargo_capacity == 0
     assert ship.data_cargo_capacity == 0

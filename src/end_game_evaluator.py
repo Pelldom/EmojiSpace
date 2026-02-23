@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from mission_entity import MissionEntity
+from mission_entity import MissionEntity, MissionState, MissionOutcome
 from player_state import PlayerState
 
 
@@ -54,9 +54,9 @@ def evaluate_end_game(
         victory_id = _victory_id_from_mission(mission)
         if victory_id is None:
             continue
-        if mission.mission_state == "active":
+        if mission.mission_state == MissionState.ACTIVE:
             active_victories.append(victory_id)
-        if mission.mission_state == "resolved" and mission.outcome == "completed":
+        if mission.mission_state == MissionState.RESOLVED and mission.outcome == MissionOutcome.COMPLETED:
             completed_victory = victory_id
 
     if completed_victory is not None:
@@ -140,13 +140,14 @@ def _death_detected(player: PlayerState) -> bool:
 
 
 def _bankruptcy_detected(player: PlayerState) -> bool:
+    # Liquidity-based bankruptcy: credits must be 0 AND warning turn must be set AND current turn must exceed warning turn
     if player.credits > 0:
         return False
-    if player.active_ship_id:
+    if player.bankruptcy_warning_turn is None:
         return False
-    for cargo in player.cargo_by_ship.values():
-        if any(quantity > 0 for quantity in cargo.values()):
-            return False
-    if player.loans:
+    # Import here to avoid circular dependency
+    from time_engine import get_current_turn
+    current_turn = int(get_current_turn())
+    if current_turn <= player.bankruptcy_warning_turn:
         return False
     return True

@@ -10,7 +10,7 @@ from government_law_engine import GovernmentLawEngine
 from government_registry import GovernmentRegistry
 from logger import Logger
 from player_state import PlayerState
-from ship_assembler import assemble_ship
+from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
 from ship_entity import ShipEntity
 from simulation_controller import SimulationController
 from time_engine import TimeEngine, _reset_time_state_for_test
@@ -63,19 +63,65 @@ def build_simulation(seed: int) -> tuple[SimulationController, dict]:
         government_registry=registry,
         world_seed=seed,
     )
-    assembled = assemble_ship("civ_t1_midge", [], {"weapon": 0, "defense": 0, "engine": 0})
+    # Enforce starting ship: Midge (civ_t1_midge) with no modules
+    # All ship stats derive from assemble_ship() output
+    hull_id = "civ_t1_midge"
+    module_instances = []
+    degradation_state = {"weapon": 0, "defense": 0, "engine": 0}
+    assembled = assemble_ship(hull_id, module_instances, degradation_state)
+    
+    # Extract hull data for crew_capacity and cargo base
+    from data_loader import load_hulls
+    hulls_data = load_hulls()
+    hull_data = None
+    for hull in hulls_data.get("hulls", []):
+        if hull.get("hull_id") == hull_id:
+            hull_data = hull
+            break
+    
+    if hull_data is None:
+        raise ValueError(f"Hull data not found for {hull_id}")
+    
+    # Extract cargo capacities: base from hull + module bonuses from assembler
+    cargo_base = hull_data.get("cargo", {})
+    physical_cargo_base = int(cargo_base.get("physical_base", 0))
+    data_cargo_base = int(cargo_base.get("data_base", 0))
+    utility_effects = assembled.get("ship_utility_effects", {})
+    physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+    data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+    
+    # Extract crew capacity from hull data
+    crew_capacity = int(hull_data.get("crew_capacity", 0))
+    
+    # Extract subsystem bands from assembler
+    bands = assembled.get("bands", {})
+    effective_bands = bands.get("effective", {})
+    
     active_ship = ShipEntity(
         ship_id="PLAYER-SHIP-001",
-        model_id="civ_t1_midge",
+        model_id=hull_id,
         owner_id=player.player_id,
+        owner_type="player",
         activity_state="active",
-        location_id=player.current_system_id,
-        current_location_id=player.current_system_id,
+        destination_id=player.current_destination_id,
+        current_system_id=player.current_system_id,
+        current_destination_id=player.current_destination_id,
         fuel_capacity=int(assembled["fuel_capacity"]),
         current_fuel=int(assembled["fuel_capacity"]),
+        crew_capacity=crew_capacity,
+        physical_cargo_capacity=physical_cargo_capacity,
+        data_cargo_capacity=data_cargo_capacity,
     )
-    active_ship.persistent_state["module_instances"] = []
-    active_ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
+    active_ship.persistent_state["module_instances"] = list(module_instances)
+    active_ship.persistent_state["degradation_state"] = dict(degradation_state)
+    active_ship.persistent_state["max_hull_integrity"] = int(assembled.get("hull_max", 0))
+    active_ship.persistent_state["current_hull_integrity"] = int(assembled.get("hull_max", 0))
+    active_ship.persistent_state["assembled"] = assembled
+    active_ship.persistent_state["subsystem_bands"] = {
+        "weapon": int(effective_bands.get("weapon", 0)),
+        "defense": int(effective_bands.get("defense", 0)),
+        "engine": int(effective_bands.get("engine", 0)),
+    }
     fleet_by_id = {active_ship.ship_id: active_ship}
     player.active_ship_id = active_ship.ship_id
     player.owned_ship_ids = [active_ship.ship_id]

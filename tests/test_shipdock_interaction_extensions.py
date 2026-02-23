@@ -37,7 +37,7 @@ def test_shipdock_actions_are_destination_gated() -> None:
 
 def test_buy_hull_creates_inactive_ship_at_location() -> None:
     destination = _shipdock_destination()
-    player = PlayerState(player_id="player", credits=5000, owned_ship_ids=[])
+    player = PlayerState(player_id="player", credits=5000, owned_ship_ids=[], current_destination_id="DST-1")
     fleet: dict[str, ShipEntity] = {}
     inventory = {"hulls": [{"hull_id": "civ_t1_midge", "base_price_credits": 1650}], "modules": []}
 
@@ -53,7 +53,7 @@ def test_buy_hull_creates_inactive_ship_at_location() -> None:
     assert player.credits == 3350
     ship = fleet["SHIP-NEW-1"]
     assert ship.model_id == "civ_t1_midge"
-    assert ship.location_id == "DST-1"
+    assert ship.destination_id == "DST-1"
     assert ship.activity_state == "inactive"
     assert ship.persistent_state["active_flag"] is False
     assert ship.current_fuel == ship.fuel_capacity
@@ -61,9 +61,9 @@ def test_buy_hull_creates_inactive_ship_at_location() -> None:
 
 def test_sell_active_hull_requires_and_promotes_replacement() -> None:
     destination = _shipdock_destination()
-    player = PlayerState(player_id="player", credits=1000, active_ship_id="SHIP-A", owned_ship_ids=["SHIP-A", "SHIP-B"])
-    ship_a = ShipEntity(ship_id="SHIP-A", model_id="civ_t1_midge", location_id="DST-1", activity_state="active")
-    ship_b = ShipEntity(ship_id="SHIP-B", model_id="civ_t1_gnat", location_id="DST-1", activity_state="inactive")
+    player = PlayerState(player_id="player", credits=1000, active_ship_id="SHIP-A", owned_ship_ids=["SHIP-A", "SHIP-B"], current_destination_id="DST-1")
+    ship_a = ShipEntity(ship_id="SHIP-A", model_id="civ_t1_midge", destination_id="DST-1", activity_state="active")
+    ship_b = ShipEntity(ship_id="SHIP-B", model_id="civ_t1_gnat", destination_id="DST-1", activity_state="inactive")
     ship_a.persistent_state["active_flag"] = True
     ship_b.persistent_state["active_flag"] = False
     fleet = {"SHIP-A": ship_a, "SHIP-B": ship_b}
@@ -78,8 +78,8 @@ def test_sell_active_hull_requires_and_promotes_replacement() -> None:
 
 def test_buy_module_validates_slot_constraints_and_presence() -> None:
     destination = _shipdock_destination()
-    player = PlayerState(player_id="player", credits=10000, owned_ship_ids=["SHIP-1"])
-    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", location_id="DST-1")
+    player = PlayerState(player_id="player", credits=10000, owned_ship_ids=["SHIP-1"], current_destination_id="DST-1")
+    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", destination_id="DST-1")
     ship.persistent_state["module_instances"] = [{"module_id": "weapon_energy_mk1", "secondary_tags": []}]
     ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
     fleet = {"SHIP-1": ship}
@@ -97,7 +97,7 @@ def test_buy_module_validates_slot_constraints_and_presence() -> None:
     assert fail["reason"] == "slot_constraints_failed"
     assert len(ship.persistent_state["module_instances"]) == 1
 
-    ship.location_id = "DST-OTHER"
+    ship.destination_id = "DST-OTHER"
     not_present = execute_buy_module(
         destination=destination,
         player=player,
@@ -112,8 +112,8 @@ def test_buy_module_validates_slot_constraints_and_presence() -> None:
 
 def test_sell_module_and_repair_ship_apply_contract_math() -> None:
     destination = _shipdock_destination()
-    player = PlayerState(player_id="player", credits=0, owned_ship_ids=["SHIP-1"])
-    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", location_id="DST-1", fuel_capacity=10, current_fuel=3)
+    player = PlayerState(player_id="player", credits=0, owned_ship_ids=["SHIP-1"], current_destination_id="DST-1")
+    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", destination_id="DST-1", fuel_capacity=10, current_fuel=3)
     ship.persistent_state["module_instances"] = [{"module_id": "combat_utility_engine_boost_mk1", "secondary_tags": []}]
     ship.persistent_state["degradation_state"] = {"weapon": 1, "defense": 2, "engine": 0}
     ship.persistent_state["max_hull_integrity"] = 10
@@ -149,8 +149,8 @@ def test_sell_module_and_repair_ship_apply_contract_math() -> None:
 
 def test_sell_module_secondary_resale_multipliers() -> None:
     destination = _shipdock_destination()
-    player = PlayerState(player_id="player", credits=0, owned_ship_ids=["SHIP-1"])
-    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", location_id="DST-1")
+    player = PlayerState(player_id="player", credits=0, owned_ship_ids=["SHIP-1"], current_destination_id="DST-1")
+    ship = ShipEntity(ship_id="SHIP-1", model_id="civ_t1_midge", destination_id="DST-1")
     ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
     fleet = {"SHIP-1": ship}
 

@@ -83,12 +83,22 @@ def _eligible_modules() -> list[dict[str, Any]]:
 
 
 def _eligible_hulls() -> list[dict[str, Any]]:
+    try:
+        from hull_utils import is_shipdock_sellable_hull
+    except ModuleNotFoundError:
+        from src.hull_utils import is_shipdock_sellable_hull
+    
     hulls = load_hulls()["hulls"]
     eligible = []
     for hull in hulls:
-        flags = set(hull.get("availability_flags", []))
-        if "experimental" in flags or "alien" in flags:
+        hull_id = hull.get("hull_id", "")
+        if not hull_id:
             continue
+        
+        # Apply shipdock eligibility filter (excludes ALN and X-Class)
+        if not is_shipdock_sellable_hull(hull_id, hull_data=hull):
+            continue
+        
         eligible.append(hull)
     return eligible
 

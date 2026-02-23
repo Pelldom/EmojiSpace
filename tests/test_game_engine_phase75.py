@@ -492,8 +492,7 @@ def test_profiles_do_not_mutate_state() -> None:
         "current_fuel": int(ship.current_fuel),
         "current_system_id": ship.current_system_id,
         "current_destination_id": ship.current_destination_id,
-        "current_location_id": ship.current_location_id,
-        "location_id": ship.location_id,
+        "destination_id": ship.destination_id,
     }
 
     assert engine.execute({"type": "get_player_profile"})["ok"] is True
@@ -505,8 +504,7 @@ def test_profiles_do_not_mutate_state() -> None:
         "current_fuel": int(ship.current_fuel),
         "current_system_id": ship.current_system_id,
         "current_destination_id": ship.current_destination_id,
-        "current_location_id": ship.current_location_id,
-        "location_id": ship.location_id,
+        "destination_id": ship.destination_id,
     }
     assert player_after == player_before
     assert ship_after == ship_before

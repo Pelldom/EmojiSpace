@@ -205,6 +205,8 @@ class GameEngine:
                 self._execute_list_location_actions(context)
             elif command_type == "list_location_npcs":
                 self._execute_list_location_npcs(context)
+            elif command_type == "dismiss_crew":
+                self._execute_dismiss_crew(context, payload)
             elif command_type == "list_npc_interactions":
                 self._execute_list_npc_interactions(context, payload)
             elif command_type == "npc_interact":
@@ -1262,6 +1264,95 @@ class GameEngine:
             detail={
                 "destination_id": self.player_state.current_destination_id,
                 "actions": models,
+            },
+        )
+
+    def _execute_dismiss_crew(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """
+        Dismiss a crew member from the player's active ship.
+        Relocates the crew NPC to the nearest bar location deterministically.
+        """
+        npc_id = payload.get("npc_id")
+        if not isinstance(npc_id, str) or not npc_id:
+            raise ValueError("dismiss_crew requires npc_id")
+        
+        # Get active ship
+        active_ship = self._active_ship()
+        
+        # Find the crew member
+        crew_npc = None
+        for member in active_ship.crew:
+            if getattr(member, "npc_id", None) == npc_id:
+                crew_npc = member
+                break
+        
+        if crew_npc is None:
+            self._event(
+                context,
+                stage="crew_dismissal",
+                subsystem="engine",
+                detail={"action": "dismiss_crew", "result": {"ok": False, "reason": "crew_not_found", "npc_id": npc_id}},
+            )
+            return
+        
+        # Validate crew NPC contract
+        if not isinstance(crew_npc, NPCEntity):
+            raise ValueError("crew member must be NPCEntity")
+        if crew_npc.persistence_tier != NPCPersistenceTier.TIER_2:
+            raise ValueError("crew must be TIER_2")
+        
+        # Find nearest bar location for relocation
+        current_system_id = self.player_state.current_system_id
+        current_destination_id = self.player_state.current_destination_id
+        
+        try:
+            target_system_id, target_destination_id, target_location_id = self._find_nearest_bar_location(
+                system_id=current_system_id,
+                preferred_destination_id=current_destination_id,
+            )
+        except RuntimeError as e:
+            self._event(
+                context,
+                stage="crew_dismissal",
+                subsystem="engine",
+                detail={"action": "dismiss_crew", "result": {"ok": False, "reason": "no_bar_found", "error": str(e)}},
+            )
+            return
+        
+        # Update NPC: remove from ship, relocate to bar
+        crew_npc.current_ship_id = None
+        crew_npc.current_system_id = target_system_id
+        crew_npc.current_location_id = target_location_id
+        # Ensure persistence tier remains TIER_2 (do not downgrade)
+        if crew_npc.persistence_tier != NPCPersistenceTier.TIER_2:
+            crew_npc.persistence_tier = NPCPersistenceTier.TIER_2
+        
+        # Remove from ship's crew list
+        active_ship.remove_crew(npc_id)
+        
+        # Update registry (persist NPC back)
+        self._npc_registry.update(
+            crew_npc,
+            logger=self._logger if self._logging_enabled else None,
+            turn=int(get_current_turn()),
+        )
+        
+        self._event(
+            context,
+            stage="crew_dismissal",
+            subsystem="engine",
+            detail={
+                "action": "dismiss_crew",
+                "result": {
+                    "ok": True,
+                    "reason": "ok",
+                    "npc_id": npc_id,
+                    "relocated_to": {
+                        "system_id": target_system_id,
+                        "destination_id": target_destination_id,
+                        "location_id": target_location_id,
+                    },
+                },
             },
         )
 
@@ -2361,6 +2452,7 @@ class GameEngine:
         allowed.add("set_logging")
         allowed.add("mission_discuss")
         allowed.add("mission_accept")
+        allowed.add("dismiss_crew")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
@@ -3052,6 +3144,96 @@ class GameEngine:
         
         return ordered_with_mission_givers
 
+    def _find_bar_locations_in_system(self, system_id: str) -> list[tuple[str, str]]:
+        """
+        Find all bar locations in a system.
+        Returns list of (destination_id, location_id) tuples for enabled bars.
+        """
+        bars = []
+        system = self.sector.get_system(system_id)
+        if system is None:
+            return bars
+        
+        for destination in system.destinations:
+            for location in destination.locations:
+                if location.location_type == "bar" and location.enabled:
+                    bars.append((destination.destination_id, location.location_id))
+        
+        return bars
+    
+    def _pick_bar_in_system(self, system_id: str, preferred_destination_id: str | None = None) -> tuple[str, str, str] | None:
+        """
+        Pick a deterministic bar location in a system.
+        Prefers preferred_destination_id if available, otherwise picks by smallest destination_id then location_id.
+        Returns (system_id, destination_id, location_id) or None if no bars found.
+        """
+        bars = self._find_bar_locations_in_system(system_id)
+        if not bars:
+            return None
+        
+        # If preferred destination exists, pick from those
+        preferred_bars = [(dest_id, loc_id) for dest_id, loc_id in bars if dest_id == preferred_destination_id] if preferred_destination_id else []
+        
+        if preferred_bars:
+            # Pick smallest location_id among preferred bars
+            preferred_bars.sort(key=lambda x: x[1])  # Sort by location_id
+            dest_id, loc_id = preferred_bars[0]
+            return (system_id, dest_id, loc_id)
+        
+        # Otherwise pick smallest destination_id, then smallest location_id
+        bars.sort(key=lambda x: (x[0], x[1]))  # Sort by destination_id, then location_id
+        dest_id, loc_id = bars[0]
+        return (system_id, dest_id, loc_id)
+    
+    def _find_nearest_bar_location(self, system_id: str, preferred_destination_id: str | None = None) -> tuple[str, str, str]:
+        """
+        Find the nearest bar location using BFS from the given system.
+        First checks current system, then expands outward by neighbor hops.
+        Returns (target_system_id, target_destination_id, target_location_id).
+        Raises RuntimeError if no bar exists in reachable systems.
+        """
+        # First try current system
+        result = self._pick_bar_in_system(system_id, preferred_destination_id)
+        if result is not None:
+            return result
+        
+        # BFS outward by neighbor hops
+        visited = {system_id}
+        frontier = [system_id]
+        
+        while frontier:
+            next_frontier = []
+            candidate_systems_with_bars = []
+            
+            # Expand frontier: collect neighbors of all systems in current frontier
+            for sid in frontier:
+                system = self.sector.get_system(sid)
+                if system is None:
+                    continue
+                # Iterate neighbors in sorted order for determinism
+                for neighbor_id in sorted(system.neighbors):
+                    if neighbor_id in visited:
+                        continue
+                    visited.add(neighbor_id)
+                    next_frontier.append(neighbor_id)
+            
+            # Evaluate bars for systems in this hop ring
+            for nid in sorted(set(next_frontier)):
+                if self._pick_bar_in_system(nid, preferred_destination_id=None) is not None:
+                    candidate_systems_with_bars.append(nid)
+            
+            # If any candidates found in this hop ring, pick the first one deterministically
+            if candidate_systems_with_bars:
+                target_system_id = min(candidate_systems_with_bars)  # Deterministic: smallest system_id
+                result = self._pick_bar_in_system(target_system_id, preferred_destination_id=None)
+                if result is not None:
+                    return result
+            
+            frontier = next_frontier
+        
+        # No bar found in reachable systems
+        raise RuntimeError(f"No bar location found in reachable systems from {system_id}")
+    
     def _spawn_crew_for_bar_location(self, *, location_id: str, system_id: str) -> list[NPCEntity]:
         """
         Spawn hireable crew at bar location with 20% chance and population-based cap.

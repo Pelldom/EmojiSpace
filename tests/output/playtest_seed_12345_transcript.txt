@@ -1,0 +1,41 @@
+EMOJISPACE PLAYTEST TRANSCRIPT
+seed=12345
+turns_requested=5
+bias=B
+version=0.11.1
+
+Step 1
+Command: {"days": 1, "type": "wait"}
+Reason: fallback: advance time when no stronger action is available.
+Result: ok=True error=None hard_stop=False hard_stop_reason=None events=2
+State Delta: turn:0->1
+Snapshot: credits=5000 fuel=10/10 turn=1 system_id=SYS-001 destination_id=SYS-001-DST-01 location_id=SYS-001-DST-01 cargo=-
+
+Step 2
+Command: {"days": 1, "type": "wait"}
+Reason: fallback: advance time when no stronger action is available.
+Result: ok=True error=None hard_stop=False hard_stop_reason=None events=2
+State Delta: turn:1->2
+Snapshot: credits=5000 fuel=10/10 turn=2 system_id=SYS-001 destination_id=SYS-001-DST-01 location_id=SYS-001-DST-01 cargo=-
+
+Step 3
+Command: {"days": 1, "type": "wait"}
+Reason: fallback: advance time when no stronger action is available.
+Result: ok=True error=None hard_stop=False hard_stop_reason=None events=2
+State Delta: turn:2->3
+Snapshot: credits=5000 fuel=10/10 turn=3 system_id=SYS-001 destination_id=SYS-001-DST-01 location_id=SYS-001-DST-01 cargo=-
+
+Step 4
+Command: {"days": 1, "type": "wait"}
+Reason: fallback: advance time when no stronger action is available.
+Result: ok=True error=None hard_stop=False hard_stop_reason=None events=2
+State Delta: turn:3->4
+Snapshot: credits=5000 fuel=10/10 turn=4 system_id=SYS-001 destination_id=SYS-001-DST-01 location_id=SYS-001-DST-01 cargo=-
+
+Step 5
+Command: {"days": 1, "type": "wait"}
+Reason: fallback: advance time when no stronger action is available.
+Result: ok=True error=None hard_stop=False hard_stop_reason=None events=2
+State Delta: turn:4->5
+Snapshot: credits=5000 fuel=10/10 turn=5 system_id=SYS-001 destination_id=SYS-001-DST-01 location_id=SYS-001-DST-01 cargo=-
+

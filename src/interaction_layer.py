@@ -25,6 +25,8 @@ ACTION_SELL_HULL = "sell_hull"
 ACTION_BUY_MODULE = "buy_module"
 ACTION_SELL_MODULE = "sell_module"
 ACTION_REPAIR_SHIP = "repair_ship"
+ACTION_WAREHOUSE_DEPOSIT = "warehouse_deposit"
+ACTION_WAREHOUSE_WITHDRAW = "warehouse_withdraw"
 
 NPC_OUTCOME_IGNORE = "ignore"
 NPC_OUTCOME_HAIL = "hail"
@@ -306,6 +308,29 @@ def execute_sell_module(**kwargs) -> dict:
 
 def execute_repair_ship(**kwargs) -> dict:
     return _interaction_resolvers.execute_repair_ship(**kwargs)
+
+
+def execute_warehouse_deposit(**kwargs) -> dict:
+    return _interaction_resolvers.resolve_warehouse_deposit(**kwargs)
+
+
+def execute_warehouse_withdraw(**kwargs) -> dict:
+    return _interaction_resolvers.resolve_warehouse_withdraw(**kwargs)
+
+
+def dispatch_location_action(action_id: str, *, location_type: str, payload: dict | None = None, **kwargs) -> dict:
+    if location_type != "warehouse":
+        return {"ok": False, "reason": "action_not_available_for_location"}
+    resolver_map = {
+        ACTION_WAREHOUSE_DEPOSIT: execute_warehouse_deposit,
+        ACTION_WAREHOUSE_WITHDRAW: execute_warehouse_withdraw,
+    }
+    resolver = resolver_map.get(action_id)
+    if resolver is None:
+        return {"ok": False, "reason": "unknown_action", "action_id": action_id}
+    effective_payload = dict(payload or {})
+    effective_payload.update(kwargs)
+    return resolver(**effective_payload)
 
 
 def dispatch_destination_action(action_id: str, **kwargs) -> dict:

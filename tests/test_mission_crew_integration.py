@@ -23,10 +23,10 @@ def _crew(npc_id: str, tags: list[str]) -> NPCEntity:
     )
 
 
-def _offer_n(manager: MissionManager, count: int) -> list[str]:
+def _offer_n(manager: MissionManager, count: int, tier: int = 1) -> list[str]:
     ids = []
     for idx in range(count):
-        mission = MissionEntity(mission_id=f"MIS-{idx}")
+        mission = MissionEntity(mission_id=f"MIS-{idx}", mission_tier=tier)
         manager.offer(mission)
         ids.append(mission.mission_id)
     return ids
@@ -34,11 +34,14 @@ def _offer_n(manager: MissionManager, count: int) -> list[str]:
 
 def test_no_crew_baseline_unchanged() -> None:
     manager = MissionManager()
-    ids = _offer_n(manager, 2)
+    # Use tier 5 missions (cap of 1) to test limit
+    ids = _offer_n(manager, 2, tier=5)
     player = PlayerState(mission_slots=1)
     ship = ShipEntity()
-    assert manager.accept(ids[0], player, location_type="bar", ship=ship) is True
-    assert manager.accept(ids[1], player, location_type="bar", ship=ship) is False
+    accepted, _ = manager.accept(ids[0], player, location_type="bar", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[1], player, location_type="bar", ship=ship)
+    assert accepted is False
 
 
 def test_connected_tag_adds_slot_at_bar() -> None:
@@ -46,8 +49,10 @@ def test_connected_tag_adds_slot_at_bar() -> None:
     ids = _offer_n(manager, 2)
     player = PlayerState(mission_slots=1)
     ship = ShipEntity(crew=[_crew("NPC-1", ["crew:connected"])])
-    assert manager.accept(ids[0], player, location_type="bar", ship=ship) is True
-    assert manager.accept(ids[1], player, location_type="bar", ship=ship) is True
+    accepted, _ = manager.accept(ids[0], player, location_type="bar", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[1], player, location_type="bar", ship=ship)
+    assert accepted is True
 
 
 def test_connected_tag_adds_slot_at_administration() -> None:
@@ -55,17 +60,22 @@ def test_connected_tag_adds_slot_at_administration() -> None:
     ids = _offer_n(manager, 2)
     player = PlayerState(mission_slots=1)
     ship = ShipEntity(crew=[_crew("NPC-1", ["crew:connected"])])
-    assert manager.accept(ids[0], player, location_type="administration", ship=ship) is True
-    assert manager.accept(ids[1], player, location_type="administration", ship=ship) is True
+    accepted, _ = manager.accept(ids[0], player, location_type="administration", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[1], player, location_type="administration", ship=ship)
+    assert accepted is True
 
 
 def test_no_effect_at_other_locations() -> None:
     manager = MissionManager()
-    ids = _offer_n(manager, 2)
+    # Use tier 5 missions (cap of 1) to test limit
+    ids = _offer_n(manager, 2, tier=5)
     player = PlayerState(mission_slots=1)
     ship = ShipEntity(crew=[_crew("NPC-1", ["crew:connected"])])
-    assert manager.accept(ids[0], player, location_type="market", ship=ship) is True
-    assert manager.accept(ids[1], player, location_type="market", ship=ship) is False
+    accepted, _ = manager.accept(ids[0], player, location_type="market", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[1], player, location_type="market", ship=ship)
+    assert accepted is False
 
 
 def test_stacking_multiple_connected_tags_increases_slots() -> None:
@@ -78,9 +88,12 @@ def test_stacking_multiple_connected_tags_increases_slots() -> None:
             _crew("NPC-2", ["crew:connected"]),
         ]
     )
-    assert manager.accept(ids[0], player, location_type="bar", ship=ship) is True
-    assert manager.accept(ids[1], player, location_type="bar", ship=ship) is True
-    assert manager.accept(ids[2], player, location_type="bar", ship=ship) is True
+    accepted, _ = manager.accept(ids[0], player, location_type="bar", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[1], player, location_type="bar", ship=ship)
+    assert accepted is True
+    accepted, _ = manager.accept(ids[2], player, location_type="bar", ship=ship)
+    assert accepted is True
 
 
 def test_deterministic_repeated_calls_produce_identical_mission_sets_given_same_seed() -> None:
@@ -104,7 +117,8 @@ def test_deterministic_repeated_calls_produce_identical_mission_sets_given_same_
             manager.offer(mission)
         accepted = []
         for mission in created:
-            if manager.accept(mission.mission_id, player, location_type="bar", ship=ship):
+            accepted_bool, _ = manager.accept(mission.mission_id, player, location_type="bar", ship=ship)
+            if accepted_bool:
                 accepted.append(mission.mission_id)
         return accepted
 

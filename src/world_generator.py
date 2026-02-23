@@ -90,19 +90,9 @@ class WorldGenerator:
     def generate(self) -> Galaxy:
         rng = random.Random(self._seed)
         availability_rules = _load_location_availability()
-        base_names = [
-            "Aster",
-            "Beacon",
-            "Cirrus",
-            "Drift",
-            "Ember",
-            "Flux",
-            "Gleam",
-            "Haven",
-            "Ion",
-            "Jade",
-        ]
-        rng.shuffle(base_names)
+        names_data = _load_names()
+        system_names = list(names_data["systems"])
+        rng.shuffle(system_names)
 
         profiles = list(PROFILE_IDS)
         rng.shuffle(profiles)
@@ -110,7 +100,7 @@ class WorldGenerator:
         systems: List[System] = []
         for index in range(self._system_count):
             system_id = f"SYS-{index + 1:03d}"
-            name = base_names[index % len(base_names)]
+            name = system_names[index % len(system_names)]
             profile_id = profiles[index % len(profiles)]
             # Population changes require explicit Situation Engine handling.
             population_level = self._weighted_population_level(rng)
@@ -125,6 +115,7 @@ class WorldGenerator:
                 catalog=self._catalog,
                 availability_rules=availability_rules,
                 logger=self._logger,
+                names_data=names_data,
             )
             primary_market = _first_destination_market(destinations)
             primary_economy, secondary_economies = _first_destination_economies(destinations)
@@ -234,6 +225,25 @@ def _load_location_availability() -> Dict[str, dict]:
     return data
 
 
+def _load_names() -> Dict[str, List[str]]:
+    """Load system, planet, and station names from data/names.json."""
+    path = Path(__file__).resolve().parents[1] / "data" / "names.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            "systems": list(data.get("systems", [])),
+            "planets": list(data.get("planets", [])),
+            "stations": list(data.get("stations", [])),
+        }
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Fallback to hardcoded names if file missing
+        return {
+            "systems": ["Aster", "Beacon", "Cirrus", "Drift", "Ember", "Flux", "Gleam", "Haven", "Ion", "Jade"],
+            "planets": ["Terra", "Mars", "Venus", "Jupiter", "Saturn"],
+            "stations": ["Orbital", "Deep", "Space", "Outpost", "Hub"],
+        }
+
+
 def _generate_destinations(
     *,
     seed: int,
@@ -244,16 +254,37 @@ def _generate_destinations(
     catalog: DataCatalog,
     availability_rules: Dict[str, dict],
     logger: Logger | None,
+    names_data: Dict[str, List[str]],
 ) -> List[Destination]:
-    rng = _seeded_rng(seed, "destinations", system_id)
-    core_count, extra_count = _destination_counts(system_population, rng)
-    core_types = _choose_destination_types(rng, ["planet", "station"], core_count)
-    extra_types = _choose_destination_types(rng, ["asteroid_field", "contact"], extra_count)
     destinations: List[Destination] = []
-
-    for index, destination_type in enumerate(core_types + extra_types, start=1):
-        destination_id = f"{system_id}-DST-{index:02d}"
-        display_name = f"{system_name} {index}"
+    
+    # Deterministic counts for each destination type
+    planet_rng = _seeded_rng(seed, "dst_planet_count", system_id)
+    station_rng = _seeded_rng(seed, "dst_station_count", system_id)
+    explorable_rng = _seeded_rng(seed, "dst_explorable_count", system_id)
+    mining_rng = _seeded_rng(seed, "dst_mining_count", system_id)
+    
+    planet_count = planet_rng.randint(2, 4)
+    station_count = station_rng.randint(1, 2)
+    explorable_count = explorable_rng.randint(0, 2)
+    mining_count = mining_rng.randint(0, 2)
+    
+    # Shuffle name lists deterministically per system
+    planet_names = list(names_data["planets"])
+    station_names = list(names_data["stations"])
+    planet_name_rng = _seeded_rng(seed, "planet_names", system_id)
+    station_name_rng = _seeded_rng(seed, "station_names", system_id)
+    planet_name_rng.shuffle(planet_names)
+    station_name_rng.shuffle(station_names)
+    
+    destination_index = 1
+    
+    # Generate planets (population centers)
+    for i in range(planet_count):
+        destination_id = f"{system_id}-DST-{destination_index:02d}"
+        destination_index += 1
+        display_name = planet_names[i % len(planet_names)]
+        destination_type = "planet"
         population = _destination_population(
             seed=seed,
             system_id=system_id,
@@ -270,9 +301,7 @@ def _generate_destinations(
             economy_assignment = market_creator.assign_economies(population)
             primary_economy_id = economy_assignment.primary
             secondary_economy_ids = list(economy_assignment.secondary)
-            # Check if destination has shipdock service
             from interaction_resolvers import destination_has_shipdock_service
-            # Create a temporary destination object to check for shipdock
             temp_dest = Destination(
                 destination_id=destination_id,
                 system_id=system_id,
@@ -281,12 +310,10 @@ def _generate_destinations(
                 population=population,
                 primary_economy_id=primary_economy_id,
                 secondary_economy_ids=secondary_economy_ids,
-                locations=[],  # Will be populated later
+                locations=[],
                 market=None,
             )
             has_shipdock = destination_has_shipdock_service(temp_dest)
-            
-            # Pass world_seed for shipdock price variance generation
             market = market_creator.create_market(
                 destination_id=destination_id,
                 population_level=population,
@@ -305,6 +332,100 @@ def _generate_destinations(
             secondary_economy_ids=secondary_economy_ids,
             locations=[],
             market=market,
+        )
+        destinations.append(destination)
+    
+    # Generate stations (population centers)
+    for i in range(station_count):
+        destination_id = f"{system_id}-DST-{destination_index:02d}"
+        destination_index += 1
+        display_name = station_names[i % len(station_names)]
+        destination_type = "station"
+        population = _destination_population(
+            seed=seed,
+            system_id=system_id,
+            destination_id=destination_id,
+            destination_type=destination_type,
+            system_population=system_population,
+        )
+        primary_economy_id: str | None = None
+        secondary_economy_ids: List[str] = []
+        market: Market | None = None
+        if population >= 1:
+            assignment_rng = _seeded_rng(seed, "economies", system_id, destination_id)
+            market_creator = MarketCreator(catalog, assignment_rng, logger)
+            economy_assignment = market_creator.assign_economies(population)
+            primary_economy_id = economy_assignment.primary
+            secondary_economy_ids = list(economy_assignment.secondary)
+            from interaction_resolvers import destination_has_shipdock_service
+            temp_dest = Destination(
+                destination_id=destination_id,
+                system_id=system_id,
+                destination_type=destination_type,
+                display_name=display_name,
+                population=population,
+                primary_economy_id=primary_economy_id,
+                secondary_economy_ids=secondary_economy_ids,
+                locations=[],
+                market=None,
+            )
+            has_shipdock = destination_has_shipdock_service(temp_dest)
+            market = market_creator.create_market(
+                destination_id=destination_id,
+                population_level=population,
+                primary_economy=primary_economy_id,
+                secondary_economies=secondary_economy_ids,
+                world_seed=seed,
+                has_shipdock=has_shipdock,
+            )
+        destination = Destination(
+            destination_id=destination_id,
+            system_id=system_id,
+            destination_type=destination_type,
+            display_name=display_name,
+            population=population,
+            primary_economy_id=primary_economy_id,
+            secondary_economy_ids=secondary_economy_ids,
+            locations=[],
+            market=market,
+        )
+        destinations.append(destination)
+    
+    # Generate explorable stubs (no population, no markets)
+    for i in range(explorable_count):
+        destination_id = f"{system_id}-DST-{destination_index:02d}"
+        destination_index += 1
+        display_name = f"Explorable Site {i + 1}"
+        destination_type = "explorable_stub"
+        destination = Destination(
+            destination_id=destination_id,
+            system_id=system_id,
+            destination_type=destination_type,
+            display_name=display_name,
+            population=0,
+            primary_economy_id=None,
+            secondary_economy_ids=[],
+            locations=[],
+            market=None,
+        )
+        destinations.append(destination)
+    
+    # Generate mining stubs (no population, no markets)
+    for i in range(mining_count):
+        destination_id = f"{system_id}-DST-{destination_index:02d}"
+        destination_index += 1
+        display_name = f"Mining Site {i + 1}"
+        destination_type = "mining_stub"
+        destination = Destination(
+            destination_id=destination_id,
+            system_id=system_id,
+            destination_type=destination_type,
+            display_name=display_name,
+            population=0,
+            primary_economy_id=None,
+            secondary_economy_ids=[],
+            locations=[],
+            market=None,
         )
         destinations.append(destination)
 
@@ -562,7 +683,7 @@ def _destination_population(
     destination_type: str,
     system_population: int,
 ) -> int:
-    if destination_type in {"asteroid_field", "contact"}:
+    if destination_type in {"asteroid_field", "contact", "explorable_stub", "mining_stub"}:
         return 0
     if system_population <= 1:
         return max(system_population, 1)

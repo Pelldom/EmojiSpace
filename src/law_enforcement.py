@@ -128,6 +128,22 @@ def get_consequences(violation_type: str, severity: Severity) -> dict | None:
 
 
 def band_index_from_1_100(value: int) -> int:
+    """
+    D) Canonical band computation function for reputation/notoriety scores.
+    
+    Maps a score from 1-100 to a band index:
+    - Band -2: value <= 20  (very low)
+    - Band -1: 20 < value <= 40  (low)
+    - Band  0: 40 < value <= 60  (neutral)
+    - Band  1: 60 < value <= 80  (high)
+    - Band  2: 80 < value <= 100 (very high)
+    
+    Boundaries are inclusive on the upper end (e.g., value=20 maps to -2, value=21 maps to -1).
+    Negative values are treated as <= 20 (band -2).
+    
+    This is the single source of truth for band computation.
+    Used by reputation_band and notoriety_band calculations.
+    """
     if value <= 20:
         return -2
     if value <= 40:

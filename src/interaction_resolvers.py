@@ -4,10 +4,12 @@ try:
     from data_loader import load_hulls, load_modules
     from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
     from ship_entity import ShipEntity
+    from market_pricing import price_hull_transaction, price_module_transaction
 except ModuleNotFoundError:
     from src.data_loader import load_hulls, load_modules
     from src.ship_assembler import assemble_ship, compute_hull_max_from_ship_state
     from src.ship_entity import ShipEntity
+    from src.market_pricing import price_hull_transaction, price_module_transaction
 
 
 FUEL_PRICE_PER_UNIT = 5
@@ -90,7 +92,7 @@ def execute_refuel(*, ship, player_credits: int, requested_units: int | None = N
     ship.current_fuel = int(ship.current_fuel) + units_target
     updated_credits = player_credits - total_cost
     if player is not None:
-        player.credits = int(updated_credits)
+        player.credits = max(0, int(updated_credits))
     return {
         "ok": True,
         "reason": "ok",
@@ -146,8 +148,19 @@ def _set_ship_active(ship, value: bool) -> None:
     ship.persistent_state["active_flag"] = bool(value)
 
 
-def _ship_present_at_destination(ship, destination_id: str) -> bool:
-    return getattr(ship, "location_id", None) == destination_id
+def _ship_present_at_destination(ship, player, destination_id: str | None = None) -> bool:
+    """
+    Check if ship is present at destination.
+    
+    Presence is determined by:
+    - ship.destination_id == player.current_destination_id
+    
+    Ships exist at DESTINATION level, not LOCATION level.
+    Do NOT check system_id. Destination match only.
+    """
+    ship_destination_id = getattr(ship, "destination_id", None)
+    player_destination_id = getattr(player, "current_destination_id", None)
+    return ship_destination_id == player_destination_id
 
 
 def _hull_by_id() -> dict[str, dict]:
@@ -180,41 +193,111 @@ def execute_buy_hull(
     inventory: dict,
     hull_id: str,
     ship_id: str,
+    system_id: str | None = None,
+    world_state_engine=None,
+    logger=None,
+    turn: int = 0,
 ) -> dict:
     destination_id = _destination_id(destination)
     if not destination_has_shipdock_service(destination):
         return {"ok": False, "reason": "shipdock_required"}
     if not destination_id:
         return {"ok": False, "reason": "invalid_destination"}
-    price = _inventory_hull_price(inventory, hull_id)
-    if price is None:
+    base_price = _inventory_hull_price(inventory, hull_id)
+    if base_price is None:
         return {"ok": False, "reason": "hull_not_in_inventory"}
+    
+    # Use pricing contract for buy transaction
+    if system_id is None:
+        # Fallback: try to get system_id from destination
+        system_id = getattr(destination, "system_id", None) if hasattr(destination, "system_id") else None
+        if system_id is None:
+            system_id = ""
+    
+    pricing = price_hull_transaction(
+        base_price_credits=base_price,
+        hull_id=hull_id,
+        system_id=system_id,
+        transaction_type="buy",
+        world_state_engine=world_state_engine,
+        logger=logger,
+        turn=turn,
+    )
+    # C) Apply shipdock price variance multiplier (locked per market)
+    # C) Apply shipdock price variance multiplier (locked per market)
+    final_price = pricing.final_price
+    if hasattr(destination, "market") and destination.market is not None:
+        final_price = final_price * destination.market.shipdock_price_multiplier
+        final_price = max(1.0, round(final_price))
+    price = int(final_price)
+    
     if int(player.credits) < price:
         return {"ok": False, "reason": "insufficient_credits"}
     if ship_id in fleet_by_id:
         return {"ok": False, "reason": "ship_id_exists"}
 
-    assembled = assemble_ship(hull_id, [], {"weapon": 0, "defense": 0, "engine": 0})
-    max_hull_integrity = compute_hull_max_from_ship_state({"hull_id": hull_id, "module_instances": []})
+    # Use assembler to derive all ship stats
+    module_instances = []
+    degradation_state = {"weapon": 0, "defense": 0, "engine": 0}
+    assembled = assemble_ship(hull_id, module_instances, degradation_state)
+    
+    # Extract hull data for crew_capacity and cargo base
+    from data_loader import load_hulls
+    hulls_data = load_hulls()
+    hull_data = None
+    for hull in hulls_data.get("hulls", []):
+        if hull.get("hull_id") == hull_id:
+            hull_data = hull
+            break
+    
+    if hull_data is None:
+        return {"ok": False, "reason": "hull_data_not_found"}
+    
+    # Extract cargo capacities: base from hull + module bonuses from assembler
+    cargo_base = hull_data.get("cargo", {})
+    physical_cargo_base = int(cargo_base.get("physical_base", 0))
+    data_cargo_base = int(cargo_base.get("data_base", 0))
+    utility_effects = assembled.get("ship_utility_effects", {})
+    physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+    data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+    
+    # Extract crew capacity from hull data
+    crew_capacity = int(hull_data.get("crew_capacity", 0))
+    
+    # Extract subsystem bands from assembler
+    bands = assembled.get("bands", {})
+    effective_bands = bands.get("effective", {})
+    
     ship = ShipEntity(
         ship_id=ship_id,
         model_id=hull_id,
         owner_id=getattr(player, "player_id", "player"),
+        owner_type="player",
         activity_state="inactive",
-        location_id=destination_id,
-        current_location_id=destination_id,
+        destination_id=destination_id,
+        current_system_id=getattr(player, "current_system_id", ""),
+        current_destination_id=destination_id,
         fuel_capacity=int(assembled["fuel_capacity"]),
         current_fuel=int(assembled["fuel_capacity"]),
+        crew_capacity=crew_capacity,
+        physical_cargo_capacity=physical_cargo_capacity,
+        data_cargo_capacity=data_cargo_capacity,
     )
-    ship.persistent_state["module_instances"] = []
-    ship.persistent_state["degradation_state"] = {"weapon": 0, "defense": 0, "engine": 0}
-    ship.persistent_state["max_hull_integrity"] = int(max_hull_integrity)
-    ship.persistent_state["current_hull_integrity"] = int(max_hull_integrity)
+    ship.persistent_state["module_instances"] = list(module_instances)
+    ship.persistent_state["degradation_state"] = dict(degradation_state)
+    ship.persistent_state["max_hull_integrity"] = int(assembled.get("hull_max", 0))
+    ship.persistent_state["current_hull_integrity"] = int(assembled.get("hull_max", 0))
+    ship.persistent_state["assembled"] = assembled
+    ship.persistent_state["subsystem_bands"] = {
+        "weapon": int(effective_bands.get("weapon", 0)),
+        "defense": int(effective_bands.get("defense", 0)),
+        "engine": int(effective_bands.get("engine", 0)),
+    }
     ship.persistent_state["active_flag"] = False
     fleet_by_id[ship_id] = ship
     if ship_id not in player.owned_ship_ids:
         player.owned_ship_ids.append(ship_id)
-    player.credits = int(player.credits) - price
+    player.credits = max(0, int(player.credits) - price)
     return {"ok": True, "reason": "ok", "ship_id": ship_id, "credits": int(player.credits)}
 
 
@@ -223,18 +306,43 @@ def execute_sell_hull(
     destination,
     player,
     fleet_by_id: dict[str, ShipEntity],
-    ship_id: str,
+    ship_id: str | None = None,
     price_modifier_multiplier: float = 1.0,
+    system_id: str | None = None,
+    world_state_engine=None,
+    logger=None,
+    turn: int = 0,
 ) -> dict:
     destination_id = _destination_id(destination)
     if not destination_has_shipdock_service(destination):
         return {"ok": False, "reason": "shipdock_required"}
     if not destination_id:
         return {"ok": False, "reason": "invalid_destination"}
+    
+    # Default to player's active ship if ship_id not provided
+    if ship_id is None:
+        ship_id = getattr(player, "active_ship_id", None)
+        if ship_id is None:
+            return {"ok": False, "reason": "no_active_ship"}
+    
     ship = fleet_by_id.get(ship_id)
     if ship is None:
         return {"ok": False, "reason": "ship_not_found"}
-    if not _ship_present_at_destination(ship, destination_id):
+    
+    # Check presence: ship.destination_id must match player.current_destination_id
+    player_destination_id = getattr(player, "current_destination_id", None)
+    ship_destination_id = getattr(ship, "destination_id", None)
+    if ship_destination_id != player_destination_id:
+        if logger is not None:
+            logger.log(
+                turn=turn,
+                action="shipdock_presence_check",
+                state_change=(
+                    f"ship_not_present ship_id={ship_id} "
+                    f"player_destination_id={player_destination_id} "
+                    f"ship_destination_id={ship_destination_id}"
+                ),
+            )
         return {"ok": False, "reason": "ship_not_present"}
 
     is_active = _is_ship_active(ship, player)
@@ -243,7 +351,7 @@ def execute_sell_hull(
             [
                 other_id
                 for other_id, other_ship in fleet_by_id.items()
-                if other_id != ship_id and _ship_present_at_destination(other_ship, destination_id)
+                if other_id != ship_id and _ship_present_at_destination(other_ship, player)
             ]
         )
         if not others:
@@ -256,9 +364,29 @@ def execute_sell_hull(
     hull = _hull_by_id().get(hull_id)
     if hull is None:
         return {"ok": False, "reason": "unknown_hull"}
-    sell_price = float(hull["base_price_credits"]) * 0.5
-    final_price = int(round(sell_price * float(price_modifier_multiplier)))
-    player.credits = int(player.credits) + final_price
+    
+    # Use pricing contract for sell transaction
+    if system_id is None:
+        system_id = getattr(destination, "system_id", None) if hasattr(destination, "system_id") else None
+        if system_id is None:
+            system_id = ""
+    
+    pricing = price_hull_transaction(
+        base_price_credits=int(hull["base_price_credits"]),
+        hull_id=hull_id,
+        system_id=system_id,
+        transaction_type="sell",
+        world_state_engine=world_state_engine,
+        logger=logger,
+        turn=turn,
+    )
+    # C) Apply shipdock price variance multiplier (locked per market)
+    final_price = pricing.final_price * float(price_modifier_multiplier)
+    if hasattr(destination, "market") and destination.market is not None:
+        final_price = final_price * destination.market.shipdock_price_multiplier
+    final_price = max(1.0, round(final_price))
+    final_price = int(final_price)
+    player.credits = max(0, int(player.credits) + final_price)
     fleet_by_id.pop(ship_id, None)
     player.owned_ship_ids = [owned for owned in player.owned_ship_ids if owned != ship_id]
     if player.active_ship_id == ship_id:
@@ -274,19 +402,61 @@ def execute_buy_module(
     inventory: dict,
     ship_id: str,
     module_id: str,
+    system_id: str | None = None,
+    world_state_engine=None,
+    logger=None,
+    turn: int = 0,
 ) -> dict:
     destination_id = _destination_id(destination)
     if not destination_has_shipdock_service(destination):
         return {"ok": False, "reason": "shipdock_required"}
     if not destination_id:
         return {"ok": False, "reason": "invalid_destination"}
-    price = _inventory_module_price(inventory, module_id)
-    if price is None:
+    base_price = _inventory_module_price(inventory, module_id)
+    if base_price is None:
         return {"ok": False, "reason": "module_not_in_inventory"}
+    
+    # Use pricing contract for buy transaction
+    if system_id is None:
+        # Fallback: try to get system_id from destination
+        system_id = getattr(destination, "system_id", None) if hasattr(destination, "system_id") else None
+        if system_id is None:
+            system_id = ""
+    
+    pricing = price_module_transaction(
+        base_price_credits=base_price,
+        module_id=module_id,
+        system_id=system_id,
+        transaction_type="buy",
+        secondary_tags=None,
+        world_state_engine=world_state_engine,
+        logger=logger,
+        turn=turn,
+    )
+    # C) Apply shipdock price variance multiplier (locked per market)
+    final_price = pricing.final_price
+    if hasattr(destination, "market") and destination.market is not None:
+        final_price = final_price * destination.market.shipdock_price_multiplier
+        final_price = max(1.0, round(final_price))
+    price = int(final_price)
     ship = fleet_by_id.get(ship_id)
     if ship is None:
         return {"ok": False, "reason": "ship_not_found"}
-    if not _ship_present_at_destination(ship, destination_id):
+    
+    # Check presence: ship.destination_id must match player.current_destination_id
+    player_destination_id = getattr(player, "current_destination_id", None)
+    ship_destination_id = getattr(ship, "destination_id", None)
+    if ship_destination_id != player_destination_id:
+        if logger is not None:
+            logger.log(
+                turn=turn,
+                action="shipdock_presence_check",
+                state_change=(
+                    f"ship_not_present ship_id={ship_id} "
+                    f"player_destination_id={player_destination_id} "
+                    f"ship_destination_id={ship_destination_id}"
+                ),
+            )
         return {"ok": False, "reason": "ship_not_present"}
     if int(player.credits) < price:
         return {"ok": False, "reason": "insufficient_credits"}
@@ -300,10 +470,39 @@ def execute_buy_module(
         return {"ok": False, "reason": "slot_constraints_failed"}
 
     _set_module_instances(ship, candidate)
+    
+    # Update all ship stats from assembler output
     ship.fuel_capacity = int(assembled["fuel_capacity"])
     ship.current_fuel = min(int(ship.current_fuel), int(ship.fuel_capacity))
+    
+    # Update cargo capacities: base from hull + module bonuses from assembler
+    from data_loader import load_hulls
+    hulls_data = load_hulls()
+    hull_data = None
+    for hull in hulls_data.get("hulls", []):
+        if hull.get("hull_id") == ship.model_id:
+            hull_data = hull
+            break
+    
+    if hull_data:
+        cargo_base = hull_data.get("cargo", {})
+        physical_cargo_base = int(cargo_base.get("physical_base", 0))
+        data_cargo_base = int(cargo_base.get("data_base", 0))
+        utility_effects = assembled.get("ship_utility_effects", {})
+        ship.physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+        ship.data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+    
+    # Update subsystem bands
+    bands = assembled.get("bands", {})
+    effective_bands = bands.get("effective", {})
+    ship.persistent_state["subsystem_bands"] = {
+        "weapon": int(effective_bands.get("weapon", 0)),
+        "defense": int(effective_bands.get("defense", 0)),
+        "engine": int(effective_bands.get("engine", 0)),
+    }
+    
     ship.persistent_state["assembled"] = assembled
-    player.credits = int(player.credits) - price
+    player.credits = max(0, int(player.credits) - price)
     return {"ok": True, "reason": "ok", "credits": int(player.credits)}
 
 
@@ -315,6 +514,10 @@ def execute_sell_module(
     ship_id: str,
     module_id: str,
     price_modifier_multiplier: float = 1.0,
+    system_id: str | None = None,
+    world_state_engine=None,
+    logger=None,
+    turn: int = 0,
 ) -> dict:
     destination_id = _destination_id(destination)
     if not destination_has_shipdock_service(destination):
@@ -324,7 +527,21 @@ def execute_sell_module(
     ship = fleet_by_id.get(ship_id)
     if ship is None:
         return {"ok": False, "reason": "ship_not_found"}
-    if not _ship_present_at_destination(ship, destination_id):
+    
+    # Check presence: ship.destination_id must match player.current_destination_id
+    player_destination_id = getattr(player, "current_destination_id", None)
+    ship_destination_id = getattr(ship, "destination_id", None)
+    if ship_destination_id != player_destination_id:
+        if logger is not None:
+            logger.log(
+                turn=turn,
+                action="shipdock_presence_check",
+                state_change=(
+                    f"ship_not_present ship_id={ship_id} "
+                    f"player_destination_id={player_destination_id} "
+                    f"ship_destination_id={ship_destination_id}"
+                ),
+            )
         return {"ok": False, "reason": "ship_not_present"}
 
     modules = _module_instances(ship)
@@ -342,19 +559,63 @@ def execute_sell_module(
         return {"ok": False, "reason": "unknown_module"}
     assembled = assemble_ship(ship.model_id, modules, _degradation_state(ship))
     _set_module_instances(ship, modules)
+    
+    # Update all ship stats from assembler output
     ship.fuel_capacity = int(assembled["fuel_capacity"])
     ship.current_fuel = min(int(ship.current_fuel), int(ship.fuel_capacity))
+    
+    # Update cargo capacities: base from hull + module bonuses from assembler
+    from data_loader import load_hulls
+    hulls_data = load_hulls()
+    hull_data = None
+    for hull in hulls_data.get("hulls", []):
+        if hull.get("hull_id") == ship.model_id:
+            hull_data = hull
+            break
+    
+    if hull_data:
+        cargo_base = hull_data.get("cargo", {})
+        physical_cargo_base = int(cargo_base.get("physical_base", 0))
+        data_cargo_base = int(cargo_base.get("data_base", 0))
+        utility_effects = assembled.get("ship_utility_effects", {})
+        ship.physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+        ship.data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+    
+    # Update subsystem bands
+    bands = assembled.get("bands", {})
+    effective_bands = bands.get("effective", {})
+    ship.persistent_state["subsystem_bands"] = {
+        "weapon": int(effective_bands.get("weapon", 0)),
+        "defense": int(effective_bands.get("defense", 0)),
+        "engine": int(effective_bands.get("engine", 0)),
+    }
+    
     ship.persistent_state["assembled"] = assembled
 
-    sell_price = float(module["base_price_credits"]) * 0.5
-    resale_multiplier = 1.0
-    secondary_tags = set(removed_module_instance.get("secondary_tags", []))
-    if "secondary:prototype" in secondary_tags:
-        resale_multiplier *= 1.5
-    if "secondary:alien" in secondary_tags:
-        resale_multiplier *= 2.0
-    final_price = int(round(sell_price * resale_multiplier * float(price_modifier_multiplier)))
-    player.credits = int(player.credits) + final_price
+    # Use pricing contract for sell transaction
+    secondary_tags_list = list(removed_module_instance.get("secondary_tags", []))
+    if system_id is None:
+        system_id = getattr(destination, "system_id", None) if hasattr(destination, "system_id") else None
+        if system_id is None:
+            system_id = ""
+    
+    pricing = price_module_transaction(
+        base_price_credits=int(module["base_price_credits"]),
+        module_id=module_id,
+        system_id=system_id,
+        transaction_type="sell",
+        secondary_tags=secondary_tags_list,
+        world_state_engine=world_state_engine,
+        logger=logger,
+        turn=turn,
+    )
+    # C) Apply shipdock price variance multiplier (locked per market)
+    final_price = pricing.final_price * float(price_modifier_multiplier)
+    if hasattr(destination, "market") and destination.market is not None:
+        final_price = final_price * destination.market.shipdock_price_multiplier
+    final_price = max(1.0, round(final_price))
+    final_price = int(final_price)
+    player.credits = max(0, int(player.credits) + final_price)
     return {"ok": True, "reason": "ok", "credits": int(player.credits), "final_price": final_price}
 
 
@@ -363,8 +624,10 @@ def execute_repair_ship(
     destination,
     player,
     fleet_by_id: dict[str, ShipEntity],
-    ship_id: str,
+    ship_id: str | None = None,
     system_population: int,
+    logger=None,
+    turn: int = 0,
 ) -> dict:
     destination_id = _destination_id(destination)
     if not destination_has_shipdock_service(destination):
@@ -373,10 +636,31 @@ def execute_repair_ship(
         return {"ok": False, "reason": "invalid_destination"}
     if system_population not in REPAIR_POPULATION_MODIFIER:
         return {"ok": False, "reason": "invalid_population"}
+    
+    # Default to player's active ship if ship_id not provided
+    if ship_id is None:
+        ship_id = getattr(player, "active_ship_id", None)
+        if ship_id is None:
+            return {"ok": False, "reason": "no_active_ship"}
+    
     ship = fleet_by_id.get(ship_id)
     if ship is None:
         return {"ok": False, "reason": "ship_not_found"}
-    if not _ship_present_at_destination(ship, destination_id):
+    
+    # Check presence: ship.destination_id must match player.current_destination_id
+    player_destination_id = getattr(player, "current_destination_id", None)
+    ship_destination_id = getattr(ship, "destination_id", None)
+    if ship_destination_id != player_destination_id:
+        if logger is not None:
+            logger.log(
+                turn=turn,
+                action="shipdock_presence_check",
+                state_change=(
+                    f"ship_not_present ship_id={ship_id} "
+                    f"player_destination_id={player_destination_id} "
+                    f"ship_destination_id={ship_destination_id}"
+                ),
+            )
         return {"ok": False, "reason": "ship_not_present"}
 
     max_hull = int(ship.persistent_state.get("max_hull_integrity", 0))
@@ -389,8 +673,132 @@ def execute_repair_ship(
     if int(player.credits) < final_cost:
         return {"ok": False, "reason": "insufficient_credits", "final_cost": final_cost}
 
-    player.credits = int(player.credits) - final_cost
+    player.credits = max(0, int(player.credits) - final_cost)
     ship.persistent_state["current_hull_integrity"] = max_hull
     _set_degradation_state(ship, {"weapon": 0, "defense": 0, "engine": 0})
     return {"ok": True, "reason": "ok", "credits": int(player.credits), "final_cost": final_cost}
 
+
+def resolve_warehouse_deposit(
+    *,
+    player,
+    destination_id: str,
+    sku_id: str,
+    quantity: int,
+) -> dict:
+    if not isinstance(destination_id, str) or not destination_id:
+        return {"ok": False, "reason": "invalid_destination"}
+    if not isinstance(sku_id, str) or not sku_id:
+        return {"ok": False, "reason": "invalid_sku_id"}
+    if not isinstance(quantity, int) or quantity <= 0:
+        return {"ok": False, "reason": "invalid_quantity"}
+
+    warehouses = getattr(player, "warehouses", {})
+    if not isinstance(warehouses, dict):
+        return {"ok": False, "reason": "warehouse_not_rented"}
+    warehouse = warehouses.get(destination_id)
+    if not isinstance(warehouse, dict):
+        return {"ok": False, "reason": "warehouse_not_rented"}
+
+    capacity = int(warehouse.get("capacity", 0) or 0)
+    goods = warehouse.get("goods", {})
+    if not isinstance(goods, dict):
+        goods = {}
+    used_before = int(sum(int(v) for v in goods.values() if isinstance(v, int) and int(v) > 0))
+    available_before = max(0, int(capacity - used_before))
+    if available_before < int(quantity):
+        return {"ok": False, "reason": "warehouse_capacity_exceeded"}
+
+    cargo_by_ship = getattr(player, "cargo_by_ship", {})
+    if not isinstance(cargo_by_ship, dict):
+        return {"ok": False, "reason": "insufficient_cargo"}
+    cargo = cargo_by_ship.setdefault("active", {})
+    if not isinstance(cargo, dict):
+        return {"ok": False, "reason": "insufficient_cargo"}
+    cargo_qty = int(cargo.get(sku_id, 0) or 0)
+    if cargo_qty < int(quantity):
+        return {"ok": False, "reason": "insufficient_cargo"}
+
+    remaining = cargo_qty - int(quantity)
+    if remaining <= 0:
+        cargo.pop(sku_id, None)
+    else:
+        cargo[sku_id] = int(remaining)
+    goods[sku_id] = int(goods.get(sku_id, 0) + int(quantity))
+    warehouse["goods"] = goods
+
+    used_after = int(sum(int(v) for v in goods.values() if isinstance(v, int) and int(v) > 0))
+    return {
+        "ok": True,
+        "reason": "ok",
+        "result_summary": {
+            "destination_id": destination_id,
+            "sku_id": sku_id,
+            "quantity": int(quantity),
+            "warehouse_used_after": used_after,
+            "warehouse_available_after": max(0, int(capacity - used_after)),
+        },
+    }
+
+
+def resolve_warehouse_withdraw(
+    *,
+    player,
+    destination_id: str,
+    sku_id: str,
+    quantity: int,
+    cargo_capacity: int | None = None,
+) -> dict:
+    if not isinstance(destination_id, str) or not destination_id:
+        return {"ok": False, "reason": "invalid_destination"}
+    if not isinstance(sku_id, str) or not sku_id:
+        return {"ok": False, "reason": "invalid_sku_id"}
+    if not isinstance(quantity, int) or quantity <= 0:
+        return {"ok": False, "reason": "invalid_quantity"}
+
+    warehouses = getattr(player, "warehouses", {})
+    if not isinstance(warehouses, dict):
+        return {"ok": False, "reason": "warehouse_not_rented"}
+    warehouse = warehouses.get(destination_id)
+    if not isinstance(warehouse, dict):
+        return {"ok": False, "reason": "warehouse_not_rented"}
+
+    goods = warehouse.get("goods", {})
+    if not isinstance(goods, dict):
+        goods = {}
+    stored_qty = int(goods.get(sku_id, 0) or 0)
+    if stored_qty < int(quantity):
+        return {"ok": False, "reason": "insufficient_stored_goods"}
+
+    cargo_by_ship = getattr(player, "cargo_by_ship", {})
+    if not isinstance(cargo_by_ship, dict):
+        return {"ok": False, "reason": "insufficient_cargo_capacity"}
+    cargo = cargo_by_ship.setdefault("active", {})
+    if not isinstance(cargo, dict):
+        return {"ok": False, "reason": "insufficient_cargo_capacity"}
+    current_cargo_units = int(sum(int(v) for v in cargo.values() if isinstance(v, int) and int(v) > 0))
+    if isinstance(cargo_capacity, int) and cargo_capacity >= 0:
+        if current_cargo_units + int(quantity) > int(cargo_capacity):
+            return {"ok": False, "reason": "insufficient_cargo_capacity"}
+
+    remaining_goods = stored_qty - int(quantity)
+    if remaining_goods <= 0:
+        goods.pop(sku_id, None)
+    else:
+        goods[sku_id] = int(remaining_goods)
+    warehouse["goods"] = goods
+    cargo[sku_id] = int(cargo.get(sku_id, 0) + int(quantity))
+
+    used_after = int(sum(int(v) for v in goods.values() if isinstance(v, int) and int(v) > 0))
+    capacity = int(warehouse.get("capacity", 0) or 0)
+    return {
+        "ok": True,
+        "reason": "ok",
+        "result_summary": {
+            "destination_id": destination_id,
+            "sku_id": sku_id,
+            "quantity": int(quantity),
+            "warehouse_used_after": used_after,
+            "warehouse_available_after": max(0, int(capacity - used_after)),
+        },
+    }
