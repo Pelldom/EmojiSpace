@@ -361,7 +361,6 @@ class GameEngine:
 
         raw_days = int(math.ceil(distance_ly)) if inter_system else 1
         days = max(1, raw_days) if inter_system else 1
-        fuel_cost = max(1, raw_days) if inter_system else 0
         route_id = payload.get("route_id")
         travel_id = self._travel_id(
             origin_system_id=self.player_state.current_system_id,
@@ -388,12 +387,15 @@ class GameEngine:
         active_ship = self._active_ship()
         fuel_capacity = int(getattr(active_ship, "fuel_capacity", 0) or 5)
         current_fuel = int(getattr(active_ship, "current_fuel", 0) or 0)
-        if inter_system and float(distance_ly) > float(fuel_capacity):
+        required_fuel = max(1, int(math.ceil(distance_ly))) if inter_system else 0
+        
+        if inter_system and float(distance_ly) > float(current_fuel):
             raise ValueError("warp_range_exceeded")
-        if current_fuel < fuel_cost:
+        if current_fuel < required_fuel:
             raise ValueError("insufficient_fuel")
 
-        active_ship.current_fuel = current_fuel - fuel_cost
+        new_fuel = max(0, min(current_fuel - required_fuel, fuel_capacity))
+        active_ship.set_current_fuel(new_fuel, self._logger, context.turn_before)
         self._event(
             context,
             stage="travel",
@@ -402,7 +404,7 @@ class GameEngine:
                 "travel_id": travel_id,
                 "success": True,
                 "reason": "ok",
-                "fuel_cost": int(fuel_cost),
+                "fuel_cost": int(required_fuel),
                 "current_fuel": int(active_ship.current_fuel),
                 "fuel_capacity": int(fuel_capacity),
             },

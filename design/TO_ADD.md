@@ -69,6 +69,46 @@
 
 - Searchable "Nearest Known Location" utility: Once visited tracking is implemented, allow players (via UI) to search for the nearest previously visited location type (e.g., Shipdock, Administration, Bar, Warehouse, DataNet). Should operate only on visited systems/destinations. Pure UI query layer - no world mutation.
 
+## Interactive Galaxy Map (UI Phase)
+
+### 1) Interactive Map Layer
+- Render the galaxy map visually (UI layer, not CLI).
+- Each system will be represented by an emoji-based icon.
+- Icons must be selectable (click/tap).
+- Selecting a system displays:
+    - If visited:
+        - system name
+        - government
+        - primary and secondary economies
+        - discovered destinations
+    - If not visited:
+        - system name only
+- No hidden data leakage for unvisited systems.
+
+### 2) Emoji-Based Map Indicators
+- The map will use emojis to represent:
+    - Stars
+    - Wormholes
+    - Black holes
+    - Special anomalies (future)
+    - Player location
+- Emoji selection must be centralized in emoji registry (data/emoji.json).
+- Emoji usage must not introduce new game logic.
+- Icons are presentation-layer only.
+
+### 3) Fog of War Rules
+- Unvisited systems show minimal information.
+- Discovered systems reveal structural metadata only.
+- No economy, legality, or situation data shown unless visited (align with World State contract).
+
+### 4) Future Extension Hooks
+- Wormholes (once implemented) must display unique emoji.
+- Black holes (once implemented) must display unique emoji.
+- Dynamic event overlays (Phase 6 situations) may later appear as temporary map indicators.
+
+Do not implement any of this now.
+This is documentation only.
+
 ## CUSTOMS / ENFORCEMENT NOTES
 - Customs may trigger a MAX of once per destination per turn (anti-spam guard), but is NOT guaranteed.
 - Customs trigger is gated by a determination check driven by system enforcement (and any existing rules for destination/market entry).

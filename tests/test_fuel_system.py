@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
@@ -153,3 +155,177 @@ def test_travel_with_crew_modifiers_is_deterministic() -> None:
 
     assert result_a.fuel_cost == result_b.fuel_cost
     assert result_a.current_fuel == result_b.current_fuel
+
+
+def test_game_engine_travel_rejected_insufficient_fuel() -> None:
+    """Test that GameEngine rejects travel when current_fuel=10 cannot travel to system at distance 11."""
+    from game_engine import GameEngine  # noqa: E402
+    import math
+    
+    # Create engine with more systems to ensure we have systems at various distances
+    engine = GameEngine(
+        world_seed=12345,
+        config={"system_count": 10},
+    )
+    
+    # Set ship fuel to 10
+    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
+    assert active_ship is not None
+    active_ship.current_fuel = 10
+    fuel_before = active_ship.current_fuel
+    
+    # Find a system at distance > 10 using engine's distance calculation
+    current_system = engine.sector.get_system(engine.player_state.current_system_id)
+    assert current_system is not None
+    
+    # Find target system at distance > 10
+    target_system = None
+    target_distance = None
+    for system in engine.sector.systems:
+        if system.system_id == current_system.system_id:
+            continue
+        distance = engine._warp_distance_ly(origin=current_system, target=system)
+        if distance > 10.0:
+            target_system = system
+            target_distance = distance
+            break
+    
+    # If no system is > 10 LY away, set fuel to 1 and use any other system
+    if target_system is None:
+        active_ship.current_fuel = 1
+        fuel_before = 1
+        # Use any other system
+        for system in engine.sector.systems:
+            if system.system_id != current_system.system_id:
+                target_system = system
+                target_distance = engine._warp_distance_ly(origin=current_system, target=system)
+                break
+    
+    assert target_system is not None
+    assert target_distance is not None
+    required_fuel = int(math.ceil(target_distance))
+    
+    # Verify we don't have enough fuel
+    assert active_ship.current_fuel < required_fuel, (
+        f"Test setup error: fuel {active_ship.current_fuel} >= required {required_fuel} "
+        f"(distance={target_distance:.3f})"
+    )
+    
+    # Attempt travel - should fail
+    result = engine.execute({
+        "type": "travel_to_destination",
+        "target_system_id": target_system.system_id,
+    })
+    
+    # Travel should fail with error
+    assert result.get("ok") is False, f"Travel should have failed, got: {result}"
+    error = result.get("error", "")
+    assert "insufficient_fuel" in error or "warp_range_exceeded" in error, (
+        f"Expected insufficient_fuel or warp_range_exceeded, got: {error}"
+    )
+    
+    # Fuel should be unchanged
+    assert active_ship.current_fuel == fuel_before, "Fuel should not change on failed travel"
+
+
+def test_game_engine_travel_consumes_fuel_correctly() -> None:
+    """Test that after travel of 5 LY from fuel 20, current_fuel becomes 15."""
+    import math
+    
+    from game_engine import GameEngine  # noqa: E402
+    from government_registry import GovernmentRegistry  # noqa: E402
+    
+    # Create engine
+    registry = GovernmentRegistry.from_file(PROJECT_ROOT / "data" / "governments.json")
+    engine = GameEngine(
+        world_seed=12345,
+        config={"system_count": 5},
+    )
+    
+    # Set ship fuel - ensure capacity is high enough
+    active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
+    assert active_ship is not None
+    # Increase fuel capacity if needed
+    if active_ship.fuel_capacity < 25:
+        active_ship.fuel_capacity = 25
+    initial_fuel = 20
+    active_ship.set_current_fuel(initial_fuel, None, 0)
+    
+    # Find a system at approximately 5 LY distance
+    current_system = engine.sector.get_system(engine.player_state.current_system_id)
+    assert current_system is not None
+    
+    target_system = None
+    target_distance = None
+    for system in engine.sector.systems:
+        if system.system_id == current_system.system_id:
+            continue
+        distance = math.sqrt((system.x - current_system.x) ** 2 + (system.y - current_system.y) ** 2)
+        if 4.5 <= distance <= 5.5:  # Allow some tolerance
+            target_system = system
+            target_distance = distance
+            break
+    
+    # If no system at exactly 5 LY, use closest one and verify fuel consumption
+    if target_system is None:
+        min_distance = float('inf')
+        for system in engine.sector.systems:
+            if system.system_id == current_system.system_id:
+                continue
+            distance = math.sqrt((system.x - current_system.x) ** 2 + (system.y - current_system.y) ** 2)
+            if distance < min_distance:
+                min_distance = distance
+                target_system = system
+                target_distance = distance
+    
+    assert target_system is not None
+    assert target_distance is not None
+    
+    # Ensure we have enough fuel
+    required_fuel = int(math.ceil(target_distance))
+    if initial_fuel < required_fuel:
+        new_initial = required_fuel + 5
+        if active_ship.fuel_capacity < new_initial:
+            active_ship.fuel_capacity = new_initial + 5
+        active_ship.set_current_fuel(new_initial, None, 0)
+        initial_fuel = new_initial
+    
+    # Execute travel
+    result = engine.execute({
+        "type": "travel_to_destination",
+        "target_system_id": target_system.system_id,
+    })
+    
+    # Travel should succeed
+    assert result.get("ok") is not False, f"Travel should have succeeded, got: {result}"
+    
+    # Verify fuel was consumed
+    expected_fuel = initial_fuel - required_fuel
+    assert active_ship.current_fuel == expected_fuel, (
+        f"Expected fuel {expected_fuel} after travel of {required_fuel} LY from {initial_fuel}, "
+        f"got {active_ship.current_fuel}"
+    )
+    
+    # Verify deterministic behavior - run again with same setup
+    engine2 = GameEngine(
+        world_seed=12345,
+        config={"system_count": 5},
+    )
+    active_ship2 = engine2.fleet_by_id.get(engine2.player_state.active_ship_id)
+    assert active_ship2 is not None
+    if active_ship2.fuel_capacity < initial_fuel:
+        active_ship2.fuel_capacity = initial_fuel + 5
+    active_ship2.set_current_fuel(initial_fuel, None, 0)
+    
+    current_system2 = engine2.sector.get_system(engine2.player_state.current_system_id)
+    target_system2 = engine2.sector.get_system(target_system.system_id)
+    
+    result2 = engine2.execute({
+        "type": "travel_to_destination",
+        "target_system_id": target_system.system_id,
+    })
+    
+    # Travel should succeed
+    assert result2.get("ok") is not False, f"Travel should have succeeded, got: {result2}"
+    
+    assert active_ship2.current_fuel == expected_fuel, "Fuel consumption should be deterministic"

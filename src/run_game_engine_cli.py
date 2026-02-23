@@ -37,7 +37,11 @@ def _show_player_info(engine: GameEngine) -> None:
         warehouses = []
     print("PLAYER / SHIP INFO")
     print(f"  Credits: {detail.get('credits')}")
-    print(f"  Fuel: {detail.get('fuel_current')}/{detail.get('fuel_capacity')}")
+    fuel_current = int(detail.get('fuel_current', 0) or 0)
+    fuel_capacity = int(detail.get('fuel_capacity', 0) or 0)
+    print(f"  Fuel: {fuel_current}/{fuel_capacity}")
+    if fuel_current > 0:
+        print(f"  Max reachable distance: {fuel_current} LY")
     print(f"  Cargo manifest: {cargo_manifest}")
     print(f"  Reputation: {detail.get('reputation_score')} band={detail.get('reputation_band')}")
     print(f"  Heat: {detail.get('heat')}")
@@ -300,7 +304,9 @@ def _travel_menu(engine: GameEngine) -> None:
             for index, row in enumerate(reachable, start=1):
                 system_id = str(row["system_id"])
                 visited = system_id in _visited_system_ids(engine)
-                base = f"{index}) {row['system_id']} {row['name']} distance_ly={row['distance_ly']:.3f}"
+                distance = row['distance_ly']
+                in_range = distance <= float(current_fuel)
+                base = f"{index}) {row['system_id']} {row['name']} distance_ly={distance:.3f} in_range={in_range}"
                 if not visited:
                     print(base)
                     continue
@@ -1203,8 +1209,9 @@ def _configure_cli_test_fuel(engine: GameEngine) -> None:
     active_ship = engine.fleet_by_id.get(engine.player_state.active_ship_id)
     if active_ship is None:
         return
-    active_ship.fuel_capacity = 55
-    active_ship.current_fuel = 55
+    # Set fuel to capacity for testing (no hardcoded value)
+    if active_ship.fuel_capacity > 0:
+        active_ship.current_fuel = active_ship.fuel_capacity
 
 
 def _current_destination_object(engine: GameEngine) -> object | None:
