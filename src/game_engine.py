@@ -2678,6 +2678,79 @@ class GameEngine:
             )
         return rows
 
+    def get_current_destination_context(self) -> Dict[str, Any]:
+        """Get standardized destination context information.
+        
+        Returns structured dict with destination, system, and context information.
+        For unvisited systems, only includes limited fields (no economy/situations).
+        """
+        destination = self._current_destination()
+        if destination is None:
+            return {
+                "destination_name": "Unknown",
+                "destination_type": "unknown",
+                "population": 0,
+                "system_id": self.player_state.current_system_id or "",
+                "system_name": "Unknown",
+                "system_government": "",
+                "primary_economy": None,
+                "secondary_economies": [],
+                "active_situations": [],
+            }
+        
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            return {
+                "destination_name": destination.display_name,
+                "destination_type": destination.destination_type,
+                "population": int(destination.population),
+                "system_id": "",
+                "system_name": "Unknown",
+                "system_government": "",
+                "primary_economy": None,
+                "secondary_economies": [],
+                "active_situations": [],
+            }
+        
+        system_visited = system.system_id in self.player_state.visited_system_ids
+        
+        # Base context (always available)
+        context: Dict[str, Any] = {
+            "destination_name": destination.display_name,
+            "destination_type": destination.destination_type,
+            "population": int(destination.population),
+            "system_id": system.system_id,
+            "system_name": system.name,
+            "system_government": "",
+            "primary_economy": None,
+            "secondary_economies": [],
+            "active_situations": [],
+        }
+        
+        # Only include sensitive data if system is visited
+        if system_visited:
+            # Get government name
+            try:
+                government = self.government_registry.get_government(system.government_id)
+                context["system_government"] = government.name
+            except (KeyError, AttributeError):
+                context["system_government"] = system.government_id
+            
+            # Get economy info from destination
+            context["primary_economy"] = destination.primary_economy_id
+            context["secondary_economies"] = list(destination.secondary_economy_ids) if destination.secondary_economy_ids else []
+            
+            # Get active situations for the system
+            situation_rows = self._active_situation_rows_for_system(system_id=system.system_id)
+            situation_ids = []
+            for row in situation_rows:
+                situation_id = row.get("situation_id")
+                if isinstance(situation_id, str) and situation_id:
+                    situation_ids.append(situation_id)
+            context["active_situations"] = sorted(situation_ids)
+        
+        return context
+
     def _active_destination_situations(self, *, destination_id: str) -> list[str]:
         rows = self._active_situation_rows_for_system(system_id=self.player_state.current_system_id)
         ids: list[str] = []
