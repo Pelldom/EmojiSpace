@@ -767,6 +767,7 @@ class GameEngine:
             current_system_id=target_system_id,
             current_destination_id=target_destination_id,
             event_context={"event": "travel_arrival", "target_system_id": target_system_id, "target_destination_id": target_destination_id},
+            world_seed=str(self.world_seed),
             logger=self._logger if self._logging_enabled else None,
             turn=context.turn_before,
         )
@@ -1105,8 +1106,9 @@ class GameEngine:
         )
 
     def _execute_claim_mission(self, context: EngineContext, payload: dict[str, Any]) -> None:
-        """Claim mission reward (Phase 7.11.2a)."""
-        from mission_manager import _calculate_mission_credit_reward, _load_reward_profiles
+        """Claim mission reward (Phase 7.11.3)."""
+        from mission_manager import _calculate_mission_reward, _load_reward_profiles, _check_cargo_capacity, _check_data_cargo_capacity
+        from reward_applicator import _is_data_cargo
         
         mission_id = payload.get("mission_id")
         if not isinstance(mission_id, str) or not mission_id:
@@ -1281,35 +1283,188 @@ class GameEngine:
         # All validations passed - grant reward
         try:
             reward_profiles = _load_reward_profiles()
-            credit_reward = _calculate_mission_credit_reward(mission, reward_profiles)
-            self.player_state.credits += credit_reward
-            mission.reward_status = "granted"
-            mission.reward_granted_turn = context.turn_before
             
-            # Log reward granted
-            if self._logging_enabled and self._logger:
-                self._logger.log(
-                    turn=context.turn_before,
-                    action="mission_reward_granted",
-                    state_change=(
-                        f"mission_id={mission_id} payout_policy=claim_required "
-                        f"claim_scope={claim_scope} credits={credit_reward} new_balance={self.player_state.credits}"
-                    ),
+            # Load catalogs
+            catalogs = {}
+            try:
+                from data_catalog import load_data_catalog
+                catalogs["data_catalog"] = load_data_catalog()
+            except Exception:
+                pass
+            
+            # Calculate reward using unified authority
+            reward = _calculate_mission_reward(mission, reward_profiles, catalogs, str(self.world_seed))
+            reward_type = reward.get("type")
+            
+            # Apply reward based on type
+            applied = False
+            error_message = None
+            
+            if reward_type == "credits":
+                amount = reward.get("amount", 0)
+                self.player_state.credits += amount
+                applied = True
+                
+                if self._logging_enabled and self._logger:
+                    self._logger.log(
+                        turn=context.turn_before,
+                        action="mission_reward_granted",
+                        state_change=(
+                            f"mission_id={mission_id} payout_policy=claim_required "
+                            f"claim_scope={claim_scope} credits={amount} new_balance={self.player_state.credits}"
+                        ),
+                    )
+            
+            elif reward_type == "goods":
+                sku_id = reward.get("sku_id")
+                quantity = reward.get("quantity", 0)
+                
+                # Check cargo capacity using actual ship capacity
+                try:
+                    ship = self._active_ship()
+                    is_data = _is_data_cargo(sku_id, catalogs.get("data_catalog"))
+                    
+                    if is_data:
+                        capacity = int(ship.get_effective_data_capacity())
+                        current_usage = sum(
+                            int(qty) for sku, qty in self.player_state.cargo_by_ship.get("active", {}).items()
+                            if _is_data_cargo(sku, catalogs.get("data_catalog"))
+                        )
+                    else:
+                        capacity = int(ship.get_effective_physical_capacity())
+                        current_usage = sum(
+                            int(qty) for sku, qty in self.player_state.cargo_by_ship.get("active", {}).items()
+                            if not _is_data_cargo(sku, catalogs.get("data_catalog"))
+                        )
+                    
+                    if capacity > 0 and current_usage + quantity > capacity:
+                        error_message = "Insufficient cargo space. Free space before claiming reward."
+                    else:
+                        # Add to cargo
+                        self.player_state.cargo_by_ship.setdefault("active", {})
+                        current_qty = self.player_state.cargo_by_ship["active"].get(sku_id, 0)
+                        self.player_state.cargo_by_ship["active"][sku_id] = current_qty + quantity
+                        applied = True
+                        
+                        if self._logging_enabled and self._logger:
+                            self._logger.log(
+                                turn=context.turn_before,
+                                action="mission_reward_granted",
+                                state_change=(
+                                    f"mission_id={mission_id} payout_policy=claim_required "
+                                    f"goods={sku_id} quantity={quantity}"
+                                ),
+                            )
+                except Exception:
+                    # Fallback: use simplified check
+                    if _check_cargo_capacity(self.player_state, sku_id, quantity, catalogs.get("data_catalog")):
+                        self.player_state.cargo_by_ship.setdefault("active", {})
+                        current_qty = self.player_state.cargo_by_ship["active"].get(sku_id, 0)
+                        self.player_state.cargo_by_ship["active"][sku_id] = current_qty + quantity
+                        applied = True
+                    else:
+                        error_message = "Insufficient cargo space. Free space before claiming reward."
+            
+            elif reward_type == "module":
+                module_id = reward.get("module_id")
+                
+                # Add to salvage_modules
+                if not hasattr(self.player_state, "salvage_modules"):
+                    self.player_state.salvage_modules = []
+                if not isinstance(self.player_state.salvage_modules, list):
+                    self.player_state.salvage_modules = []
+                
+                module_dict = {"module_id": module_id, "secondary_tags": []}
+                self.player_state.salvage_modules.append(module_dict)
+                applied = True
+                
+                if self._logging_enabled and self._logger:
+                    self._logger.log(
+                        turn=context.turn_before,
+                        action="mission_reward_granted",
+                        state_change=(
+                            f"mission_id={mission_id} payout_policy=claim_required "
+                            f"module={module_id}"
+                        ),
+                    )
+            
+            elif reward_type == "hull_voucher":
+                hull_id = reward.get("hull_id")
+                voucher_sku = f"hull_voucher_{hull_id}"
+                
+                # Check data cargo capacity using actual ship capacity
+                try:
+                    ship = self._active_ship()
+                    data_capacity = int(ship.get_effective_data_capacity())
+                    current_data = sum(
+                        int(qty) for sku, qty in self.player_state.cargo_by_ship.get("active", {}).items()
+                        if _is_data_cargo(sku, catalogs.get("data_catalog"))
+                    )
+                    
+                    if data_capacity > 0 and current_data + 1 > data_capacity:
+                        error_message = "Insufficient cargo space. Free space before claiming reward."
+                    else:
+                        # Add voucher as data cargo
+                        self.player_state.cargo_by_ship.setdefault("active", {})
+                        current_qty = self.player_state.cargo_by_ship["active"].get(voucher_sku, 0)
+                        self.player_state.cargo_by_ship["active"][voucher_sku] = current_qty + 1
+                        applied = True
+                        
+                        if self._logging_enabled and self._logger:
+                            self._logger.log(
+                                turn=context.turn_before,
+                                action="mission_reward_granted",
+                                state_change=(
+                                    f"mission_id={mission_id} payout_policy=claim_required "
+                                    f"hull_voucher={hull_id}"
+                                ),
+                            )
+                except Exception:
+                    # Fallback: use simplified check
+                    if _check_data_cargo_capacity(self.player_state, 1):
+                        self.player_state.cargo_by_ship.setdefault("active", {})
+                        current_qty = self.player_state.cargo_by_ship["active"].get(voucher_sku, 0)
+                        self.player_state.cargo_by_ship["active"][voucher_sku] = current_qty + 1
+                        applied = True
+                    else:
+                        error_message = "Insufficient cargo space. Free space before claiming reward."
+            
+            # Update reward_status only if successfully applied
+            if applied:
+                mission.reward_status = "granted"
+                mission.reward_granted_turn = context.turn_before
+                
+                # Emit success event
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_manager",
+                    detail={
+                        "action": "claim_mission",
+                        "mission_id": mission_id,
+                        "ok": True,
+                        "credits": reward.get("amount") if reward_type == "credits" else None,
+                        "new_balance": self.player_state.credits if reward_type == "credits" else None,
+                    },
                 )
-            
-            # Emit success event
-            self._event(
-                context,
-                stage="mission",
-                subsystem="mission_manager",
-                detail={
-                    "action": "claim_mission",
-                    "mission_id": mission_id,
-                    "ok": True,
-                    "credits": credit_reward,
-                    "new_balance": self.player_state.credits,
-                },
-            )
+            else:
+                # Reward not applied due to capacity or other error
+                if error_message:
+                    context.claim_mission_error = error_message
+                else:
+                    context.claim_mission_error = "Failed to apply reward."
+                
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_manager",
+                    detail={
+                        "action": "claim_mission",
+                        "mission_id": mission_id,
+                        "ok": False,
+                        "reason": error_message or "Failed to apply reward.",
+                    },
+                )
         except ValueError as e:
             context.claim_mission_error = f"Failed to calculate reward: {str(e)}"
             self._event(
@@ -1332,6 +1487,7 @@ class GameEngine:
             current_system_id=self.player_state.current_system_id,
             current_destination_id=self.player_state.current_destination_id,
             event_context={"event": "turn_tick"},
+            world_seed=str(self.world_seed),
             logger=logger,
             turn=turn,
         )
@@ -4376,6 +4532,7 @@ class GameEngine:
                     current_system_id=self.player_state.current_system_id,
                     current_destination_id=self.player_state.current_destination_id,
                     event_context={"event": "combat_complete"},
+                    world_seed=str(self.world_seed),
                     logger=self._logger if self._logging_enabled else None,
                     turn=context.turn_after,
                 )
@@ -5666,9 +5823,18 @@ class GameEngine:
             # Calculate reward preview if ungranted (Phase 7.11.2b)
             reward_summary = []
             if mission.reward_status == "ungranted":
-                preview = self._mission_manager.calculate_reward_preview(mission)
+                preview = self._mission_manager.calculate_reward_preview(mission, world_seed=str(self.world_seed))
                 if preview and "credits" in preview:
                     reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+                elif preview and "goods" in preview:
+                    goods_info = preview["goods"]
+                    reward_summary = [{"field": "goods", "sku_id": goods_info.get("sku_id"), "quantity": goods_info.get("quantity", 0)}]
+                elif preview and "module" in preview:
+                    module_info = preview["module"]
+                    reward_summary = [{"field": "module", "module_id": module_info.get("module_id")}]
+                elif preview and "hull_voucher" in preview:
+                    hull_info = preview["hull_voucher"]
+                    reward_summary = [{"field": "hull_voucher", "hull_id": hull_info.get("hull_id")}]
             # If already granted, reward_summary remains empty (not shown in active missions)
             
             rows.append(

@@ -8,9 +8,10 @@ except ModuleNotFoundError:
 
 from mission_entity import MissionEntity, MissionOutcome, MissionState
 from player_state import PlayerState
-from reward_applicator import apply_mission_rewards
+from reward_applicator import apply_mission_rewards, _is_data_cargo
 import math
 import json
+import random
 from pathlib import Path
 
 
@@ -21,18 +22,19 @@ class MissionManager:
     # DataNet-specific mission offers (per-location, per-turn; ephemeral)
     datanet_offers: Dict[str, List[str]] = field(default_factory=dict)
     
-    def calculate_reward_preview(self, mission: MissionEntity) -> Dict[str, Any]:
+    def calculate_reward_preview(self, mission: MissionEntity, world_seed: int | str | None = None) -> Dict[str, Any]:
         """
-        Calculate reward preview for a mission (Phase 7.11.2b).
+        Calculate reward preview for a mission (Phase 7.11.3).
         
         This function does NOT modify mission state, grant rewards, or log events.
         It is purely for presentation layer preview.
         
         Args:
             mission: MissionEntity to calculate preview for
+            world_seed: Optional world seed for deterministic selection
         
         Returns:
-            Dict with {"credits": <int>} or empty dict if calculation fails
+            Dict with reward preview structure or empty dict if calculation fails
         """
         if mission.reward_status == "granted":
             # If already granted, don't recalculate - return empty (caller should use stored value)
@@ -40,8 +42,39 @@ class MissionManager:
         
         try:
             reward_profiles = _load_reward_profiles()
-            credit_reward = _calculate_mission_credit_reward(mission, reward_profiles)
-            return {"credits": credit_reward}
+            catalogs = {}
+            try:
+                from data_catalog import load_data_catalog
+                catalogs["data_catalog"] = load_data_catalog()
+            except Exception:
+                pass
+            
+            reward = _calculate_mission_reward(mission, reward_profiles, catalogs, world_seed)
+            reward_type = reward.get("type")
+            
+            if reward_type == "credits":
+                return {"credits": reward.get("amount", 0)}
+            elif reward_type == "goods":
+                return {
+                    "goods": {
+                        "sku_id": reward.get("sku_id"),
+                        "quantity": reward.get("quantity", 0)
+                    }
+                }
+            elif reward_type == "module":
+                return {
+                    "module": {
+                        "module_id": reward.get("module_id")
+                    }
+                }
+            elif reward_type == "hull_voucher":
+                return {
+                    "hull_voucher": {
+                        "hull_id": reward.get("hull_id")
+                    }
+                }
+            else:
+                return {}
         except (ValueError, KeyError):
             # If calculation fails, return empty dict (no preview available)
             return {}
@@ -254,6 +287,7 @@ def evaluate_active_missions(
     current_destination_id: str | None,
     event_context: Dict[str, Any],
     reward_profiles: Dict[str, Any] | None = None,
+    world_seed: int | str | None = None,
     logger=None,
     turn: int = 0,
 ) -> Dict[str, Any]:
@@ -388,11 +422,19 @@ def evaluate_active_missions(
         # Other mission types (bounty, etc.) - not implemented yet
         # Will be added in future phases
     
-    # Auto payout for completed missions (Phase 7.11.2a)
+    # Auto payout for completed missions (Phase 7.11.3)
     # Check all missions (not just active) for auto payout
     # Load reward profiles if not provided
     if reward_profiles is None:
         reward_profiles = _load_reward_profiles()
+    
+    # Load catalogs for reward calculation
+    catalogs = {}
+    try:
+        from data_catalog import load_data_catalog
+        catalogs["data_catalog"] = load_data_catalog()
+    except Exception:
+        pass  # Will fail later if needed
     
     for mission_id in list(mission_manager.missions.keys()):
         mission = mission_manager.missions.get(mission_id)
@@ -403,24 +445,121 @@ def evaluate_active_missions(
         if mission.mission_state == MissionState.RESOLVED and mission.outcome == MissionOutcome.COMPLETED:
             # Guard against double payout: only pay when reward_status is 'ungranted'
             if mission.payout_policy == "auto" and mission.reward_status == "ungranted":
-                # Calculate and grant reward
+                # Calculate reward using unified authority
                 try:
-                    credit_reward = _calculate_mission_credit_reward(mission, reward_profiles)
-                    player_state.credits += credit_reward
-                    mission.reward_status = "granted"
-                    mission.reward_granted_turn = turn
+                    reward = _calculate_mission_reward(mission, reward_profiles, catalogs, world_seed)
+                    reward_type = reward.get("type")
                     
-                    # Log reward granted
-                    if logger is not None:
-                        logger.log(
-                            turn=turn,
-                            action="mission_reward_granted",
-                            state_change=(
-                                f"mission_id={mission_id} payout_policy=auto "
-                                f"credits={credit_reward} new_balance={player_state.credits}"
-                            ),
-                        )
-                        result["logs"].append(f"mission_id={mission_id} reward_granted credits={credit_reward}")
+                    # Apply reward based on type
+                    applied = False
+                    
+                    if reward_type == "credits":
+                        amount = reward.get("amount", 0)
+                        player_state.credits += amount
+                        applied = True
+                        
+                        if logger is not None:
+                            logger.log(
+                                turn=turn,
+                                action="mission_reward_granted",
+                                state_change=(
+                                    f"mission_id={mission_id} payout_policy=auto "
+                                    f"credits={amount} new_balance={player_state.credits}"
+                                ),
+                            )
+                            result["logs"].append(f"mission_id={mission_id} reward_granted credits={amount}")
+                    
+                    elif reward_type == "goods":
+                        sku_id = reward.get("sku_id")
+                        quantity = reward.get("quantity", 0)
+                        
+                        # Check cargo capacity
+                        if _check_cargo_capacity(player_state, sku_id, quantity, catalogs.get("data_catalog")):
+                            # Add to cargo
+                            player_state.cargo_by_ship.setdefault("active", {})
+                            current_qty = player_state.cargo_by_ship["active"].get(sku_id, 0)
+                            player_state.cargo_by_ship["active"][sku_id] = current_qty + quantity
+                            applied = True
+                            
+                            if logger is not None:
+                                logger.log(
+                                    turn=turn,
+                                    action="mission_reward_granted",
+                                    state_change=(
+                                        f"mission_id={mission_id} payout_policy=auto "
+                                        f"goods={sku_id} quantity={quantity}"
+                                    ),
+                                )
+                                result["logs"].append(f"mission_id={mission_id} reward_granted goods={sku_id} quantity={quantity}")
+                        else:
+                            # Insufficient capacity - skip reward
+                            if logger is not None:
+                                logger.log(
+                                    turn=turn,
+                                    action="mission_reward_error",
+                                    state_change=f"mission_id={mission_id} error=insufficient_cargo_capacity",
+                                )
+                    
+                    elif reward_type == "module":
+                        module_id = reward.get("module_id")
+                        
+                        # Add to salvage_modules
+                        if not hasattr(player_state, "salvage_modules"):
+                            player_state.salvage_modules = []
+                        if not isinstance(player_state.salvage_modules, list):
+                            player_state.salvage_modules = []
+                        
+                        module_dict = {"module_id": module_id, "secondary_tags": []}
+                        player_state.salvage_modules.append(module_dict)
+                        applied = True
+                        
+                        if logger is not None:
+                            logger.log(
+                                turn=turn,
+                                action="mission_reward_granted",
+                                state_change=(
+                                    f"mission_id={mission_id} payout_policy=auto "
+                                    f"module={module_id}"
+                                ),
+                            )
+                            result["logs"].append(f"mission_id={mission_id} reward_granted module={module_id}")
+                    
+                    elif reward_type == "hull_voucher":
+                        hull_id = reward.get("hull_id")
+                        voucher_sku = f"hull_voucher_{hull_id}"
+                        
+                        # Check data cargo capacity (vouchers are data cargo)
+                        if _check_data_cargo_capacity(player_state, 1):
+                            # Add voucher as data cargo
+                            player_state.cargo_by_ship.setdefault("active", {})
+                            current_qty = player_state.cargo_by_ship["active"].get(voucher_sku, 0)
+                            player_state.cargo_by_ship["active"][voucher_sku] = current_qty + 1
+                            applied = True
+                            
+                            if logger is not None:
+                                logger.log(
+                                    turn=turn,
+                                    action="mission_reward_granted",
+                                    state_change=(
+                                        f"mission_id={mission_id} payout_policy=auto "
+                                        f"hull_voucher={hull_id}"
+                                    ),
+                                )
+                                result["logs"].append(f"mission_id={mission_id} reward_granted hull_voucher={hull_id}")
+                        else:
+                            # Insufficient capacity - skip reward
+                            if logger is not None:
+                                logger.log(
+                                    turn=turn,
+                                    action="mission_reward_error",
+                                    state_change=f"mission_id={mission_id} error=insufficient_data_cargo_capacity",
+                                )
+                    
+                    # Only update reward_status if reward was successfully applied
+                    if applied:
+                        mission.reward_status = "granted"
+                        mission.reward_granted_turn = turn
+                    
                 except ValueError as e:
                     # Log error but don't fail evaluation
                     if logger is not None:
@@ -523,6 +662,390 @@ def _calculate_mission_credit_reward(
     
     # Floor to int (no rounding)
     return int(math.floor(reward))
+
+
+def _calculate_mission_reward(
+    mission: MissionEntity,
+    reward_profiles: Dict[str, Any],
+    catalogs: Dict[str, Any] | None = None,
+    world_seed: int | str | None = None,
+) -> Dict[str, Any]:
+    """
+    Calculate mission reward for any reward type (Phase 7.11.3).
+    
+    Unified authority for credits, goods, modules, and hull vouchers.
+    
+    Args:
+        mission: MissionEntity with reward_profile_id set
+        reward_profiles: Dict mapping reward_profile_id to profile data
+        catalogs: Optional dict with keys: "goods", "modules", "hulls", "data_catalog"
+        world_seed: Optional world seed for deterministic selection
+    
+    Returns:
+        Dict with structure:
+        - {"type": "credits", "amount": int}
+        - {"type": "goods", "sku_id": str, "quantity": int}
+        - {"type": "module", "module_id": str}
+        - {"type": "hull_voucher", "hull_id": str}
+    
+    Raises:
+        ValueError: If reward_profile_id not found or required fields missing
+    """
+    profile_id = mission.reward_profile_id
+    if not profile_id:
+        raise ValueError(f"Mission {mission.mission_id} has no reward_profile_id")
+    
+    # Load profile
+    profile = reward_profiles.get(profile_id)
+    if profile is None:
+        raise ValueError(
+            f"Reward profile '{profile_id}' not found for mission {mission.mission_id}"
+        )
+    
+    # Get reward_type
+    reward_type = profile.get("reward_type")
+    if not reward_type:
+        raise ValueError(
+            f"Reward profile '{profile_id}' missing required field 'reward_type'"
+        )
+    
+    # Branch on reward_type
+    if reward_type == "credits":
+        # Reuse existing credit calculation
+        amount = _calculate_mission_credit_reward(mission, reward_profiles)
+        return {"type": "credits", "amount": amount}
+    
+    elif reward_type == "goods":
+        return _calculate_mission_goods_reward(mission, profile, catalogs, world_seed)
+    
+    elif reward_type == "module":
+        return _calculate_mission_module_reward(mission, profile, catalogs, world_seed)
+    
+    elif reward_type == "hull_voucher":
+        return _calculate_mission_hull_voucher_reward(mission, profile, catalogs, world_seed)
+    
+    else:
+        raise ValueError(
+            f"Reward profile '{profile_id}' has unsupported reward_type '{reward_type}'"
+        )
+
+
+def _calculate_mission_goods_reward(
+    mission: MissionEntity,
+    profile: Dict[str, Any],
+    catalogs: Dict[str, Any] | None,
+    world_seed: int | str | None,
+) -> Dict[str, Any]:
+    """Calculate goods reward for mission (Phase 7.11.3)."""
+    # Load catalogs if not provided
+    if catalogs is None:
+        catalogs = {}
+    
+    if "data_catalog" not in catalogs:
+        try:
+            from data_catalog import load_data_catalog
+            catalogs["data_catalog"] = load_data_catalog()
+        except Exception:
+            raise ValueError("Failed to load data catalog for goods selection")
+    
+    data_catalog = catalogs["data_catalog"]
+    
+    # Get selector
+    selector = profile.get("selector", {})
+    
+    # Check if sku_id is specified
+    sku_id = selector.get("sku_id")
+    if sku_id:
+        # Use exact SKU
+        selected_sku = sku_id
+    else:
+        # Filter by tags
+        include_tags = set(selector.get("include_tags", []))
+        exclude_tags = set(selector.get("exclude_tags", []))
+        
+        # Get all goods from catalog
+        candidates = []
+        for good in data_catalog.goods:
+            good_tags = set(good.tags)
+            if isinstance(good.possible_tag, str):
+                good_tags.add(good.possible_tag)
+            
+            # Check include_tags
+            if include_tags and not include_tags.issubset(good_tags):
+                continue
+            
+            # Check exclude_tags
+            if exclude_tags and exclude_tags.intersection(good_tags):
+                continue
+            
+            candidates.append(good.sku)
+        
+        if not candidates:
+            raise ValueError(
+                f"No goods match selector criteria for mission {mission.mission_id}"
+            )
+        
+        # Deterministic selection
+        if world_seed is None:
+            world_seed = 0
+        seed_str = f"{world_seed}:{mission.mission_id}:mission_goods_select"
+        rng = random.Random(seed_str)
+        candidates_sorted = sorted(candidates)
+        selected_sku = rng.choice(candidates_sorted)
+    
+    # Calculate quantity
+    base_quantity = int(profile.get("base_quantity", 1))
+    
+    # Get tier multiplier
+    tier_multiplier_data = profile.get("tier_multiplier", {})
+    if isinstance(tier_multiplier_data, dict):
+        tier_key = str(mission.mission_tier)
+        tier_multiplier = float(tier_multiplier_data.get(tier_key, 1.0))
+    elif isinstance(tier_multiplier_data, list):
+        tier_index = mission.mission_tier - 1
+        if tier_index < 0 or tier_index >= len(tier_multiplier_data):
+            tier_multiplier = 1.0
+        else:
+            tier_multiplier = float(tier_multiplier_data[tier_index])
+    else:
+        tier_multiplier = 1.0
+    
+    # Distance multiplier (optional)
+    distance_multiplier_per_ly = profile.get("distance_multiplier_per_ly")
+    if distance_multiplier_per_ly is not None:
+        distance_factor = 1 + mission.distance_ly * float(distance_multiplier_per_ly)
+    else:
+        distance_factor = 1.0
+    
+    quantity = base_quantity * tier_multiplier * distance_factor
+    quantity = int(math.floor(quantity))
+    
+    return {"type": "goods", "sku_id": selected_sku, "quantity": quantity}
+
+
+def _calculate_mission_module_reward(
+    mission: MissionEntity,
+    profile: Dict[str, Any],
+    catalogs: Dict[str, Any] | None,
+    world_seed: int | str | None,
+) -> Dict[str, Any]:
+    """Calculate module reward for mission (Phase 7.11.3)."""
+    # Load catalogs if not provided
+    if catalogs is None:
+        catalogs = {}
+    
+    if "modules" not in catalogs:
+        try:
+            from data_loader import load_modules
+            modules_data = load_modules()
+            catalogs["modules"] = modules_data.get("modules", [])
+        except Exception:
+            raise ValueError("Failed to load modules catalog")
+    
+    modules_list = catalogs["modules"]
+    
+    # Get selector
+    selector = profile.get("selector", {})
+    
+    # Check if module_id is specified
+    module_id = selector.get("module_id")
+    if module_id:
+        # Use exact module
+        selected_module_id = module_id
+    else:
+        # Filter by constraints
+        slot_type = selector.get("slot_type")
+        include_tags = set(selector.get("include_tags", []))
+        exclude_tags = set(selector.get("exclude_tags", []))
+        tier = selector.get("tier")
+        if tier is None:
+            tier = mission.mission_tier
+        
+        candidates = []
+        for module in modules_list:
+            # Check slot_type
+            if slot_type and module.get("slot_type") != slot_type:
+                continue
+            
+            # Check tier (optional - modules may not have tier field)
+            # If tier is specified in selector, filter by it
+            # If module has no tier field, include it (tier filtering is optional)
+            module_tier = module.get("tier")
+            if module_tier is not None and tier is not None and module_tier != tier:
+                continue
+            
+            # Check tags
+            module_tags = set(module.get("tags", []))
+            primary_tag = module.get("primary_tag")
+            if primary_tag:
+                module_tags.add(primary_tag)
+            
+            if include_tags and not include_tags.issubset(module_tags):
+                continue
+            
+            if exclude_tags and exclude_tags.intersection(module_tags):
+                continue
+            
+            candidates.append(module.get("module_id"))
+        
+        if not candidates:
+            raise ValueError(
+                f"No modules match selector criteria for mission {mission.mission_id}"
+            )
+        
+        # Deterministic selection
+        if world_seed is None:
+            world_seed = 0
+        seed_str = f"{world_seed}:{mission.mission_id}:mission_module_select"
+        rng = random.Random(seed_str)
+        candidates_sorted = sorted(candidates)
+        selected_module_id = rng.choice(candidates_sorted)
+    
+    return {"type": "module", "module_id": selected_module_id}
+
+
+def _calculate_mission_hull_voucher_reward(
+    mission: MissionEntity,
+    profile: Dict[str, Any],
+    catalogs: Dict[str, Any] | None,
+    world_seed: int | str | None,
+) -> Dict[str, Any]:
+    """Calculate hull voucher reward for mission (Phase 7.11.3)."""
+    # Load catalogs if not provided
+    if catalogs is None:
+        catalogs = {}
+    
+    if "hulls" not in catalogs:
+        try:
+            from data_loader import load_hulls
+            hulls_data = load_hulls()
+            catalogs["hulls"] = hulls_data.get("hulls", [])
+        except Exception:
+            raise ValueError("Failed to load hulls catalog")
+    
+    hulls_list = catalogs["hulls"]
+    
+    # Get selector
+    selector = profile.get("selector", {})
+    
+    # Check if hull_id is specified
+    hull_id = selector.get("hull_id")
+    if hull_id:
+        # Use exact hull
+        selected_hull_id = hull_id
+    else:
+        # Filter by constraints
+        frame = selector.get("frame")
+        include_tags = set(selector.get("include_tags", []))
+        exclude_tags = set(selector.get("exclude_tags", []))
+        tier = selector.get("tier")
+        if tier is None:
+            tier = mission.mission_tier
+        
+        candidates = []
+        for hull in hulls_list:
+            # Check frame
+            if frame and hull.get("frame") != frame:
+                continue
+            
+            # Check tier
+            hull_tier = hull.get("tier")
+            if hull_tier is not None and hull_tier != tier:
+                continue
+            
+            # Check tags
+            hull_tags = set(hull.get("traits", []))
+            
+            if include_tags and not include_tags.issubset(hull_tags):
+                continue
+            
+            if exclude_tags and exclude_tags.intersection(hull_tags):
+                continue
+            
+            candidates.append(hull.get("hull_id"))
+        
+        if not candidates:
+            raise ValueError(
+                f"No hulls match selector criteria for mission {mission.mission_id}"
+            )
+        
+        # Deterministic selection
+        if world_seed is None:
+            world_seed = 0
+        seed_str = f"{world_seed}:{mission.mission_id}:mission_hull_select"
+        rng = random.Random(seed_str)
+        candidates_sorted = sorted(candidates)
+        selected_hull_id = rng.choice(candidates_sorted)
+    
+    return {"type": "hull_voucher", "hull_id": selected_hull_id}
+
+
+def _check_cargo_capacity(
+    player_state: PlayerState,
+    sku_id: str,
+    quantity: int,
+    data_catalog: Any | None = None,
+) -> bool:
+    """
+    Check if player has sufficient cargo capacity for goods (Phase 7.11.3).
+    
+    Returns True if capacity is sufficient, False otherwise.
+    """
+    # Determine if data cargo
+    is_data = _is_data_cargo(sku_id, data_catalog)
+    
+    # Get current cargo usage
+    cargo = player_state.cargo_by_ship.get("active", {})
+    
+    if is_data:
+        # Check data cargo capacity
+        # Get ship data cargo capacity (would need ship state, simplified for now)
+        # For now, assume unlimited if we can't determine
+        # TODO: Get actual ship data cargo capacity
+        current_data = sum(
+            int(qty) for sku, qty in cargo.items()
+            if _is_data_cargo(sku, data_catalog)
+        )
+        # Simplified: assume 100 data cargo capacity if we can't determine
+        # This should be replaced with actual ship capacity lookup
+        return current_data + quantity <= 100
+    else:
+        # Check physical cargo capacity
+        current_physical = sum(
+            int(qty) for sku, qty in cargo.items()
+            if not _is_data_cargo(sku, data_catalog)
+        )
+        # Simplified: assume 100 physical cargo capacity if we can't determine
+        # This should be replaced with actual ship capacity lookup
+        return current_physical + quantity <= 100
+
+
+def _check_data_cargo_capacity(
+    player_state: PlayerState,
+    quantity: int,
+) -> bool:
+    """
+    Check if player has sufficient data cargo capacity (Phase 7.11.3).
+    
+    Returns True if capacity is sufficient, False otherwise.
+    """
+    cargo = player_state.cargo_by_ship.get("active", {})
+    
+    # Count current data cargo
+    try:
+        from data_catalog import load_data_catalog
+        catalog = load_data_catalog()
+    except Exception:
+        catalog = None
+    
+    current_data = sum(
+        int(qty) for sku, qty in cargo.items()
+        if _is_data_cargo(sku, catalog)
+    )
+    
+    # Simplified: assume 100 data cargo capacity if we can't determine
+    # This should be replaced with actual ship capacity lookup
+    return current_data + quantity <= 100
 
 
 def _evaluate_delivery_mission(
