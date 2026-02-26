@@ -309,6 +309,21 @@ class SimulationController:
                 enemy_ship_state=enemy_ship,
                 max_rounds=3,
             )
+            
+            # Apply combat result using unified application function
+            from combat_application import apply_combat_result
+            applied = apply_combat_result(
+                player_state=self._player,
+                player_ship_entity=active_ship,
+                enemy_ship_entity_or_dict=enemy_ship,
+                combat_result=combat,
+                system_id=self._player.current_system_id,
+                encounter_id=encounter.encounter_id,
+                world_seed=self._world_seed,
+                logger=None,  # simulation_controller doesn't have logger
+                turn=0,
+            )
+            
             events.append(
                 {
                     "event_type": "combat_resolved",
@@ -316,6 +331,7 @@ class SimulationController:
                     "outcome": combat.outcome,
                     "winner": combat.winner,
                     "salvage_count": len(combat.salvage_modules),
+                    "applied": applied,
                 }
             )
         current_system = self._sector.get_system(self._player.current_system_id)

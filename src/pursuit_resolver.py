@@ -105,6 +105,18 @@ def resolve_pursuit(
     pilot_delta = pursued_pilot - pursuer_pilot
     threshold += 0.1 * pilot_delta
 
+    # Apply hull damage penalty to pursued ship
+    # Hull damage reduces escape chance (damaged ships are slower/harder to escape)
+    pursued_hull_current = pursued_ship.get("hull_current", None)
+    pursued_hull_max = pursued_ship.get("hull_max", None)
+    if pursued_hull_current is not None and pursued_hull_max is not None and pursued_hull_max > 0:
+        hull_damage_percent = 1.0 - (float(pursued_hull_current) / float(pursued_hull_max))
+        # Penalty: -0.05 per 25% damage (max -0.2 at 100% damage)
+        hull_damage_penalty = -0.05 * min(4, int(hull_damage_percent * 4))
+        threshold += hull_damage_penalty
+    else:
+        hull_damage_penalty = 0.0
+
     if threshold < 0.05:
         threshold = 0.05
     if threshold > 0.95:
@@ -127,6 +139,9 @@ def resolve_pursuit(
         "pursued_engine_band": pursued_engine_band,
         "cloak_applied": cloak_applied,
         "interdiction_applied": interdiction_applied,
+        "hull_damage_penalty": hull_damage_penalty if 'hull_damage_penalty' in locals() else 0.0,
+        "pursued_hull_current": pursued_hull_current if 'pursued_hull_current' in locals() else None,
+        "pursued_hull_max": pursued_hull_max if 'pursued_hull_max' in locals() else None,
         "base_threshold_before_modifiers": base_threshold_before_modifiers,
         "final_threshold": threshold,
         "probability_distribution": {"escape_success": threshold, "escape_fail": 1.0 - threshold},

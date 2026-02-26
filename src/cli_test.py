@@ -91,12 +91,14 @@ def _print_destination_npcs(destination, npc_registry: NPCRegistry, system_id: s
 
 def _print_destination_missions(destination) -> None:
     mission = create_mission(
-        source_type="system",
+        source_type="bar",
         source_id=destination.destination_id,
         system_id=destination.system_id,
         destination_id=destination.destination_id,
         mission_type="delivery",
         mission_tier=1,
+        payout_policy="auto",
+        claim_scope="none",
     )
     print(f"  Missions: {[mission.mission_id]}")
 
@@ -250,12 +252,14 @@ def main() -> None:
                         mission_ids: List[str] = []
                         for npc in npcs:
                             mission = create_mission(
-                                source_type="npc",
+                                source_type="bar",
                                 source_id=npc.npc_id,
                                 system_id=system.system_id,
                                 destination_id=destination.destination_id,
                                 mission_type="delivery",
                                 mission_tier=1,
+                                payout_policy="auto",
+                                claim_scope="none",
                             )
                             mission_ids.append(mission.mission_id)
                         print(f"  NPC Missions: {mission_ids}")

@@ -67,6 +67,20 @@
       "credit_range": { "min": 1000, "max": 2000 },
       "stolen_behavior": "none",
       "notes": "Credit reward for defeating bounty target."
+    },
+
+    {
+      "reward_profile_id": "mission_delivery",
+      "base_credits": 500,
+      "tier_multiplier": {
+        "1": 1.0,
+        "2": 1.5,
+        "3": 2.0,
+        "4": 2.5,
+        "5": 3.0
+      },
+      "distance_multiplier_per_ly": 0.1,
+      "notes": "Credit reward for delivery missions. Formula: base_credits * tier_multiplier * (1 + distance_ly * distance_multiplier_per_ly)"
     }
 
   ]

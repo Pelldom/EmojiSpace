@@ -16,3 +16,7 @@ DONE - need to update for updated tags!
 missing - non-enhabited Destinations (asteroids, abandoned ships/stations, etc)
 missing - non-combat encounters (random and fixed)
 missing - mining asteroids
+
+reward resolution
+mission life cycle
+exploration destinations

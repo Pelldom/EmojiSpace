@@ -1,10 +1,24 @@
 # Combat Resolution Contract
-Version: 0.4.0
-Status: Phase 4.x – Combat Resolver (Locked)
+Version: 0.11.2
+Status: Phase 4.x ï¿½ Combat Resolver (Locked)
 
-This contract defines the deterministic combat resolution system for EmojiSpace.
+This contract defines the combat resolution system for EmojiSpace.
 All combat execution must follow this specification exactly.
 No implicit behavior is permitted.
+
+
+============================================================
+DETERMINISM AND RNG (Authoritative)
+============================================================
+
+- World generation, travel, markets, encounters, and pursuit remain deterministic as specified by their contracts.
+- Combat is stochastic. The combat RNG seed is created at the moment combat begins.
+- combat_rng_seed must be generated using a non-deterministic source (e.g., secrets or os.urandom) and then used to seed a local RNG instance for the duration of combat.
+- combat_rng_seed must be:
+  - stored in the combat state (if any),
+  - logged at combat start,
+  - included in the CombatResult payload.
+- Replays are supported only if combat_rng_seed is known; combat is not required to be reproducible from world_seed alone.
 
 
 ============================================================
@@ -25,6 +39,10 @@ Combat begins immediately after the current phase resolves.
 
 Combat is simultaneous and round-based.
 There is no initiative system.
+
+Round numbering rule (critical):
+- Round numbers start at 1.
+- If resolve_combat is called, combat has already started. No "round 0" is permitted.
 
 Each round consists of:
 
@@ -122,7 +140,7 @@ damage = max(0, damage_roll - mitigation_roll)
 
 Damage may be 0.
 
-All RNG must use seeded deterministic RNG.
+All RNG within combat must use the combat RNG (derived from combat_rng_seed).
 
 
 ============================================================
@@ -237,19 +255,19 @@ Usage limits:
 9. ESCAPE RESOLUTION
 ============================================================
 
-If Attempt Escape selected:
+If Attempt Escape selected during combat:
 
-- Construct pursuit profiles for both ships.
+- Escape is resolved inside combat using combat RNG and the same engine band comparison logic (engine delta + modifiers).
 - Engine band is primary driver.
 - Apply modifiers:
     combat:utility_cloak = +1 escape modifier
     ship:utility_interdiction = +1 pursuer modifier
     crew:pilot = +1 escape modifier per instance
-
-Call pursuit_resolver per pursuit_resolver_contract.md.
+- Roll with the combat RNG (local RNG from combat_rng_seed).
+- The pursuit_resolver is for pre-combat flee resolution and is NOT invoked from the combat loop.
 
 If success:
-Combat ends.
+Combat ends immediately, no attacks that round.
 
 If failure:
 Combat continues.
@@ -376,6 +394,9 @@ NPC parity requirement:
 15. LOGGING REQUIREMENTS
 ============================================================
 
+Per-combat log header must include:
+- combat_rng_seed
+
 Log each round:
 - Round number
 - Actions selected
@@ -392,17 +413,19 @@ Log each round:
 - Scan success/failure and scanned state
 - Destruction outcome
 
-Combat must be fully reproducible given:
-- Seed
-- Ship configuration
-- Action selections
-- RNG state
+Combat can be replayed if combat_rng_seed is known:
+- Given combat_rng_seed, ship configuration, and action selections, the exact combat outcome can be reproduced.
+- Combat is not required to be reproducible from world_seed alone.
 
 
 ============================================================
-16. DETERMINISM REQUIREMENT
+16. INPUT FORMAT REQUIREMENTS
 ============================================================
 
-All randomness must use seeded RNG.
-No hidden modifiers are permitted.
-Identical inputs must produce identical results.
+The only allowed ship input format is ship_state (dict) with at minimum:
+- hull_id (string)
+- module_instances (list of module instance dicts)
+- degradation_state (dict with keys weapon/defense/engine integers, default 0)
+- optional: crew (list), tags (list)
+
+ShipLoadout as an input to the combat resolver is Forbidden.

@@ -65,6 +65,96 @@
 - UI: Cancel warehouse action from detail screen
 - UI: Recurring cost indicator in top info bar
 
+## Loot Resolution – UI Requirements (Future UI Layer)
+
+This section documents how loot interaction must behave when the full UI layer is implemented.
+
+The engine contract remains authoritative.
+This section describes UI behavior only.
+
+------------------------------------------------------------
+CREDITS
+------------------------------------------------------------
+
+- Credits are automatically applied to player total.
+- No prompt required.
+- No capacity restriction.
+- Display gain clearly in UI summary.
+
+------------------------------------------------------------
+GOODS (Physical Cargo)
+------------------------------------------------------------
+
+UI must:
+
+1) Display:
+   - SKU
+   - Quantity available
+   - Cargo space required
+   - Player current cargo usage / max capacity
+
+2) Prompt:
+   - Collect none
+   - Collect partial amount (enter quantity)
+   - Collect all
+
+3) If insufficient cargo space:
+   - Display current cargo manifest
+   - Allow player to:
+        - Jettison existing cargo
+        - Reduce collection quantity
+        - Cancel collection
+
+4) No cargo overflow permitted.
+   Engine must enforce capacity.
+
+------------------------------------------------------------
+MODULES (Salvage Modules)
+------------------------------------------------------------
+
+UI must:
+
+1) Display module stats and rarity.
+2) Prompt:
+   - Collect
+   - Leave
+
+3) If collecting:
+   Prompt:
+     - Install immediately (if slot available)
+     - Store in cargo (uses 1 physical cargo unit)
+     - Cancel
+
+4) If insufficient cargo space:
+   - Allow jettison of existing cargo
+   - Allow cancellation
+
+5) Installation must respect:
+   - Slot type
+   - Slot availability
+   - Ship tier restrictions
+
+------------------------------------------------------------
+GENERAL RULES
+------------------------------------------------------------
+
+- Engine remains deterministic.
+- UI may not re-roll rewards.
+- No cargo overflow allowed.
+- No silent loss of loot.
+- Player must always confirm destructive actions (jettison).
+
+------------------------------------------------------------
+NOTES
+------------------------------------------------------------
+
+Current CLI implementation is simplified:
+- Credits auto-add after confirmation.
+- Goods/modules are not yet interactive.
+- Full behavior deferred to UI phase.
+
+This section serves as contract specification for future UI development.
+
 ## UI / Exploration Enhancements (Future)
 
 - Searchable "Nearest Known Location" utility: Once visited tracking is implemented, allow players (via UI) to search for the nearest previously visited location type (e.g., Shipdock, Administration, Bar, Warehouse, DataNet). Should operate only on visited systems/destinations. Pure UI query layer - no world mutation.
@@ -224,3 +314,166 @@ This is documentation only.
   - **Fog of War Rules:** Unvisited systems show minimal info; discovered systems reveal structural metadata only
   - **Future Extension Hooks:** Dynamic event overlays (Phase 6 situations) may appear as temporary map indicators
 - Design notes: Map is presentation-layer only. No new game logic. Emoji selection centralized. Icons are visual indicators only.
+
+## Player Profile UI Structure
+
+This section documents the Player Profile UI structure for future UI layer implementation.
+The CLI implementation serves as the authoritative reference for UI structure.
+All player actions must route through GameEngine authority.
+
+### Structure Overview
+
+The Player Profile UI is organized into a main menu with three submenus:
+
+**Main Menu:**
+1. Ships And Modules
+2. Financial
+3. Missions
+4. Back
+
+### Ships And Modules Submenu
+
+**Display:**
+- **Active Ship:**
+  - Ship ID
+  - Hull ID
+  - Hull Integrity (current/max, percentage)
+  - Fuel (current/capacity)
+  - Installed Modules (slot index, slot type, module ID)
+  - Cargo Summary
+- **Inactive Ships (if any):**
+  - For each inactive ship:
+    - Ship ID
+    - Hull ID
+    - Destination ID
+    - Hull Integrity
+    - Cargo Summary
+
+**Options:**
+1. Change Active Ship
+2. Install Module
+3. Uninstall Module
+4. Transfer Cargo
+5. Back
+
+**Change Active Ship:**
+- Only allowed if more than one owned ship
+- Lists inactive ships with index
+- Validates: same destination required, no active combat
+- Engine method: `engine.execute({"type": "set_active_ship", "ship_id": ship_id})`
+- Log event: `action=ship_change_active`
+
+**Install Module:**
+- Displays empty slots for active ship
+- Displays compatible modules in cargo or local warehouse
+- Engine method: `engine.execute({"type": "install_module", "ship_id": ship_id, "module_id": module_id, "slot_index": slot_index})`
+- Engine validates slot compatibility
+- Log event: `action=module_install`
+- Note: Currently requires shipdock location access (stub in CLI)
+
+**Uninstall Module:**
+- Lists installed modules by slot
+- Engine method: `engine.execute({"type": "uninstall_module", "ship_id": ship_id, "slot_index": slot_index})`
+- Module moved to cargo
+- Log event: `action=module_uninstall`
+- Note: Currently requires shipdock location access (stub in CLI)
+
+**Transfer Cargo:**
+- Only if inactive ships present at same destination
+- Select target ship
+- List cargo SKUs and quantities
+- Prompt quantity
+- Engine method: `engine.execute({"type": "transfer_cargo", "source_ship_id": source_ship_id, "target_ship_id": target_ship_id, "sku": sku, "quantity": quantity})`
+- Engine enforces capacity
+- Log event: `action=cargo_transfer`
+
+### Financial Submenu
+
+**Display:**
+- **Credits:** Current credit balance
+- **Warehouse Rentals (individual entries):**
+  - Location ID
+  - Capacity
+  - Cost per turn
+  - Expiration day
+- **Insurance:**
+  - If none: display "None"
+  - No logic required yet (stub)
+
+**Options:**
+1. Cancel Warehouse Rental
+2. Cancel Insurance (stub, print not implemented)
+3. Back
+
+**Cancel Warehouse Rental:**
+- Lists individually by index
+- Engine method: `engine.execute({"type": "warehouse_cancel", "destination_id": destination_id})`
+- Log event: `action=warehouse_cancel`
+
+### Missions Submenu
+
+**Display:**
+- **Active Missions:**
+  - Mission ID
+  - Title (or mission type)
+  - Status (Active / Completed)
+  - Destination ID
+
+**Options:**
+1. Abandon Mission
+2. Claim Mission Reward
+3. Back
+
+**Abandon Mission:**
+- Lists active missions only
+- Engine method: `engine.execute({"type": "abandon_mission", "mission_id": mission_id})`
+- Log event: `action=mission_abandon`
+
+**Claim Mission Reward:**
+- Lists completed but unclaimed missions
+- Engine method: `engine.execute({"type": "claim_mission", "mission_id": mission_id})`
+- Log event: `action=mission_claim`
+- Note: Currently stub (not yet fully implemented)
+
+### Engine Read-Only Accessors
+
+All read-only accessors are pure state reads with no side effects:
+
+- `engine.get_owned_ships()` - Returns list of all owned ships with summary
+- `engine.get_active_ship()` - Returns active ship summary or None
+- `engine.get_ship_modules(ship_id)` - Returns installed modules for a ship
+- `engine.get_ship_cargo(ship_id)` - Returns cargo manifest for a ship
+- `engine.get_warehouse_rentals()` - Returns list of warehouse rentals
+- `engine.get_active_missions()` - Returns list of active missions
+- `engine.get_claimable_missions()` - Returns list of claimable missions (stub)
+
+### Engine Mutating Actions
+
+All mutating actions:
+- Validate legality
+- Respect combat lock
+- Respect destination constraints
+- Produce structured logs
+
+**Command Types:**
+- `set_active_ship` - Change active ship
+- `transfer_cargo` - Transfer cargo between ships
+- `abandon_mission` - Abandon an active mission
+- `claim_mission` - Claim mission reward (stub)
+- `warehouse_cancel` - Cancel warehouse rental (existing)
+
+### UI Requirements
+
+**Player Tab Structure:**
+- Ships And Modules
+- Financial
+- Missions
+- Future: Reputation, Factions, Insurance Expansion
+
+**Important Notes:**
+- Player actions are NOT location actions
+- All actions must route through GameEngine authority
+- UI must mirror CLI structure exactly
+- No direct state mutation in UI layer
+- All validation occurs in engine layer
+- Structured logging required for all actions

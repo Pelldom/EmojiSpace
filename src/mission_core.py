@@ -59,12 +59,19 @@ class MissionCore:
             if mission.mission_state != MissionState.OFFERED:
                 continue
             
+            # Calculate reward preview if ungranted (Phase 7.11.2b)
+            reward_summary = []
+            if mission.reward_status == "ungranted":
+                preview = self._mission_manager.calculate_reward_preview(mission)
+                if preview and "credits" in preview:
+                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+            
             row = {
                 "mission_id": mission.mission_id,
                 "mission_type": mission.mission_type,
                 "mission_tier": int(mission.mission_tier),
                 "mission_state": str(mission.mission_state),
-                "rewards": list(mission.rewards),
+                "reward_summary": reward_summary,  # Phase 7.11.2b - Add reward preview
             }
             # Add giver information for Bar locations only
             if location_type == "bar" and mission.mission_contact_seed is not None:
@@ -97,13 +104,20 @@ class MissionCore:
         
         # Compare against enum values directly
         if mission.mission_state == MissionState.OFFERED:
+            # Calculate reward preview if ungranted (Phase 7.11.2b)
+            reward_summary = []
+            if mission.reward_status == "ungranted":
+                preview = self._mission_manager.calculate_reward_preview(mission)
+                if preview and "credits" in preview:
+                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+            
             return {
                 "ok": True,
                 "mission_id": mission.mission_id,
                 "mission_type": mission.mission_type,
                 "mission_tier": int(mission.mission_tier),
-                "rewards": list(mission.rewards),
                 "offer_only": True,
+                "reward_summary": reward_summary,  # Phase 7.11.2b - Add reward preview
             }
         # If mission is active, return status message
         elif mission.mission_state == MissionState.ACTIVE:

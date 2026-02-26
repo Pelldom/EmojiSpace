@@ -1,0 +1,25 @@
+ideas:
+event - while mining discover a hollow asteroid that can be used as secure stash location (0% chance of discovery/seizure)
+cargo - mass and volume? some cargo could be too volumnous for some ships, where data cargo has no mass at all. 
+
+refactor - shipdock for repair and buy/sell ships and modules
+refactor - all destinations able to refuel ships
+refactor - add salvage of modules as possible reward
+
+world gen - confirm LY distances between systems. set 1-5? UI will need to display map of relative positions of stars
+	- UI will need to display list or map of available Destinations within a system
+	- Ui will need to display list or map of available Locations within a Destination
+DONE - data structure - consolodate files
+	- tags.json
+DONE - need to update for updated tags!
+DONE - reward resolution
+DONE - mission life cycle
+	- add more reward types
+	- add more mission types
+exploration destinations
+missing - non-enhabited Destinations (asteroids, abandoned ships/stations, etc)
+missing - non-combat encounters (random and fixed)
+missing - mining asteroids
+
+prose SLM
+emoji profile

@@ -1,3 +1,15 @@
+"""
+Law Enforcement Module
+
+AUTHORITY BOUNDARIES:
+- This module handles law enforcement checkpoints, inspections, and consequences
+- This module does NOT resolve combat, ship damage, or salvage
+- Combat resolution authority is exclusively in combat_resolver.py via GameEngine
+- When ATTACK or FLEE is chosen, this module signals GameEngine to initiate combat/pursuit
+- NO ship state mutations (hull, degradation, destruction) occur in this module
+- NO salvage handling occurs in this module
+"""
+
 from dataclasses import dataclass, replace
 from enum import Enum
 import json
@@ -88,6 +100,7 @@ class EnforcementOutcome:
     bribery_result: str | None
     lawyer_used: bool
     consumed_lawyer_id: str | None
+    route_to_handler: str | None = None  # "combat" or "pursuit" to route to unified systems
 
 
 def maybe_downgrade_tier2_with_lawyer(player_state, ship, lawyer_id: str | None = None) -> tuple[bool, str | None]:
@@ -246,6 +259,17 @@ def resolve_option(
     config: Dict[str, str],
     policy_results: List[Tuple[str, GovernmentPolicyResult]],
 ) -> EnforcementOutcome:
+    """
+    Resolve player option during law enforcement checkpoint.
+    
+    IMPORTANT: This function does NOT resolve combat, ship damage, or salvage.
+    - For ATTACK: Sets route_to_handler="combat" to signal GameEngine to initiate combat
+    - For FLEE: Sets route_to_handler="pursuit" to signal GameEngine to initiate pursuit
+    - NO combat rounds are resolved here
+    - NO ship damage/hull/degradation mutations occur here
+    - NO salvage logic exists here
+    - Combat resolution authority is exclusively in combat_resolver.py via GameEngine
+    """
     bribery_roll = None
     bribery_chance = None
     bribery_result = None
@@ -271,6 +295,7 @@ def resolve_option(
     confiscation_percent = 0
     confiscated_amount = 0
     detention_tier: int | None = None
+    route_to_handler: str | None = None
     violation_type = _select_violation(event, option, False, policy_results)
 
     if config["warrant_present"]:
@@ -330,25 +355,21 @@ def resolve_option(
         else:
             heat_delta += 10
     elif option == PlayerOption.FLEE:
-        success = rng.randint(1, 100) <= 50
-        if success:
-            escaped = True
-            if event.trigger_type == TriggerType.BORDER:
-                heat_delta += 25
-            else:
-                market_access_denied = True
-                heat_delta += 25
-        else:
-            arrested = True
-            heat_delta += 10
+        # Route to unified pursuit system - do not resolve escape here
+        # The game engine will handle routing to pursuit_resolver
+        route_to_handler = "pursuit"
+        # Heat delta will be applied after pursuit resolution
+        heat_delta += 10  # Base heat for attempting to flee
     elif option == PlayerOption.ATTACK:
-        success = rng.randint(1, 100) <= 50
-        if success:
-            escaped = True
-            heat_delta += 40
-        else:
-            arrested = True
-            heat_delta += 20
+        # Route to unified combat system - do not resolve combat here
+        # The game engine will handle routing to combat_resolver
+        # NO combat resolution, NO ship damage, NO salvage handling occurs here
+        # NO combat rounds are resolved here
+        # NO hull/degradation mutations occur here
+        # Combat must be initiated ONLY via GameEngine._resolve_encounter_combat()
+        route_to_handler = "combat"
+        # Heat delta will be applied after combat resolution (by GameEngine)
+        heat_delta += 20  # Base heat for attacking enforcement
     elif option == PlayerOption.BRIBE:
         bribery_chance = compute_bribery_chance(
             config["government"],
@@ -365,6 +386,7 @@ def resolve_option(
             heat_delta += 10
             if event.legality_state == "ILLEGAL":
                 arrested = True
+    
     violation_type = _select_violation(event, option, escaped, policy_results)
     return _finalize_outcome(
         event=event,
@@ -391,6 +413,7 @@ def resolve_option(
         bribery_success=bribery_success,
         fines_outstanding=config["fines_outstanding"],
         policy_results=policy_results,
+        route_to_handler=route_to_handler,
     )
 
 
@@ -663,6 +686,7 @@ def _finalize_outcome(
     bribery_success: bool,
     fines_outstanding: int,
     policy_results: List[Tuple[str, GovernmentPolicyResult]],
+    route_to_handler: str | None = None,
 ) -> EnforcementOutcome:
     rep_delta = base_rep_delta
     heat_delta = base_heat_delta
@@ -741,6 +765,7 @@ def _finalize_outcome(
         bribery_result=bribery_result,
         lawyer_used=False,
         consumed_lawyer_id=None,
+        route_to_handler=route_to_handler,
     )
 
 

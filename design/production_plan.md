@@ -62,7 +62,7 @@ All expansion must originate here.
 | Phase 6 - World State, Situations, and Events Execution (COMPLETED) | 0.10.1 | World State, Situations, and Events Execution |
 | Phase 7.5 | 0.10.2 | Game Engine Unification (Authoritative Orchestration Layer) |
 | Phase 7.9 (LOCKED) | 0.11.x | World Generation Unification |
-| Phase 7.10 (IN PROGRESS) | 0.12.x | Combat System Unification |
+| **Phase 7.10 (COMPLETED)** | **0.11.3** | **Combat System Unification** |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -885,31 +885,43 @@ World Generation is LOCKED. All contract requirements validated. Determinism pre
 
 ---
 
-## Phase 7.10 - Combat System Unification (IN PROGRESS)
+## Phase 7.10 - Combat System Unification (COMPLETED)
 
-**Target:** 0.12.x
+**Target:** 0.11.3
 
 ### Objective
 Unify and consolidate combat system components into a single authoritative combat resolution layer within GameEngine.
 
-### Includes
+### Completed Components
 - Combat resolver integration with GameEngine
-- Deterministic combat outcome resolution
 - Combat event logging and state tracking
 - Integration with ship assembler outputs
 - Combat reward materialization
+- Combat system stabilization: stochastic per-combat RNG seed with replay support
+- Removed legacy ShipLoadout pathway
+- Optimized combat resolution (assemble ships once at start, not per round)
+- In-combat escape resolution using combat RNG
 
-### Excludes
-- No new combat mechanics
-- No changes to existing combat math
-- No UI framework work
-
-### Benchmark to Advance
-- Combat outcomes are deterministic and reproducible
-- All combat tests pass
-- Combat integration with GameEngine validated
+### Combat Determinism Change (v0.11.2)
+Combat determinism was changed to stochastic with per-combat RNG seed logging and replay support. Combat outcomes are no longer fully deterministic from world_seed alone, but can be replayed if combat_rng_seed is known. This change maintains combat risk while enabling replay functionality.
 
 ---
+
+## Phase 7.10 – Combat System Unification (COMPLETED)
+
+Completion Summary:
+- Established a single authoritative combat resolution path
+- Unified encounter-triggered combat and travel combat under one resolver
+- Confirmed deterministic NPC ship generation integration
+- Integrated salvage resolution into post-combat reward pipeline
+- Fixed salvage application bug in reward application layer
+- Confirmed cargo_manifest updates correctly on loot acceptance
+- Verified multi-encounter travel loop stability
+- Confirmed no duplicate reward application
+- Confirmed single combat authority (combat_resolver)
+- Verified deterministic behavior under identical seed
+- All tests passing
+- Travel → Encounter → Combat → Reward → Cargo loop fully closed
 
 ## Phase 8 - Monetization and Play Store Deployment
 
@@ -933,8 +945,8 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.10.10
-Phase 6 complete.
+Current Development Version: 0.11.3
+Phase 7.10 complete.
 
 ## Authority Statement
 

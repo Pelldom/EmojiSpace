@@ -43,6 +43,7 @@ def test_no_crew_combat_unchanged_baseline() -> None:
     player = _ship_state()
     enemy = _ship_state(hull_id="frg_t1_ant")
     selector = resolver.make_action_plan_selector(["Focus Fire"])
+    test_seed = 1001001
     first = resolver.resolve_combat(
         world_seed=1001,
         combat_id="crew_none_a",
@@ -51,6 +52,7 @@ def test_no_crew_combat_unchanged_baseline() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     second = resolver.resolve_combat(
         world_seed=1001,
@@ -60,8 +62,11 @@ def test_no_crew_combat_unchanged_baseline() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    assert first.log == second.log
+    round_logs_first = [e for e in first.log if "round" in e]
+    round_logs_second = [e for e in second.log if "round" in e]
+    assert round_logs_first == round_logs_second
 
 
 def test_tactician_increases_defense_band_and_reduces_damage() -> None:
@@ -70,6 +75,7 @@ def test_tactician_increases_defense_band_and_reduces_damage() -> None:
     enemy = _ship_state(hull_id="frg_t1_ant")
     selector = resolver.make_action_plan_selector(["Focus Fire"])
 
+    test_seed = 1002002
     baseline = resolver.resolve_combat(
         world_seed=1002,
         combat_id="tactician_base",
@@ -78,6 +84,7 @@ def test_tactician_increases_defense_band_and_reduces_damage() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     buffed = resolver.resolve_combat(
         world_seed=1002,
@@ -87,11 +94,14 @@ def test_tactician_increases_defense_band_and_reduces_damage() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    base_def = baseline.log[0]["bands"]["player"]["defense"]
-    buff_def = buffed.log[0]["bands"]["player"]["defense"]
-    base_taken = baseline.log[0]["attacks"]["enemy_to_player"]["damage"]
-    buff_taken = buffed.log[0]["attacks"]["enemy_to_player"]["damage"]
+    base_round = [e for e in baseline.log if "round" in e][0]
+    buff_round = [e for e in buffed.log if "round" in e][0]
+    base_def = base_round["bands"]["player"]["defense"]
+    buff_def = buff_round["bands"]["player"]["defense"]
+    base_taken = base_round["attacks"]["enemy_to_player"]["damage"]
+    buff_taken = buff_round["attacks"]["enemy_to_player"]["damage"]
     assert buff_def >= base_def
     assert buff_taken <= base_taken
 
@@ -102,6 +112,7 @@ def test_pilot_increases_engine_band() -> None:
     enemy = _ship_state(hull_id="frg_t1_ant")
     selector = resolver.make_action_plan_selector(["Focus Fire"])
 
+    test_seed = 1003003
     baseline = resolver.resolve_combat(
         world_seed=1003,
         combat_id="pilot_base",
@@ -110,6 +121,7 @@ def test_pilot_increases_engine_band() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     buffed = resolver.resolve_combat(
         world_seed=1003,
@@ -119,8 +131,11 @@ def test_pilot_increases_engine_band() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    assert buffed.log[0]["bands"]["player"]["engine"] >= baseline.log[0]["bands"]["player"]["engine"]
+    base_round = [e for e in baseline.log if "round" in e][0]
+    buff_round = [e for e in buffed.log if "round" in e][0]
+    assert buff_round["bands"]["player"]["engine"] >= base_round["bands"]["player"]["engine"]
 
 
 def test_mechanic_increases_repair_amount_per_use() -> None:
@@ -161,6 +176,7 @@ def test_focus_tag_modifies_only_selected_focus_action() -> None:
     reinforce = resolver.make_action_plan_selector(["Reinforce Shields"])
     focus_fire = resolver.make_action_plan_selector(["Focus Fire"])
 
+    test_seed = 1004004
     no_tag_reinforce = resolver.resolve_combat(
         world_seed=1004,
         combat_id="focus_none_reinforce",
@@ -169,6 +185,7 @@ def test_focus_tag_modifies_only_selected_focus_action() -> None:
         player_action_selector=reinforce,
         enemy_action_selector=reinforce,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     tag_reinforce = resolver.resolve_combat(
         world_seed=1004,
@@ -178,9 +195,13 @@ def test_focus_tag_modifies_only_selected_focus_action() -> None:
         player_action_selector=reinforce,
         enemy_action_selector=reinforce,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    assert tag_reinforce.log[0]["bands"]["player"]["weapon"] == no_tag_reinforce.log[0]["bands"]["player"]["weapon"]
+    no_tag_round = [e for e in no_tag_reinforce.log if "round" in e][0]
+    tag_round = [e for e in tag_reinforce.log if "round" in e][0]
+    assert tag_round["bands"]["player"]["weapon"] == no_tag_round["bands"]["player"]["weapon"]
 
+    test_seed2 = 1005005
     no_tag_focus = resolver.resolve_combat(
         world_seed=1005,
         combat_id="focus_none_focusfire",
@@ -189,6 +210,7 @@ def test_focus_tag_modifies_only_selected_focus_action() -> None:
         player_action_selector=focus_fire,
         enemy_action_selector=focus_fire,
         max_rounds=1,
+        combat_rng_seed=test_seed2,
     )
     tag_focus = resolver.resolve_combat(
         world_seed=1005,
@@ -198,9 +220,12 @@ def test_focus_tag_modifies_only_selected_focus_action() -> None:
         player_action_selector=focus_fire,
         enemy_action_selector=focus_fire,
         max_rounds=1,
+        combat_rng_seed=test_seed2,
     )
-    assert tag_focus.log[0]["bands"]["player"]["weapon"] == max(
-        0, no_tag_focus.log[0]["bands"]["player"]["weapon"] - 1
+    no_tag_focus_round = [e for e in no_tag_focus.log if "round" in e][0]
+    tag_focus_round = [e for e in tag_focus.log if "round" in e][0]
+    assert tag_focus_round["bands"]["player"]["weapon"] == max(
+        0, no_tag_focus_round["bands"]["player"]["weapon"] - 1
     )
 
 
@@ -210,6 +235,7 @@ def test_crew_combat_cap_respected() -> None:
     heavy_gunner = _ship_state(crew=[_crew("gunner") for _ in range(10)])
     selector = resolver.make_action_plan_selector(["Focus Fire"])
 
+    test_seed = 1006006
     base_result = resolver.resolve_combat(
         world_seed=1006,
         combat_id="cap_base",
@@ -218,6 +244,7 @@ def test_crew_combat_cap_respected() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     capped_result = resolver.resolve_combat(
         world_seed=1006,
@@ -227,8 +254,11 @@ def test_crew_combat_cap_respected() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    delta = capped_result.log[0]["bands"]["player"]["weapon"] - base_result.log[0]["bands"]["player"]["weapon"]
+    base_round = [e for e in base_result.log if "round" in e][0]
+    capped_round = [e for e in capped_result.log if "round" in e][0]
+    delta = capped_round["bands"]["player"]["weapon"] - base_round["bands"]["player"]["weapon"]
     assert delta <= 3
 
 
@@ -238,6 +268,7 @@ def test_npc_ship_with_crew_receives_same_effects_as_player() -> None:
     enemy_crew = _ship_state(hull_id="frg_t1_ant", crew=[_crew("tactician")])
     selector = resolver.make_action_plan_selector(["Focus Fire"])
 
+    test_seed = 1007007
     base = resolver.resolve_combat(
         world_seed=1007,
         combat_id="npc_base",
@@ -246,6 +277,7 @@ def test_npc_ship_with_crew_receives_same_effects_as_player() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
     buffed = resolver.resolve_combat(
         world_seed=1007,
@@ -255,10 +287,13 @@ def test_npc_ship_with_crew_receives_same_effects_as_player() -> None:
         player_action_selector=selector,
         enemy_action_selector=selector,
         max_rounds=1,
+        combat_rng_seed=test_seed,
     )
-    base_enemy_def = base.log[0]["bands"]["enemy"]["defense"]
-    buff_enemy_def = buffed.log[0]["bands"]["enemy"]["defense"]
-    base_delta = base.log[0]["attacks"]["player_to_enemy"]["band_delta"]
-    buff_delta = buffed.log[0]["attacks"]["player_to_enemy"]["band_delta"]
+    base_round = [e for e in base.log if "round" in e][0]
+    buff_round = [e for e in buffed.log if "round" in e][0]
+    base_enemy_def = base_round["bands"]["enemy"]["defense"]
+    buff_enemy_def = buff_round["bands"]["enemy"]["defense"]
+    base_delta = base_round["attacks"]["player_to_enemy"]["band_delta"]
+    buff_delta = buff_round["attacks"]["player_to_enemy"]["band_delta"]
     assert buff_enemy_def >= base_enemy_def
     assert buff_delta <= base_delta

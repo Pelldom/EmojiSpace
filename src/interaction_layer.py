@@ -74,7 +74,8 @@ VALID_NPC_OUTCOMES = {
 
 HANDLER_END = "end"
 HANDLER_REACTION = "reaction"
-HANDLER_COMBAT_STUB = "combat_stub"
+HANDLER_COMBAT = "combat"
+HANDLER_COMBAT_STUB = "combat_stub"  # Legacy, kept for backward compatibility
 HANDLER_LAW_STUB = "law_stub"
 HANDLER_PURSUIT_STUB = "pursuit_stub"
 HANDLER_MARKET_STUB = "market_stub"
@@ -140,7 +141,7 @@ def _npc_outcome_to_handler(npc_outcome):
     if npc_outcome in {NPC_OUTCOME_HAIL, NPC_OUTCOME_WARN}:
         return HANDLER_REACTION
     if npc_outcome == NPC_OUTCOME_ATTACK:
-        return HANDLER_COMBAT_STUB
+        return HANDLER_COMBAT
     if npc_outcome == NPC_OUTCOME_PURSUE:
         return HANDLER_PURSUIT_STUB
     if npc_outcome == NPC_OUTCOME_ACCEPT:
@@ -148,7 +149,7 @@ def _npc_outcome_to_handler(npc_outcome):
     if npc_outcome in {NPC_OUTCOME_REFUSE_STAND, NPC_OUTCOME_REFUSE_FLEE, NPC_OUTCOME_REFUSE_ATTACK}:
         return HANDLER_REACTION
     if npc_outcome == NPC_OUTCOME_ACCEPT_AND_ATTACK:
-        return HANDLER_COMBAT_STUB
+        return HANDLER_COMBAT
     return HANDLER_END
 
 
@@ -190,8 +191,8 @@ def dispatch_player_action(
         log["next_handler"] = HANDLER_END
         return InteractionResult(HANDLER_END, {}, log)
     if player_action == ACTION_ATTACK:
-        log["next_handler"] = HANDLER_COMBAT_STUB
-        return InteractionResult(HANDLER_COMBAT_STUB, {}, log)
+        log["next_handler"] = HANDLER_COMBAT
+        return InteractionResult(HANDLER_COMBAT, {}, log)
     if player_action == ACTION_FLEE:
         log["next_handler"] = HANDLER_PURSUIT_STUB
         return InteractionResult(HANDLER_PURSUIT_STUB, {}, log)
@@ -256,6 +257,7 @@ def _smoke_test_dispatch_structure():
     if result.next_handler not in {
         HANDLER_END,
         HANDLER_REACTION,
+        HANDLER_COMBAT,
         HANDLER_COMBAT_STUB,
         HANDLER_LAW_STUB,
         HANDLER_PURSUIT_STUB,

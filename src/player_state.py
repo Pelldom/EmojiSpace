@@ -33,10 +33,22 @@ class PlayerState:
     warehouses: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     visited_system_ids: set[str] = field(default_factory=set)
     visited_destination_ids: set[str] = field(default_factory=set)
+    
+    # Salvage modules from combat (stored until installed via shipdock)
+    salvage_modules: List[Dict[str, Any]] = field(default_factory=list)
 
     # Financial instruments
     loans: List[Dict[str, Any]] = field(default_factory=list)
     insurance_policies: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # Ship insurance and destruction state (placeholders)
+    has_ship_insurance: bool = False
+    ship_insurance_consumed: bool = False
+    ship_destroyed: bool = False
+    
+    # Run end state
+    run_ended: bool = False
+    run_end_reason: str = ""
 
     # Missions
     mission_slots: int = 1
@@ -177,6 +189,12 @@ class PlayerState:
             "last_customs_destination_id": self.last_customs_destination_id,
             "last_customs_kind": self.last_customs_kind,
             "bankruptcy_warning_turn": self.bankruptcy_warning_turn,
+            "salvage_modules": list(self.salvage_modules) if hasattr(self, "salvage_modules") else [],
+            "has_ship_insurance": self.has_ship_insurance,
+            "ship_insurance_consumed": self.ship_insurance_consumed,
+            "ship_destroyed": self.ship_destroyed,
+            "run_ended": self.run_ended,
+            "run_end_reason": self.run_end_reason,
         }
 
     def set_arrest_state(self, value: str, logger=None, turn: int = 0) -> None:

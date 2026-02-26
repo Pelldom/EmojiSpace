@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 import random
-from typing import Any, Union
+from typing import Any, Literal, Optional, Union
 
 from combat_resolver import resolve_combat
 from data_catalog import load_data_catalog
@@ -16,6 +16,10 @@ from government_law_engine import Commodity, GovernmentLawEngine
 from government_registry import GovernmentRegistry
 from interaction_layer import (
     ACTION_IGNORE,
+    ACTION_RESPOND,
+    ACTION_HAIL,
+    ACTION_ATTACK,
+    HANDLER_COMBAT,
     HANDLER_COMBAT_STUB,
     HANDLER_LAW_STUB,
     HANDLER_PURSUIT_STUB,
@@ -34,9 +38,10 @@ from law_enforcement import (
     enforcement_checkpoint,
 )
 from market_pricing import price_transaction
-from mission_factory import create_mission
+from mission_factory import create_mission, create_delivery_mission, CREATOR_BY_TYPE
 from mission_generator import select_weighted_mission_type
-from mission_manager import MissionManager
+from mission_registry import mission_type_candidates_for_source
+from mission_manager import MissionManager, evaluate_active_missions
 from mission_entity import MissionState
 from mission_core import MissionCore
 from npc_ship_generator import generate_npc_ship
@@ -48,7 +53,7 @@ from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
-from ship_assembler import assemble_ship, compute_hull_max_from_ship_state
+from ship_assembler import assemble_ship, compute_hull_max_from_ship_state, get_slot_distribution
 from ship_entity import ShipEntity
 from time_engine import (
     TimeEngine,
@@ -81,6 +86,9 @@ class EngineContext:
     hard_stop: bool = False
     hard_stop_reason: str | None = None
     active_encounters: list[Any] = field(default_factory=list)
+    game_over_reason: str | None = None
+    pending_loot: dict[str, Any] | None = None
+    claim_mission_error: str | None = None  # Phase 7.11.1: Store claim error for CLI
 
 
 @dataclass(frozen=True)
@@ -95,7 +103,7 @@ class LocationActionModel:
 
 
 class GameEngine:
-    def __init__(self, world_seed: int, config: dict | None = None) -> None:
+    def __init__(self, world_seed: int, config: dict | None = None, starting_ship_override: dict | None = None) -> None:
         self.world_seed = int(world_seed)
         self.config = dict(config or {})
         self._version = self.config.get("version", _read_version())
@@ -148,7 +156,7 @@ class GameEngine:
             "starting_system_marked_visited": bool(start_system_marked),
             "starting_destination_marked_visited": bool(start_destination_marked),
         }
-        self.fleet_by_id = self._build_default_fleet()
+        self.fleet_by_id = self._build_default_fleet(starting_ship_override=starting_ship_override)
 
         self.time_engine = TimeEngine(
             logger=None,
@@ -169,9 +177,31 @@ class GameEngine:
         self._npc_registry = NPCRegistry()
         self._location_npc_ids: dict[str, list[str]] = {}
         # Mission offer caches removed - player_state.mission_offers_by_location is the only authoritative source
+        self._pending_travel: dict[str, Any] | None = None
+        self._pending_combat: dict[str, Any] | None = None
+        self._pending_loot: dict[str, Any] | None = None
 
     def execute(self, command: dict) -> dict:
         turn_before = int(get_current_turn())
+        
+        # Enforce run-end gating (Option 3 model)
+        # Check if run has ended before processing any command
+        if self.player_state.run_ended:
+            command_type, payload, error = self._parse_command(command)
+            # Allow quit command even after run ended
+            if command_type != "quit":
+                return self._build_step_result(
+                    context=EngineContext(
+                        command=command if isinstance(command, dict) else {},
+                        command_type=command_type or "unknown",
+                        turn_before=turn_before,
+                        turn_after=int(get_current_turn()),
+                        game_over_reason=self.player_state.run_end_reason,
+                    ),
+                    ok=False,
+                    error="game_over",
+                )
+        
         command_type, payload, error = self._parse_command(command)
         if error is not None:
             return self._build_step_result(
@@ -313,8 +343,20 @@ class GameEngine:
                 self._execute_get_destination_profile(context)
             elif command_type == "encounter_action":
                 self._execute_encounter_action(context, payload)
+            elif command_type == "encounter_decision":
+                self._execute_encounter_decision(context, payload)
+            elif command_type == "combat_action":
+                self._execute_combat_action(context, payload)
             elif command_type == "warehouse_cancel":
                 self._execute_warehouse_cancel(context, payload)
+            elif command_type == "set_active_ship":
+                self._execute_set_active_ship(context, payload)
+            elif command_type == "transfer_cargo":
+                self._execute_transfer_cargo(context, payload)
+            elif command_type == "abandon_mission":
+                self._execute_abandon_mission(context, payload)
+            elif command_type == "claim_mission":
+                self._execute_claim_mission(context, payload)
             elif command_type == "set_logging":
                 self._execute_set_logging(context, payload)
             elif command_type == "quit":
@@ -333,9 +375,306 @@ class GameEngine:
         self._evaluate_hard_stop(context)
         context.turn_after = int(get_current_turn())
         self._active_encounters = list(context.active_encounters)
+        
+        # Check for claim_mission error (Phase 7.11.1)
+        claim_error = context.claim_mission_error
+        if claim_error:
+            return self._build_step_result(context=context, ok=False, error=claim_error)
+        
         return self._build_step_result(context=context, ok=True, error=None)
 
+    def has_pending_encounter(self) -> bool:
+        """Check if there is a pending encounter requiring player input."""
+        return self._pending_travel is not None and self._pending_travel.get("current_encounter") is not None
+    
+    def get_pending_loot(self) -> dict[str, Any] | None:
+        """Get pending loot bundle from last combat (if any)."""
+        return getattr(self, "_pending_loot", None)
+    
+    def clear_pending_loot(self) -> None:
+        """Clear pending loot bundle after application."""
+        self._pending_loot = None
+    
+    def resolve_pending_loot(self, take_all: bool) -> dict[str, Any]:
+        """
+        Resolve pending loot bundle.
+        
+        Args:
+            take_all: If True, apply all loot. If False, discard all loot.
+        
+        Returns:
+            dict with "ok" and optional "error" keys
+        """
+        if not self._pending_loot:
+            return {"ok": False, "error": "no_pending_loot"}
+        
+        loot_bundle = self._pending_loot
+        
+        if take_all:
+            # Apply credits immediately
+            credits = loot_bundle.get("credits", 0)
+            if credits > 0:
+                self.player_state.credits = max(0, int(self.player_state.credits) + int(credits))
+            
+            # Apply cargo via reward_applicator (capacity-safe)
+            reward_payload = loot_bundle.get("reward_payload")
+            if reward_payload:
+                sku_id = getattr(reward_payload, "sku_id", None)
+                quantity = getattr(reward_payload, "quantity", 0)
+                if sku_id and quantity > 0:
+                    # Get ship capacities
+                    try:
+                        ship = self._active_ship()
+                        physical_capacity = int(ship.get_effective_physical_capacity())
+                        data_capacity = int(ship.get_effective_data_capacity())
+                    except Exception:
+                        physical_capacity = None
+                        data_capacity = None
+                    
+                    # Apply cargo with capacity enforcement
+                    applied = apply_materialized_reward(
+                        player=self.player_state,
+                        reward_payload=reward_payload,
+                        context="game_engine_resolve_loot",
+                        catalog=self.catalog if hasattr(self, "catalog") else None,
+                        physical_cargo_capacity=physical_capacity,
+                        data_cargo_capacity=data_capacity,
+                        enforce_capacity=True,
+                        stolen_applied=loot_bundle.get("stolen_applied", False),
+                    )
+                    
+                    # If capacity exceeded, cargo is not applied (error returned but not fatal)
+                    if applied.get("error") == "cargo_capacity_exceeded":
+                        # Cargo could not be applied due to capacity
+                        pass
+            
+            # Apply salvage modules (convert to physical cargo: 1 module = 1 physical cargo unit)
+            salvage_modules = loot_bundle.get("salvage_modules", [])
+            if salvage_modules:
+                # Get ship capacity
+                try:
+                    ship = self._active_ship()
+                    physical_capacity = int(ship.get_effective_physical_capacity())
+                except Exception:
+                    physical_capacity = None
+                
+                # Enforce physical cargo capacity if known; otherwise treat as unlimited
+                from reward_applicator import _is_data_cargo
+                catalog = self.catalog if hasattr(self, "catalog") else None
+
+                # Initialize cargo structure
+                self.player_state.cargo_by_ship.setdefault("active", {})
+                holdings = self.player_state.cargo_by_ship.get("active", {})
+
+                # Calculate current physical cargo usage
+                current_physical_usage = 0
+                if physical_capacity is not None and physical_capacity > 0:
+                    for sku, qty in holdings.items():
+                        try:
+                            if not _is_data_cargo(sku, catalog):
+                                current_physical_usage += int(qty)
+                        except Exception:
+                            # If SKU is unknown in catalog, treat as physical
+                            try:
+                                current_physical_usage += int(qty)
+                            except Exception:
+                                pass
+
+                # Iterate salvage modules deterministically; accept up to capacity
+                for module in salvage_modules:
+                    if not isinstance(module, dict):
+                        continue
+                    module_id = module.get("module_id")
+                    if not isinstance(module_id, str) or not module_id:
+                        continue
+
+                    # If capacity is known and enforced, check remaining space
+                    if physical_capacity is not None and physical_capacity > 0:
+                        # One unit per module
+                        if current_physical_usage + 1 > physical_capacity:
+                            # Reject excess salvage deterministically (stop applying further modules)
+                            break
+
+                    # capacity_before/after in terms of physical usage
+                    capacity_before = current_physical_usage
+
+                    # Apply salvage as cargo: 1 unit of physical cargo with SKU = module_id
+                    current_qty = holdings.get(module_id, 0)
+                    holdings[module_id] = current_qty + 1
+
+                    # Update usage if capacity is tracked
+                    if physical_capacity is not None and physical_capacity > 0:
+                        current_physical_usage += 1
+
+                    capacity_after = current_physical_usage
+
+                    # Log salvage application event for diagnostics
+                    try:
+                        self._event(
+                            context,
+                            stage="salvage_applied",
+                            subsystem="reward_application",
+                            detail={
+                                "module_id": module_id,
+                                "quantity": 1,
+                                "capacity_before": int(capacity_before),
+                                "capacity_after": int(capacity_after),
+                                "physical_capacity": int(physical_capacity) if physical_capacity is not None else None,
+                            },
+                        )
+                    except Exception:
+                        # Logging must never break loot application
+                        pass
+        
+        # Clear pending loot
+        self._pending_loot = None
+        
+        # Check if there are remaining encounters to process
+        # After loot resolution, if encounters remain, we need to resume encounter flow
+        # Use the helper function to ensure encounter immutability
+        if self._pending_travel is not None:
+            remaining_encounters = self._pending_travel.get("remaining_encounters", [])
+            if remaining_encounters:
+                # Use helper function to resume encounters (ensures immutability)
+                from time_engine import get_current_turn
+                temp_context = EngineContext(
+                    command={"type": "resolve_pending_loot"},
+                    command_type="resolve_pending_loot",
+                    turn_before=int(get_current_turn()),
+                    turn_after=int(get_current_turn()),
+                )
+                
+                has_more = self._resume_travel_encounters_if_any(temp_context)
+                if has_more:
+                    return {"ok": True, "resume_encounters": True}
+        
+        return {"ok": True}
+
+    def has_pending_combat(self) -> bool:
+        """Check if there is a pending combat session requiring player input."""
+        return self._pending_combat is not None
+
+    def get_pending_encounter_info(self) -> dict[str, Any] | None:
+        """Get the pending encounter information for CLI display. Returns None if no pending encounter."""
+        if not self.has_pending_encounter():
+            return None
+        encounter_context = self._pending_travel.get("encounter_context", {})
+        current_encounter = self._pending_travel.get("current_encounter")
+        
+        # Extract encounter description and ship info
+        encounter_description = None
+        npc_ship_info = None
+        
+        if current_encounter is not None:
+            subtype_id = getattr(current_encounter, "subtype_id", None)
+            if subtype_id:
+                encounter_description = self._get_encounter_description(subtype_id)
+            
+            # Generate NPC ship info for display (deterministic, same as combat will use)
+            try:
+                from npc_ship_generator import generate_npc_ship
+                system = self.sector.get_system(self.player_state.current_system_id)
+                if system is not None:
+                    encounter_id = str(getattr(current_encounter, "encounter_id", ""))
+                    enemy_ship_dict = generate_npc_ship(
+                        world_seed=self.world_seed,
+                        system_id=self.player_state.current_system_id,
+                        system_population=int(system.population),
+                        encounter_id=encounter_id,
+                        encounter_subtype=str(subtype_id),
+                    )
+                    # Format ship info with only frame (no modules/stats)
+                    npc_ship_info = self._format_ship_info_frame_only(enemy_ship_dict)
+            except Exception:
+                # If ship generation fails, just skip ship info
+                npc_ship_info = None
+        
+        return {
+            "encounter_id": encounter_context.get("encounter_id"),
+            "options": encounter_context.get("options", []),
+            "encounter_description": encounter_description,
+            "npc_ship_info": npc_ship_info,
+        }
+
+    def get_pending_combat_info(self) -> dict[str, Any] | None:
+        """Get the pending combat information for CLI display. Returns None if no pending combat."""
+        if not self.has_pending_combat():
+            return None
+        pending = self._pending_combat
+        # Build the pending_combat payload similar to _build_step_result
+        from combat_resolver import available_actions, hull_percent
+        
+        player_ship_state = pending.get("player_ship_state")
+        player_state = pending.get("player_state")
+        enemy_state = pending.get("enemy_state")
+        enemy_ship_dict = pending.get("enemy_ship_dict")
+        spec = pending.get("spec")
+        
+        if not player_ship_state or not player_state:
+            return None
+        
+        allowed_actions_list = available_actions(player_ship_state, player_state)
+        round_number = pending.get("round_number", 0) + 1  # Next round
+        player_hull_pct = hull_percent(player_state.hull_current, player_state.hull_max) if player_state.hull_max > 0 else 0
+        enemy_hull_pct = hull_percent(enemy_state.hull_current, enemy_state.hull_max) if enemy_state and enemy_state.hull_max > 0 else 0
+        
+        # Check for invalid state (hull_max <= 0)
+        invalid_state = False
+        error_msg = None
+        if player_state.hull_max <= 0 or (enemy_state and enemy_state.hull_max <= 0):
+            invalid_state = True
+            error_msg = f"invalid_combat_state: player_hull_max={player_state.hull_max}, enemy_hull_max={enemy_state.hull_max if enemy_state else 'None'}, player_hull_id={player_ship_state.get('hull_id', 'unknown')}, enemy_hull_id={pending.get('enemy_ship_dict', {}).get('hull_id', 'unknown')}"
+        
+        # Map contract action names to lower_snake_case IDs
+        action_options = []
+        for action in allowed_actions_list:
+            action_id = action.lower().replace(" ", "_")
+            action_options.append({"id": action_id, "label": action})
+        
+        # Extract encounter description and enemy ship info
+        encounter_description = None
+        enemy_ship_info = None
+        
+        if spec is not None:
+            subtype_id = getattr(spec, "subtype_id", None)
+            if subtype_id:
+                encounter_description = self._get_encounter_description(subtype_id)
+        
+        if enemy_ship_dict is not None:
+            enemy_ship_info = self._format_ship_info(enemy_ship_dict)
+        
+        return {
+            "combat_id": pending.get("combat_id"),
+            "encounter_id": pending.get("encounter_id"),
+            "round_number": round_number,
+            "player_hull_pct": player_hull_pct,
+            "enemy_hull_pct": enemy_hull_pct,
+            "allowed_actions": action_options,
+            "invalid_state": invalid_state,
+            "error": error_msg,
+            "player_hull_max": player_state.hull_max if player_state else 0,
+            "enemy_hull_max": enemy_state.hull_max if enemy_state else 0,
+            "encounter_description": encounter_description,
+            "enemy_ship_info": enemy_ship_info,
+        }
+
     def _execute_travel_to_destination(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        # Travel safety guard: prevent stacking travel while pending state exists
+        if self._pending_travel is not None:
+            # Check if there's a current encounter or remaining encounters
+            if self._pending_travel.get("current_encounter") is not None or self._pending_travel.get("remaining_encounters"):
+                context.hard_stop = True
+                context.hard_stop_reason = "pending_encounter_decision"
+                return
+        if self._pending_loot is not None:
+            context.hard_stop = True
+            context.hard_stop_reason = "pending_loot_decision"
+            return
+        if self._pending_combat is not None:
+            context.hard_stop = True
+            context.hard_stop_reason = "pending_combat_action"
+            return
+        
         current_system = self.sector.get_system(self.player_state.current_system_id)
         if current_system is None:
             raise ValueError("Current system not found.")
@@ -419,6 +758,18 @@ class GameEngine:
         active_ship.current_system_id = target_system_id
         active_ship.current_destination_id = target_destination_id
         active_ship.destination_id = target_destination_id
+        
+        # Evaluate active missions after player state is updated (for delivery missions)
+        # This runs even if encounters are pending, so delivery missions can complete on arrival
+        evaluate_active_missions(
+            mission_manager=self._mission_manager,
+            player_state=self.player_state,
+            current_system_id=target_system_id,
+            current_destination_id=target_destination_id,
+            event_context={"event": "travel_arrival", "target_system_id": target_system_id, "target_destination_id": target_destination_id},
+            logger=self._logger if self._logging_enabled else None,
+            turn=context.turn_before,
+        )
 
         time_result = self._advance_time_in_chunks(days=days, reason=f"travel:{travel_id}")
         self._event(
@@ -456,28 +807,89 @@ class GameEngine:
             current_system_id=self.player_state.current_system_id,
         )
         encounters = sorted(encounters, key=lambda entry: str(getattr(entry, "encounter_id", "")))
-        context.active_encounters = list(encounters)
+        
+        # Store original encounter list IMMEDIATELY after generation - never reconstruct
+        original_encounters = list(encounters)  # Make a copy to preserve immutability
+        original_encounter_count = len(original_encounters)
+        
+        # Do NOT use context.active_encounters as authoritative queue - set to empty to avoid confusion
+        context.active_encounters = []
         self._event(
             context,
             stage="encounter_gen",
             subsystem="encounter_generator",
-            detail={"travel_id": travel_id, "encounter_count": len(encounters)},
+            detail={"travel_id": travel_id, "encounter_count": original_encounter_count},
         )
 
-        for encounter in list(context.active_encounters):
-            if context.hard_stop:
-                break
-            self._resolve_encounter(
-                context=context,
-                spec=encounter,
-                player_action=str(payload.get("encounter_action", ACTION_IGNORE)),
-            )
-            context.active_encounters = [
-                row
-                for row in context.active_encounters
-                if str(getattr(row, "encounter_id", "")) != str(getattr(encounter, "encounter_id", ""))
-            ]
-            self._evaluate_hard_stop(context)
+        # Initialize pending_travel with cursor-based tracking
+        # Store all encounters in remaining_encounters, cursor starts at 0
+        # This is the ONLY authoritative queue for travel encounters
+        self._pending_travel = {
+            "travel_id": travel_id,
+            "target_system_id": target_system_id,
+            "target_destination_id": target_destination_id,
+            "payload": payload,
+            "original_encounter_count": original_encounter_count,
+            "encounter_cursor": 0,  # Track how many encounters have been processed
+            "remaining_encounters": original_encounters.copy(),  # Full list, will be popped from
+            "current_encounter": None,
+            "encounter_context": None,
+            "events_so_far": list(context.events),
+        }
+        
+        # Check if encounter_action is explicitly provided in payload
+        encounter_action = payload.get("encounter_action")
+        if encounter_action is None:
+            # No explicit action provided - require player input
+            # Use resume function to set up first encounter
+            self._resume_travel_encounters_if_any(context)
+        else:
+            # Explicit action provided - resolve encounters automatically
+            # Loop using ONLY pending_travel["remaining_encounters"] as authoritative queue
+            while self._pending_travel is not None and self._pending_travel.get("remaining_encounters") and not context.hard_stop:
+                # Pop next encounter from authoritative queue
+                next_encounter = self._pending_travel["remaining_encounters"].pop(0)
+                self._pending_travel["current_encounter"] = next_encounter
+                self._pending_travel["encounter_cursor"] = self._pending_travel.get("encounter_cursor", 0) + 1
+                
+                # Resolve the encounter
+                self._resolve_encounter(
+                    context=context,
+                    spec=next_encounter,
+                    player_action=str(encounter_action),
+                )
+                
+                # Append events from resolved encounter to travel events
+                events_so_far = self._pending_travel.get("events_so_far", [])
+                events_so_far.extend(context.events)
+                context.events = list(events_so_far)
+                self._pending_travel["events_so_far"] = list(events_so_far)
+                
+                # Clear current_encounter after resolution
+                self._pending_travel["current_encounter"] = None
+                
+                # Evaluate hard stop (combat, loot, game_over, etc)
+                self._evaluate_hard_stop(context)
+                
+                # If hard stop is active, preserve pending_travel state and stop
+                if context.hard_stop:
+                    break
+            
+            # End-of-travel cleanup: only clear if all encounters processed AND no hard stop
+            if self._pending_travel is not None:
+                remaining = self._pending_travel.get("remaining_encounters", [])
+                if not remaining and not context.hard_stop:
+                    # All encounters processed, no hard stop - clear pending travel
+                    self._pending_travel = None
+                context.active_encounters = [
+                    row
+                    for row in context.active_encounters
+                    if str(getattr(row, "encounter_id", "")) != str(getattr(encounter, "encounter_id", ""))
+                ]
+                self._evaluate_hard_stop(context)
+                
+                # Evaluate active missions after travel completes (handled by travel_arrival event)
+                # Mission evaluation already runs on travel arrival, so skip here to avoid duplicate evaluation
 
         # Travel safety: Set bankruptcy warning only after arrival if credits reached 0 during travel
         if self.player_state.credits == 0 and self.player_state.bankruptcy_warning_turn is None:
@@ -528,6 +940,402 @@ class GameEngine:
                 "capacity_removed": int(self._warehouse_capacity(warehouse)),
             },
         )
+
+    def _execute_set_active_ship(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """Set active ship with validation."""
+        ship_id = payload.get("ship_id")
+        if not isinstance(ship_id, str) or not ship_id:
+            raise ValueError("set_active_ship requires ship_id.")
+        
+        # Validate ship is owned
+        if ship_id not in self.player_state.owned_ship_ids:
+            raise ValueError("ship_not_owned")
+        
+        target_ship = self.fleet_by_id.get(ship_id)
+        if target_ship is None:
+            raise ValueError("ship_not_found")
+        
+        # Validate no active combat
+        if self._pending_combat is not None:
+            raise ValueError("cannot_change_ship_during_combat")
+        
+        # Validate same destination
+        current_destination = self.player_state.current_destination_id
+        target_destination = target_ship.destination_id or target_ship.current_destination_id
+        if target_destination != current_destination:
+            raise ValueError("ship_at_different_destination")
+        
+        # Change active ship
+        old_ship_id = self.player_state.active_ship_id
+        self.player_state.active_ship_id = ship_id
+        
+        self._event(
+            context,
+            stage="ship_change",
+            subsystem="engine",
+            detail={
+                "action": "ship_change_active",
+                "old_ship_id": old_ship_id,
+                "new_ship_id": ship_id,
+            },
+        )
+
+    def _execute_transfer_cargo(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """Transfer cargo between ships with capacity validation."""
+        source_ship_id = payload.get("source_ship_id")
+        target_ship_id = payload.get("target_ship_id")
+        sku = payload.get("sku")
+        quantity = payload.get("quantity")
+        
+        if not isinstance(source_ship_id, str) or not source_ship_id:
+            raise ValueError("transfer_cargo requires source_ship_id.")
+        if not isinstance(target_ship_id, str) or not target_ship_id:
+            raise ValueError("transfer_cargo requires target_ship_id.")
+        if not isinstance(sku, str) or not sku:
+            raise ValueError("transfer_cargo requires sku.")
+        if not isinstance(quantity, int) or quantity < 1:
+            raise ValueError("transfer_cargo requires positive quantity.")
+        
+        # Validate both ships are owned
+        if source_ship_id not in self.player_state.owned_ship_ids:
+            raise ValueError("source_ship_not_owned")
+        if target_ship_id not in self.player_state.owned_ship_ids:
+            raise ValueError("target_ship_not_owned")
+        
+        # Validate same destination
+        source_ship = self.fleet_by_id.get(source_ship_id)
+        target_ship = self.fleet_by_id.get(target_ship_id)
+        if source_ship is None or target_ship is None:
+            raise ValueError("ship_not_found")
+        
+        source_dest = source_ship.destination_id or source_ship.current_destination_id
+        target_dest = target_ship.destination_id or target_ship.current_destination_id
+        if source_dest != target_dest:
+            raise ValueError("ships_at_different_destinations")
+        
+        # Get cargo manifests
+        source_cargo = self.player_state.cargo_by_ship.get(source_ship_id, {})
+        target_cargo = self.player_state.cargo_by_ship.get(target_ship_id, {})
+        
+        # Validate source has enough cargo
+        available = int(source_cargo.get(sku, 0) or 0)
+        if available < quantity:
+            raise ValueError("insufficient_cargo")
+        
+        # Determine cargo type and validate capacity
+        from data_loader import load_goods
+        goods_data = load_goods()
+        is_data_cargo = False
+        for good in goods_data.get("goods", []):
+            if good.get("sku_id") == sku:
+                tags = good.get("tags", [])
+                if "data" in tags:
+                    is_data_cargo = True
+                break
+        
+        # Calculate target capacity (simplified - would need ship assembler for accurate capacity)
+        target_physical_capacity = target_ship.physical_cargo_capacity or 0
+        target_data_capacity = target_ship.data_cargo_capacity or 0
+        
+        # Calculate current usage
+        current_physical = sum(int(qty) for sku_id, qty in target_cargo.items() if not _is_data_cargo_sku(sku_id))
+        current_data = sum(int(qty) for sku_id, qty in target_cargo.items() if _is_data_cargo_sku(sku_id))
+        
+        # Validate capacity
+        if is_data_cargo:
+            if current_data + quantity > target_data_capacity:
+                raise ValueError("target_ship_data_capacity_exceeded")
+        else:
+            if current_physical + quantity > target_physical_capacity:
+                raise ValueError("target_ship_physical_capacity_exceeded")
+        
+        # Transfer cargo
+        if source_ship_id not in self.player_state.cargo_by_ship:
+            self.player_state.cargo_by_ship[source_ship_id] = {}
+        if target_ship_id not in self.player_state.cargo_by_ship:
+            self.player_state.cargo_by_ship[target_ship_id] = {}
+        
+        source_cargo = self.player_state.cargo_by_ship[source_ship_id]
+        target_cargo = self.player_state.cargo_by_ship[target_ship_id]
+        
+        source_cargo[sku] = int(source_cargo.get(sku, 0) or 0) - quantity
+        if source_cargo[sku] <= 0:
+            del source_cargo[sku]
+        
+        target_cargo[sku] = int(target_cargo.get(sku, 0) or 0) + quantity
+        
+        self._event(
+            context,
+            stage="cargo_transfer",
+            subsystem="engine",
+            detail={
+                "action": "cargo_transfer",
+                "source_ship_id": source_ship_id,
+                "target_ship_id": target_ship_id,
+                "sku": sku,
+                "quantity": quantity,
+            },
+        )
+
+    def _execute_abandon_mission(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """Abandon an active mission."""
+        mission_id = payload.get("mission_id")
+        if not isinstance(mission_id, str) or not mission_id:
+            raise ValueError("abandon_mission requires mission_id.")
+        
+        if mission_id not in self.player_state.active_missions:
+            raise ValueError("mission_not_active")
+        
+        self._mission_manager.abandon(
+            mission_id=mission_id,
+            player=self.player_state,
+            reason="player_abandoned",
+            logger=self._logger if self._logging_enabled else None,
+            turn=int(get_current_turn()),
+        )
+        
+        self._event(
+            context,
+            stage="mission",
+            subsystem="mission_manager",
+            detail={
+                "action": "mission_abandon",
+                "mission_id": mission_id,
+            },
+        )
+
+    def _execute_claim_mission(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """Claim mission reward (Phase 7.11.2a)."""
+        from mission_manager import _calculate_mission_credit_reward, _load_reward_profiles
+        
+        mission_id = payload.get("mission_id")
+        if not isinstance(mission_id, str) or not mission_id:
+            context.claim_mission_error = "claim_mission requires mission_id."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": "claim_mission requires mission_id.",
+                },
+            )
+            return
+        
+        # Fetch mission
+        mission = self._mission_manager.missions.get(mission_id)
+        if mission is None:
+            context.claim_mission_error = f"Mission {mission_id} not found."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} not found.",
+                },
+            )
+            return
+        
+        # Validate mission state
+        if mission.mission_state.value != "resolved":
+            context.claim_mission_error = f"Mission {mission_id} is not resolved (state: {mission.mission_state.value})."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} is not resolved.",
+                },
+            )
+            return
+        
+        if mission.outcome != "completed":
+            context.claim_mission_error = f"Mission {mission_id} was not completed (outcome: {mission.outcome})."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} was not completed.",
+                },
+            )
+            return
+        
+        if mission.reward_status != "ungranted":
+            context.claim_mission_error = f"Mission {mission_id} reward already granted (status: {mission.reward_status})."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} reward already granted.",
+                },
+            )
+            return
+        
+        if mission.payout_policy != "claim_required":
+            context.claim_mission_error = f"Mission {mission_id} does not require claim (payout_policy: {mission.payout_policy})."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} does not require claim.",
+                },
+            )
+            return
+        
+        # Validate claim_scope
+        claim_scope = mission.claim_scope
+        if claim_scope == "none":
+            context.claim_mission_error = f"Mission {mission_id} has claim_scope='none' (invalid for claim_required)."
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Mission {mission_id} has invalid claim_scope.",
+                },
+            )
+            return
+        
+        # Get current location/entity for validation
+        current_location_id = self.player_state.current_location_id
+        mission_source = mission.source
+        
+        # Validate claim_scope
+        if claim_scope == "source_entity":
+            # Must be interacting with the exact source entity
+            source_id = mission_source.get("source_id")
+            if not source_id or current_location_id != source_id:
+                context.claim_mission_error = f"Must claim reward from source entity '{source_id}' (currently at '{current_location_id}')."
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_manager",
+                    detail={
+                        "action": "claim_mission",
+                        "mission_id": mission_id,
+                        "ok": False,
+                        "reason": f"Must claim from source entity '{source_id}'.",
+                    },
+                )
+                return
+        elif claim_scope == "any_source_type":
+            # Must be interacting with any entity of the same source_type
+            source_type = mission_source.get("source_type")
+            # For now, we'll check if current_location_id matches any location with that source_type
+            # This is a simplified check - in a full implementation, we'd check the location's type
+            # For Phase 7.11.2a, we'll allow if source_type matches (simplified validation)
+            # TODO: Full validation would check location.entity_type or location.source_type
+            if not source_type:
+                context.claim_mission_error = f"Mission {mission_id} has invalid source_type."
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_manager",
+                    detail={
+                        "action": "claim_mission",
+                        "mission_id": mission_id,
+                        "ok": False,
+                        "reason": f"Mission {mission_id} has invalid source_type.",
+                    },
+                )
+                return
+            # Simplified: allow if we're at a location (full validation would check location type)
+            if not current_location_id:
+                context.claim_mission_error = f"Must be at a location to claim reward (source_type: {source_type})."
+                self._event(
+                    context,
+                    stage="mission",
+                    subsystem="mission_manager",
+                    detail={
+                        "action": "claim_mission",
+                        "mission_id": mission_id,
+                        "ok": False,
+                        "reason": f"Must be at a location to claim reward.",
+                    },
+                )
+                return
+        
+        # All validations passed - grant reward
+        try:
+            reward_profiles = _load_reward_profiles()
+            credit_reward = _calculate_mission_credit_reward(mission, reward_profiles)
+            self.player_state.credits += credit_reward
+            mission.reward_status = "granted"
+            mission.reward_granted_turn = context.turn_before
+            
+            # Log reward granted
+            if self._logging_enabled and self._logger:
+                self._logger.log(
+                    turn=context.turn_before,
+                    action="mission_reward_granted",
+                    state_change=(
+                        f"mission_id={mission_id} payout_policy=claim_required "
+                        f"claim_scope={claim_scope} credits={credit_reward} new_balance={self.player_state.credits}"
+                    ),
+                )
+            
+            # Emit success event
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": True,
+                    "credits": credit_reward,
+                    "new_balance": self.player_state.credits,
+                },
+            )
+        except ValueError as e:
+            context.claim_mission_error = f"Failed to calculate reward: {str(e)}"
+            self._event(
+                context,
+                stage="mission",
+                subsystem="mission_manager",
+                detail={
+                    "action": "claim_mission",
+                    "mission_id": mission_id,
+                    "ok": False,
+                    "reason": f"Failed to calculate reward: {str(e)}",
+                },
+            )
+
+    def _evaluate_active_missions_on_turn_tick(self, *, logger=None, turn=0) -> None:
+        """Lightweight evaluation on turn advance (secondary trigger)."""
+        evaluate_active_missions(
+            mission_manager=self._mission_manager,
+            player_state=self.player_state,
+            current_system_id=self.player_state.current_system_id,
+            current_destination_id=self.player_state.current_destination_id,
+            event_context={"event": "turn_tick"},
+            logger=logger,
+            turn=turn,
+        )
+
 
     def _execute_set_logging(self, context: EngineContext, payload: dict[str, Any]) -> None:
         enabled = bool(payload.get("enabled", False))
@@ -680,12 +1488,65 @@ class GameEngine:
                 seed_value = (seed_value * 31 + ord(char)) % (2**32)
         return random.Random(seed_value)
 
-    def _mission_candidates(self) -> list[dict[str, Any]]:
-        return [
-            {"mission_type_id": "delivery", "base_weight": 1.0, "mission_tags": ["data"]},
-            {"mission_type_id": "recovery", "base_weight": 1.0, "mission_tags": ["industrial"]},
-            {"mission_type_id": "escort", "base_weight": 1.0, "mission_tags": ["essential"]},
-        ]
+    def _select_mission_tier(self, source_type: str, rng: random.Random) -> int:
+        """Select mission tier deterministically based on source_type (Phase 7.11.x).
+
+        Tier rules:
+        - BAR:
+            roll = rng.randint(0, 99)
+            if roll < 85: tier = rng.randint(1, 3), rare_flag=False
+            else:        tier = rng.randint(4, 5), rare_flag=True
+        - ADMINISTRATION:
+            roll = rng.randint(0, 99)
+            if roll < 85: tier = rng.randint(2, 4), rare_flag=False
+            else:        tier = rng.choice([1, 5]), rare_flag=True
+        - DATANET:
+            tier = rng.randint(4, 5), rare_flag=False  (never below 4)
+        """
+        source_type = str(source_type or "").strip()
+        rare_flag = False
+        tier_roll: int | None = None
+
+        if source_type == "bar":
+            tier_roll = rng.randint(0, 99)
+            if tier_roll < 85:
+                tier = rng.randint(1, 3)
+                rare_flag = False
+            else:
+                tier = rng.randint(4, 5)
+                rare_flag = True
+        elif source_type == "administration":
+            tier_roll = rng.randint(0, 99)
+            if tier_roll < 85:
+                tier = rng.randint(2, 4)
+                rare_flag = False
+            else:
+                tier = rng.choice([1, 5])
+                rare_flag = True
+        elif source_type == "datanet":
+            # Datanet missions are always high tier (4–5)
+            tier = rng.randint(4, 5)
+            rare_flag = False
+            tier_roll = None
+        else:
+            # Should not occur given ALLOWED_LOCATION_TYPES, but keep deterministic default
+            tier = 1
+            rare_flag = False
+            tier_roll = None
+
+        # Structured logging for tier selection
+        if self._logging_enabled and self._logger:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mission_generation:tier_roll",
+                state_change=(
+                    f"source_type={source_type} "
+                    f"tier_roll={tier_roll if tier_roll is not None else 'NA'} "
+                    f"selected_tier={tier} rare_flag={rare_flag}"
+                ),
+            )
+
+        return tier
 
     def _ensure_location_mission_offers(self, *, location_id: str) -> list[str]:
         """Ensure mission offers exist for a location.
@@ -715,34 +1576,144 @@ class GameEngine:
         # Get destination population for deterministic mission count
         destination = self._current_destination()
         population = int(getattr(destination, "population", 0) or 0) if destination else 0
-        max_offers = population + 1
+        
+        # Get location type for source field
+        location = self._current_location()
+        location_type = str(getattr(location, "location_type", "") or "") if location else ""
+        
+        # Map location_type to source_type: "bar" -> "bar", "administration" -> "administration", "datanet" -> "datanet"
+        # Victory missions should explicitly pass source_type="victory" (not mapped from location_type)
+        ALLOWED_LOCATION_TYPES = {"bar", "administration", "datanet"}
+        
+        if location_type not in ALLOWED_LOCATION_TYPES:
+            # Raise clear error for unrecognized location_type (no default to "system")
+            if location_type:
+                raise ValueError(
+                    f"Unrecognized location_type '{location_type}' for mission generation. "
+                    f"Allowed location_types: {sorted(ALLOWED_LOCATION_TYPES)}. "
+                    f"Victory missions should explicitly pass source_type='victory'."
+                )
+            else:
+                # Empty location_type - skip mission generation
+                return []
+        
+        source_type = location_type  # Direct mapping: location_type -> source_type
         
         # Deterministic mission count based on location (no turn dependency)
         rng = self._mission_rng_for_location(location_id=location_id, turn=None)
-        mission_count = rng.randint(0, max_offers)
+        mission_count = 0
+
+        # Phase 7.11.x - Deterministic mission count per source_type
+        if source_type == "bar":
+            # BAR: count = rng.randint(1, int(population * 1.5)) with safe upper bound
+            upper = int(population * 1.5)
+            if upper < 1:
+                upper = 1
+            mission_count = rng.randint(1, upper)
+        elif source_type == "administration":
+            # ADMINISTRATION: count = rng.randint(1, population) with safe upper bound
+            upper = population if population > 0 else 1
+            mission_count = rng.randint(1, upper)
+        elif source_type == "datanet":
+            # DATANET: two-stage rarity gate
+            gate_roll = rng.randint(0, 99)
+            if self._logging_enabled and self._logger:
+                # Log datanet gate decision
+                # final_count will be logged below once determined
+                self._logger.log(
+                    turn=int(get_current_turn()),
+                    action="mission_generation:datanet_gate",
+                    state_change=(
+                        f"source_type={source_type} population={population} "
+                        f"gate_roll={gate_roll}"
+                    ),
+                )
+            if gate_roll < 20:
+                mission_count = rng.randint(1, 2)
+            else:
+                mission_count = 0
+
+        # Structured logging for mission counts
+        if self._logging_enabled and self._logger:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mission_generation:count",
+                state_change=(
+                    f"source_type={source_type} population={population} "
+                    f"final_count={mission_count}"
+                ),
+            )
         
         # Generate new mission offers
         offered_ids: list[str] = []
         for index in range(mission_count):
+            # Phase 7.11.2: Mission type selection is data-driven via mission_registry
+            # and filtered to implemented creators only.
+            candidates = mission_type_candidates_for_source(source_type=source_type)
+
+            # Filter to mission types that have implemented creators
+            implemented_candidates: list[dict[str, Any]] = []
+            for row in candidates:
+                mt_id = str(row.get("mission_type_id", "") or "")
+                if mt_id in CREATOR_BY_TYPE:
+                    implemented_candidates.append(row)
+                else:
+                    # Deterministic log for registry entries without creators
+                    if self._logging_enabled and self._logger:
+                        self._logger.log(
+                            turn=int(get_current_turn()),
+                            action="mission_generation:skipped_unimplemented_type",
+                            state_change=(
+                                f"location_id={location_id} source_type={source_type} "
+                                f"mission_type_id={mt_id}"
+                            ),
+                        )
+
+            if not implemented_candidates:
+                raise ValueError(
+                    f"No implemented mission types available for source_type='{source_type}' "
+                    f"at location '{location_id}'."
+                )
+
             mission_type, _ = select_weighted_mission_type(
-                eligible_missions=self._mission_candidates(),
+                eligible_missions=implemented_candidates,
                 rng=rng,
                 world_state_engine=self._world_state_engine(),
                 system_id=self.player_state.current_system_id,
             )
+
             mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
+
+            if mission_type_id not in CREATOR_BY_TYPE:
+                raise ValueError(
+                    f"Selected mission_type_id '{mission_type_id}' has no creator in CREATOR_BY_TYPE."
+                )
             # Deterministic mission_id seed (no turn dependency for persistence)
-            mission = create_mission(
-                source_type="system",
-                source_id=f"{location_id}:{index}",
-                system_id=self.player_state.current_system_id,
-                destination_id=self.player_state.current_destination_id,
-                mission_type=mission_type_id,
-                mission_tier=1 + int(rng.randint(0, 2)),
-                persistence_scope="ephemeral",
-                objectives=[f"{mission_type_id}:complete_objective"],
-                rewards=[{"type": "credits", "amount": 100 + (index * 50)}],
-            )
+            
+            # Use structured delivery mission creation for delivery missions
+            if mission_type_id == "delivery":
+                mission_tier = self._select_mission_tier(source_type=source_type, rng=rng)
+                mission = create_delivery_mission(
+                    source_type=source_type,
+                    source_id=f"{location_id}:{index}",
+                    origin_system_id=self.player_state.current_system_id,
+                    origin_destination_id=self.player_state.current_destination_id,
+                    origin_location_id=location_id,
+                    mission_tier=mission_tier,
+                    galaxy=self.sector,
+                    catalog=self.catalog,
+                    rng=rng,
+                    logger=self._logger if self._logging_enabled else None,
+                    turn=int(get_current_turn()),
+                )
+            else:
+                # For Phase 7.11.2, only delivery missions are implemented and
+                # should be selectable. If we ever reach this branch, it
+                # indicates a registry/creator mismatch.
+                raise ValueError(
+                    f"Unsupported mission_type_id '{mission_type_id}' for generation. "
+                    f"Only structured types with creators are allowed."
+                )
             # Set location_id on mission for location matching
             mission.location_id = location_id
             mission.mission_contact_seed = f"{self.world_seed}|{self.player_state.current_system_id}|{location_id}|{mission.mission_id}|contact"
@@ -765,7 +1736,6 @@ class GameEngine:
                 "mission_type": mission.mission_type,
                 "mission_tier": int(mission.mission_tier),
                 "mission_state": str(mission.mission_state),
-                "rewards": list(mission.rewards),
             }
             # Add giver information for Bar locations only
             if location_type == "bar" and mission.mission_contact_seed is not None:
@@ -2138,6 +3108,98 @@ class GameEngine:
             },
         )
 
+    def _ensure_datanet_mission_offers(self, *, location_id: str) -> list[str]:
+        """Ensure DataNet mission offers exist for a datanet location (Phase 7.x).
+
+        DataNet rules:
+        - 20% activation chance per access
+        - If inactive: zero missions
+        - If active: generate 1–2 missions
+        - Tier floor: 4 (tier 4 or 5 only)
+        - source_type = \"datanet\"
+        - Offers persist until refresh or turn advance.
+        """
+        key = str(location_id or "")
+        if not key:
+            return []
+
+        # If offers already exist for this location, return cached list
+        existing = self._mission_manager.datanet_offers.get(key)
+        if isinstance(existing, list):
+            return list(existing)
+
+        # Generate new offers for this DataNet location
+        rng = self._mission_rng_for_location(location_id=key, turn=None)
+        gate_roll = rng.randint(0, 99)
+
+        # Log DataNet gate decision
+        if self._logging_enabled and self._logger:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mission_generation:datanet_gate",
+                state_change=(
+                    f"source_type=datanet population=NA gate_roll={gate_roll}"
+                ),
+            )
+
+        mission_ids: list[str] = []
+        if gate_roll < 20:
+            # Active: generate 1–2 missions
+            count = rng.randint(1, 2)
+            for index in range(count):
+                # For now, only delivery missions are implemented
+                mission_tier = self._select_mission_tier(source_type="datanet", rng=rng)
+                mission = create_delivery_mission(
+                    source_type="datanet",
+                    source_id=f"{key}:{index}",
+                    origin_system_id=self.player_state.current_system_id,
+                    origin_destination_id=self.player_state.current_destination_id,
+                    origin_location_id=key,
+                    mission_tier=mission_tier,
+                    galaxy=self.sector,
+                    catalog=self.catalog,
+                    rng=rng,
+                    logger=self._logger if self._logging_enabled else None,
+                    turn=int(get_current_turn()),
+                )
+                mission.location_id = key
+                mission.mission_contact_seed = f"{self.world_seed}|{self.player_state.current_system_id}|{key}|{mission.mission_id}|contact"
+                self._mission_manager.offer(mission)
+                mission_ids.append(mission.mission_id)
+
+        # Persist offers for this location until refresh or turn advance
+        self._mission_manager.datanet_offers[key] = list(mission_ids)
+
+        # Structured logging for count
+        if self._logging_enabled and self._logger:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mission_generation:count",
+                state_change=(
+                    f"source_type=datanet population=NA final_count={len(mission_ids)}"
+                ),
+            )
+
+        return mission_ids
+
+    def _datanet_mission_rows_for_location(self, *, location_id: str) -> list[dict[str, Any]]:
+        """Build mission rows for a DataNet location from datanet_offers."""
+        mission_ids = self._ensure_datanet_mission_offers(location_id=location_id)
+        rows: list[dict[str, Any]] = []
+        for mission_id in mission_ids:
+            mission = self._mission_manager.missions.get(mission_id)
+            if mission is None:
+                continue
+            rows.append(
+                {
+                    "mission_id": mission.mission_id,
+                    "mission_type": mission.mission_type,
+                    "mission_tier": int(mission.mission_tier),
+                    "mission_state": str(mission.mission_state),
+                }
+            )
+        return rows
+
     def _execute_encounter_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
         if not context.active_encounters:
             raise ValueError("encounter_action requires an active encounter.")
@@ -2158,6 +3220,152 @@ class GameEngine:
             player_kwargs=kwargs,
         )
         context.active_encounters = context.active_encounters[1:]
+
+    def _execute_encounter_decision(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """Handle encounter decision from CLI and resume travel processing."""
+        # Validate pending travel exists
+        if self._pending_travel is None:
+            raise ValueError("encounter_decision requires a pending travel.")
+        
+        # Validate encounter_id matches
+        encounter_id = payload.get("encounter_id")
+        decision_id = payload.get("decision_id")
+        if not isinstance(encounter_id, str) or not encounter_id:
+            raise ValueError("encounter_decision requires encounter_id.")
+        if not isinstance(decision_id, str) or not decision_id:
+            raise ValueError("encounter_decision requires decision_id.")
+        
+        current_encounter = self._pending_travel.get("current_encounter")
+        if current_encounter is None:
+            raise ValueError("encounter_decision: no current encounter in pending travel.")
+        
+        stored_encounter_id = str(getattr(current_encounter, "encounter_id", ""))
+        if stored_encounter_id != encounter_id:
+            raise ValueError(f"encounter_decision: encounter_id mismatch. Expected {stored_encounter_id}, got {encounter_id}.")
+        
+        # Resolve the current encounter with the decision
+        self._resolve_encounter(
+            context=context,
+            spec=current_encounter,
+            player_action=str(decision_id),
+        )
+        
+        # Append events from resolved encounter to travel events
+        events_so_far = self._pending_travel.get("events_so_far", [])
+        events_so_far.extend(context.events)
+        context.events = list(events_so_far)
+        self._pending_travel["events_so_far"] = list(events_so_far)
+        
+        # Clear current_encounter after resolution
+        self._pending_travel["current_encounter"] = None
+        
+        # Explicit resume logic: only resume when encounter is fully resolved
+        # Do NOT resume if:
+        # - Combat was triggered (hard_stop_reason == "pending_combat_action")
+        # - Loot is pending (hard_stop_reason == "pending_loot_decision")
+        # - Game over (hard_stop_reason == "game_over")
+        # Resume ONLY if:
+        # - No hard_stop (encounter fully resolved without combat/loot)
+        # - OR hard_stop is set but for a reason that allows resuming
+        
+        if context.hard_stop:
+            # Check if hard_stop is for a reason that prevents resuming
+            if context.hard_stop_reason in ("pending_combat_action", "pending_loot_decision", "game_over"):
+                # Combat, loot, or game over pending - do NOT resume encounters yet
+                return
+            # Other hard_stop reasons - allow resume (shouldn't happen in normal flow)
+        
+        # Encounter resolved without combat/loot - resume next encounter if any
+        if self._pending_travel is not None:
+            remaining = self._pending_travel.get("remaining_encounters", [])
+            if remaining:
+                # More encounters remain - resume
+                self._resume_travel_encounters_if_any(context)
+            else:
+                # No more encounters - clear pending travel
+                self._pending_travel = None
+
+    def _resume_travel_encounters_if_any(self, context: EngineContext) -> bool:
+        """
+        Resume travel encounter queue if encounters remain.
+        
+        Checks if there are remaining encounters in the current travel sequence.
+        If yes, sets up the next encounter and configures context for player input.
+        
+        ENCOUNTER IMMUTABILITY RULE:
+        - Encounters are created exactly once during generation
+        - This function ONLY pops from remaining_encounters list
+        - Absolutely NO reconstruction, re-indexing, or re-derivation of encounters
+        - Cursor tracks how many encounters have been processed
+        
+        Args:
+            context: EngineContext to update with hard_stop state
+            
+        Returns:
+            True if next encounter was set up, False if no encounters remain
+        """
+        # Check if we're in a travel sequence with remaining encounters
+        if self._pending_travel is None:
+            return False
+        
+        remaining_encounters = self._pending_travel.get("remaining_encounters", [])
+        if not remaining_encounters:
+            # No more encounters - clear pending travel
+            self._pending_travel = None
+            return False
+        
+        # Guard assertion: verify encounter count consistency using cursor
+        original_count = self._pending_travel.get("original_encounter_count")
+        cursor = self._pending_travel.get("encounter_cursor", 0)
+        
+        if original_count is not None:
+            expected_remaining = original_count - cursor
+            actual_remaining = len(remaining_encounters)
+            if actual_remaining != expected_remaining:
+                raise ValueError(
+                    f"Encounter count mismatch during resume: original={original_count}, "
+                    f"cursor={cursor}, expected_remaining={expected_remaining}, "
+                    f"actual_remaining={actual_remaining}. "
+                    f"Encounter objects must not be reconstructed or modified."
+                )
+        
+        # THE ONLY ALLOWED ADVANCEMENT LOGIC: pop from list
+        # Absolutely forbid: recomputing index, constructing encounter_id, building new objects
+        next_encounter = remaining_encounters.pop(0)  # Use pop(0) to modify list in place
+        
+        # Increment cursor exactly once per pop
+        self._pending_travel["encounter_cursor"] = cursor + 1
+        
+        # Get allowed actions for this encounter (read-only operation)
+        from interaction_layer import allowed_actions_initial
+        allowed = allowed_actions_initial(next_encounter)
+        allowed = sorted(allowed)  # Deterministic ordering
+        
+        # Build options list for CLI (read-only operation)
+        options = []
+        for action_id in allowed:
+            label_map = {
+                ACTION_IGNORE: "Ignore",
+                ACTION_RESPOND: "Respond",
+                ACTION_HAIL: "Hail",
+                ACTION_ATTACK: "Attack",
+            }
+            label = label_map.get(action_id, action_id.replace("_", " ").title())
+            options.append({"id": action_id, "label": label})
+        
+        # Update pending_travel with next encounter (list already modified by pop)
+        self._pending_travel["current_encounter"] = next_encounter
+        self._pending_travel["remaining_encounters"] = remaining_encounters  # Already updated by pop
+        self._pending_travel["encounter_context"] = {
+            "encounter_id": str(next_encounter.encounter_id),  # Read existing ID, never construct
+            "options": options,
+        }
+        
+        # Set hard_stop to require player input for next encounter
+        context.hard_stop = True
+        context.hard_stop_reason = "pending_encounter_decision"
+        
+        return True
 
     def _resolve_encounter(
         self,
@@ -2214,14 +3422,28 @@ class GameEngine:
                 "escaped": bool(pursuit.escaped),
                 "threshold": float(pursuit.threshold),
             }
-        elif handler == HANDLER_COMBAT_STUB:
-            combat = self._resolve_encounter_combat(spec)
-            resolver_outcome = {
-                "resolver": "combat",
-                "outcome": str(combat.outcome),
-                "winner": str(combat.winner),
-                "rounds": int(combat.rounds),
-            }
+        elif handler == HANDLER_COMBAT or handler == HANDLER_COMBAT_STUB:
+            # For interactive combat (HANDLER_COMBAT), initialize session and return hard_stop
+            # For simulation (HANDLER_COMBAT_STUB), use one-shot resolution
+            if handler == HANDLER_COMBAT:
+                # Initialize interactive combat session
+                self._initialize_combat_session(spec, context)
+                # Set hard_stop to pause for player combat action
+                context.hard_stop = True
+                context.hard_stop_reason = "pending_combat_action"
+                resolver_outcome = {
+                    "resolver": "combat",
+                    "status": "combat_started",
+                }
+            else:
+                # Legacy one-shot combat for simulation
+                combat = self._resolve_encounter_combat(spec)
+                resolver_outcome = {
+                    "resolver": "combat",
+                    "outcome": str(combat.outcome),
+                    "winner": str(combat.winner),
+                    "rounds": int(combat.rounds),
+                }
         elif handler == HANDLER_LAW_STUB:
             option = player_kwargs.get("option", "SUBMIT")
             law_outcome = self._run_law_checkpoint(
@@ -2246,13 +3468,37 @@ class GameEngine:
         )
         if not qualifies:
             return
+        
+        # Skip combat rewards here - they are handled by _apply_post_combat_rewards_and_salvage
+        # to allow for loot prompts and capacity checks
+        resolver = str(resolver_outcome.get("resolver", "none"))
+        if resolver == "combat":
+            self._event(
+                context,
+                stage="conditional_rewards",
+                subsystem="reward_gate",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "skipped": True,
+                    "reason": "combat_rewards_handled_by_post_combat",
+                },
+            )
+            return
 
         reward_payload = materialize_reward(
             spec,
             self._system_market_payloads(self.sector.get_system(self.player_state.current_system_id)),
             str(self.world_seed),
         )
-        applied = apply_materialized_reward(player=self.player_state, reward_payload=reward_payload, context="game_engine")
+        # For non-combat rewards, apply immediately (no capacity enforcement for now to preserve existing behavior)
+        applied = apply_materialized_reward(
+            player=self.player_state,
+            reward_payload=reward_payload,
+            context="game_engine",
+            catalog=self.catalog if hasattr(self, "catalog") else None,
+            enforce_capacity=False,  # Non-combat rewards don't enforce capacity (preserve existing behavior)
+            stolen_applied=getattr(reward_payload, "stolen_applied", False) if reward_payload else False,
+        )
         self._event(
             context,
             stage="conditional_rewards",
@@ -2287,10 +3533,10 @@ class GameEngine:
         combat = resolve_combat(
             world_seed=str(self.world_seed),
             combat_id=f"CMB-{spec.encounter_id}",
-            system_id=self.player_state.current_system_id,
             player_ship_state=player_ship_state,
             enemy_ship_state=enemy_ship,
             max_rounds=int(self.config.get("combat_max_rounds", 3)),
+            system_id=self.player_state.current_system_id,
         )
         final_player = getattr(combat, "final_state_player", None)
         if isinstance(final_player, dict):
@@ -2300,6 +3546,869 @@ class GameEngine:
             if isinstance(final_player.get("current_hull"), int):
                 player_ship.persistent_state["current_hull_integrity"] = int(final_player["current_hull"])
         return combat
+
+    def _initialize_combat_session(self, spec: Any, context: EngineContext) -> None:
+        """
+        Initialize an interactive combat session.
+        
+        Per combat_resolution_contract.md Section 3: "CORE ACTIONS"
+        Always available: Focus Fire, Reinforce Shields, Evasive Maneuvers, Attempt Escape, Surrender
+        
+        This method sets up the pending combat state but does NOT process any rounds.
+        Combat will be processed round-by-round via _process_combat_round().
+        """
+        from combat_resolver import (
+            _create_initial_state_from_ship_state,
+            assemble_ship,
+            _module_is_repair,
+            map_rcp_to_tr,
+        )
+        from npc_ship_generator import generate_npc_ship
+        
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            raise ValueError("Current system not found for combat initialization.")
+        
+        encounter_id = str(spec.encounter_id)
+        combat_id = f"CMB-{encounter_id}"
+        
+        # Generate NPC ship (deterministic)
+        enemy_ship_dict = generate_npc_ship(
+            world_seed=self.world_seed,
+            system_id=self.player_state.current_system_id,
+            system_population=int(system.population),
+            encounter_id=encounter_id,
+            encounter_subtype=str(spec.subtype_id),
+        )
+        
+        # Get player ship
+        player_ship_entity = self._active_ship()
+        player_ship_state = {
+            "hull_id": player_ship_entity.model_id,
+            "module_instances": list(player_ship_entity.persistent_state.get("module_instances", [])),
+            "degradation_state": dict(
+                player_ship_entity.persistent_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+            ),
+            "current_hull_integrity": int(player_ship_entity.persistent_state.get("current_hull_integrity", 0) or 0),
+        }
+        
+        # Validate player ship_state has hull_id
+        if not player_ship_state.get("hull_id"):
+            raise ValueError(f"invalid_player_ship_state: hull_id missing for encounter_id={encounter_id}")
+        
+        # Validate enemy ship_dict has hull_id
+        if not enemy_ship_dict.get("hull_id"):
+            raise ValueError(f"invalid_enemy_ship_state: hull_id missing for encounter_id={encounter_id}")
+        
+        # Initialize combat states (will raise if hull_id invalid via assemble_ship)
+        try:
+            player_state = _create_initial_state_from_ship_state(player_ship_state)
+            enemy_state = _create_initial_state_from_ship_state(enemy_ship_dict)
+        except ValueError as e:
+            raise ValueError(f"combat_initialization_failed: encounter_id={encounter_id}, player_hull_id={player_ship_state.get('hull_id')}, enemy_hull_id={enemy_ship_dict.get('hull_id')}, error={str(e)}") from e
+        
+        # Validate hull_max > 0
+        if player_state.hull_max <= 0:
+            raise ValueError(f"invalid_player_hull_max: encounter_id={encounter_id}, hull_id={player_ship_state.get('hull_id')}, hull_max={player_state.hull_max}")
+        if enemy_state.hull_max <= 0:
+            raise ValueError(f"invalid_enemy_hull_max: encounter_id={encounter_id}, hull_id={enemy_ship_dict.get('hull_id')}, hull_max={enemy_state.hull_max}")
+        
+        player_state.degradation.update(player_ship_state.get("degradation_state", {}))
+        enemy_state.degradation.update(enemy_ship_dict.get("degradation_state", {}))
+        
+        # Set initial hull from persistent state (default to full hull if unset)
+        player_hull_integrity = player_ship_state.get("current_hull_integrity", 0) or 0
+        if player_hull_integrity <= 0:
+            # Unset or invalid: default to full hull
+            player_state.hull_current = player_state.hull_max
+            # Also update persistent state to keep it aligned
+            player_ship_entity.persistent_state["current_hull_integrity"] = player_state.hull_max
+            player_ship_entity.persistent_state["max_hull_integrity"] = player_state.hull_max
+        else:
+            player_state.hull_current = min(player_hull_integrity, player_state.hull_max)
+        
+        # Calculate TR/RCP
+        assembled_player = assemble_ship(player_ship_state["hull_id"], player_ship_state["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
+        rcp_player = (
+            assembled_player["bands"]["pre_degradation"]["weapon"]
+            + assembled_player["bands"]["pre_degradation"]["defense"]
+            + (assembled_player["bands"]["pre_degradation"]["engine"] // 2)
+            + (int(assembled_player["hull_max"]) // 4)
+            + (2 * sum(1 for entry in player_ship_state["module_instances"] if _module_is_repair(entry)))
+        )
+        tr_player = map_rcp_to_tr(rcp_player)
+        
+        assembled_enemy = assemble_ship(enemy_ship_dict["hull_id"], enemy_ship_dict["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
+        rcp_enemy = (
+            assembled_enemy["bands"]["pre_degradation"]["weapon"]
+            + assembled_enemy["bands"]["pre_degradation"]["defense"]
+            + (assembled_enemy["bands"]["pre_degradation"]["engine"] // 2)
+            + (int(assembled_enemy["hull_max"]) // 4)
+            + (2 * sum(1 for entry in enemy_ship_dict["module_instances"] if _module_is_repair(entry)))
+        )
+        tr_enemy = map_rcp_to_tr(rcp_enemy)
+        
+        # Generate combat RNG seed (non-deterministic per combat)
+        import secrets
+        combat_rng_seed = secrets.randbits(64)
+        
+        # Store pending combat state
+        self._pending_combat = {
+            "combat_id": combat_id,
+            "encounter_id": encounter_id,
+            "spec": spec,
+            "player_ship_entity": player_ship_entity,
+            "enemy_ship_dict": enemy_ship_dict,
+            "player_ship_state": player_ship_state,
+            "round_number": 0,  # 0 = not started, will be 1+ when first round processes
+            "player_state": player_state,
+            "enemy_state": enemy_state,
+            "tr_player": tr_player,
+            "tr_enemy": tr_enemy,
+            "rcp_player": rcp_player,
+            "rcp_enemy": rcp_enemy,
+            "log": [],
+            "context": context,
+            "max_rounds": int(self.config.get("combat_max_rounds", 20)),
+            "combat_rng_seed": combat_rng_seed,
+        }
+        
+        # Log combat started with hull info
+        self._event(
+            context,
+            stage="combat",
+            subsystem="combat_initialization",
+            detail={
+                "encounter_id": encounter_id,
+                "combat_id": combat_id,
+                "system_id": self.player_state.current_system_id,
+                "player_hull_id": player_ship_state["hull_id"],
+                "enemy_hull_id": enemy_ship_dict["hull_id"],
+                "player_hull_max": player_state.hull_max,
+                "enemy_hull_max": enemy_state.hull_max,
+            },
+        )
+
+    def _process_combat_round(self, player_action: str) -> dict[str, Any]:
+        """
+        Process one round of interactive combat.
+        
+        Per combat_resolution_contract.md:
+        - Each round: player selects action, enemy selects action (deterministic),
+          bands calculated, resolution executes, damage applied, termination checked.
+        
+        Returns dict with:
+        - "combat_ended": bool
+        - "combat_result": CombatResult | None (only if combat_ended)
+        - "round_number": int
+        - "player_hull_pct": int
+        - "enemy_hull_pct": int
+        """
+        if self._pending_combat is None:
+            raise ValueError("No pending combat session.")
+        
+        from combat_resolver import (
+            CombatRng,
+            CombatResult,
+            available_actions,
+            _crew_modifiers_for_ship_state,
+            assemble_ship,
+            _primary_weapon_type,
+            _primary_defense_type,
+            RPS_MATRIX,
+            _effective_from_assembled,
+            _resolve_attack,
+            _apply_damage_and_degradation,
+            _escape_attempt,
+            _repair_once,
+            _ship_state_to_dict,
+            resolve_salvage_modules,
+            hull_percent,
+            _module_is_repair,
+            _modules_by_id,
+        )
+        from combat_resolver import _default_selector
+        
+        pending = self._pending_combat
+        round_number = pending["round_number"] + 1
+        pending["round_number"] = round_number
+        
+        player_state = pending["player_state"]
+        enemy_state = pending["enemy_state"]
+        player_ship_state = pending["player_ship_state"]
+        enemy_ship_dict = pending["enemy_ship_dict"]
+        combat_id = pending["combat_id"]
+        max_rounds = pending["max_rounds"]
+        
+        rng = CombatRng(world_seed=str(self.world_seed), salt=f"{combat_id}_combat")
+        
+        # Get allowed actions
+        player_allowed = available_actions(player_ship_state, player_state)
+        enemy_allowed = available_actions(enemy_ship_dict, enemy_state)
+        
+        # Validate player action
+        if player_action not in player_allowed:
+            player_action = "Focus Fire"  # Default fallback
+        
+        # Get enemy action (deterministic)
+        enemy_selector = _default_selector
+        enemy_action = enemy_selector(round_number, enemy_state, player_state, enemy_ship_dict, player_ship_state, enemy_allowed)
+        if enemy_action not in enemy_allowed:
+            enemy_action = "Focus Fire"
+        
+        # Check surrender (immediate termination)
+        if player_action == "Surrender":
+            pending["log"].append({"round": round_number, "outcome": "surrender", "surrendered_by": "player"})
+            combat_result = CombatResult(
+                outcome="surrender",
+                rounds=round_number,
+                winner="enemy",
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                surrendered_by="player",
+                salvage_modules=[],
+            )
+            return {
+                "combat_ended": True,
+                "combat_result": combat_result,
+                "round_number": round_number,
+                "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+            }
+        
+        if enemy_action == "Surrender":
+            pending["log"].append({"round": round_number, "outcome": "surrender", "surrendered_by": "enemy"})
+            combat_result = CombatResult(
+                outcome="surrender",
+                rounds=round_number,
+                winner="player",
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                surrendered_by="enemy",
+                salvage_modules=[],
+            )
+            return {
+                "combat_ended": True,
+                "combat_result": combat_result,
+                "round_number": round_number,
+                "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+            }
+        
+        # Handle repair actions
+        player_crew_mods = _crew_modifiers_for_ship_state(player_ship_state)
+        enemy_crew_mods = _crew_modifiers_for_ship_state(enemy_ship_dict)
+        
+        if player_action == "Repair Systems":
+            _repair_once(player_ship_state, player_state, action_repair_bonus=int(player_crew_mods.repair_focus_bonus))
+        if enemy_action == "Repair Systems":
+            _repair_once(enemy_ship_dict, enemy_state, action_repair_bonus=int(enemy_crew_mods.repair_focus_bonus))
+        
+        # Handle scan actions
+        module_defs = _modules_by_id()
+        if player_action == "Scan" and any(module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_probe_array" for entry in player_ship_state["module_instances"]):
+            scan_roll = rng.randint(0, 1, "scan_roll_player", round_number, [])
+            if scan_roll == 1:
+                enemy_state.scanned = True
+        
+        if enemy_action == "Scan" and any(module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_probe_array" for entry in enemy_ship_dict["module_instances"]):
+            scan_roll = rng.randint(0, 1, "scan_roll_enemy", round_number, [])
+            if scan_roll == 1:
+                player_state.scanned = True
+        
+        # Assemble ships with current degradation
+        assembled_player = assemble_ship(player_ship_state["hull_id"], player_ship_state["module_instances"], player_state.degradation)
+        assembled_enemy = assemble_ship(enemy_ship_dict["hull_id"], enemy_ship_dict["module_instances"], enemy_state.degradation)
+        
+        # Calculate RPS adjustments
+        player_rps = 0
+        enemy_rps = 0
+        own_weapon = _primary_weapon_type(player_ship_state)
+        opp_def = _primary_defense_type(enemy_ship_dict)
+        if own_weapon is not None and opp_def is not None:
+            player_rps = RPS_MATRIX.get((own_weapon, opp_def), 0)
+        own_weapon_e = _primary_weapon_type(enemy_ship_dict)
+        opp_def_p = _primary_defense_type(player_ship_state)
+        if own_weapon_e is not None and opp_def_p is not None:
+            enemy_rps = RPS_MATRIX.get((own_weapon_e, opp_def_p), 0)
+        
+        # Calculate effective bands
+        player_weapon = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "weapon",
+            player_rps,
+            crew_band_bonus=int(player_crew_mods.attack_band_bonus),
+            action_bonus=int(player_crew_mods.focus_fire_bonus if player_action == "Focus Fire" else 0),
+        )
+        player_defense = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "defense",
+            crew_band_bonus=int(player_crew_mods.defense_band_bonus),
+            action_bonus=int(player_crew_mods.reinforce_shields_bonus if player_action == "Reinforce Shields" else 0),
+        )
+        player_engine = _effective_from_assembled(
+            assembled_player,
+            player_action,
+            "engine",
+            crew_band_bonus=int(player_crew_mods.engine_band_bonus),
+            action_bonus=int(player_crew_mods.evasive_bonus if player_action == "Evasive Maneuvers" else 0),
+        )
+        enemy_weapon = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "weapon",
+            enemy_rps,
+            crew_band_bonus=int(enemy_crew_mods.attack_band_bonus),
+            action_bonus=int(enemy_crew_mods.focus_fire_bonus if enemy_action == "Focus Fire" else 0),
+        )
+        enemy_defense = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "defense",
+            crew_band_bonus=int(enemy_crew_mods.defense_band_bonus),
+            action_bonus=int(enemy_crew_mods.reinforce_shields_bonus if enemy_action == "Reinforce Shields" else 0),
+        )
+        enemy_engine = _effective_from_assembled(
+            assembled_enemy,
+            enemy_action,
+            "engine",
+            crew_band_bonus=int(enemy_crew_mods.engine_band_bonus),
+            action_bonus=int(enemy_crew_mods.evasive_bonus if enemy_action == "Evasive Maneuvers" else 0),
+        )
+        
+        # Handle escape attempt
+        if player_action == "Attempt Escape":
+            escape = _escape_attempt(
+                world_seed=str(self.world_seed),
+                combat_id=combat_id,
+                round_number=round_number,
+                fleeing_ship_state=player_ship_state,
+                pursuing_ship_state=enemy_ship_dict,
+                fleeing_engine_effective=player_engine,
+                pursuing_engine_effective=enemy_engine,
+                fleeing_combat_state=player_state,
+                pursuing_combat_state=enemy_state,
+            )
+            if escape["escaped"]:
+                pending["log"].append({"round": round_number, "outcome": "escape", "escaped_by": "player"})
+                combat_result = CombatResult(
+                    outcome="escape",
+                    rounds=round_number,
+                    winner="player",
+                    final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                    final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                    log=pending["log"],
+                    tr_player=pending["tr_player"],
+                    tr_enemy=pending["tr_enemy"],
+                    rcp_player=pending["rcp_player"],
+                    rcp_enemy=pending["rcp_enemy"],
+                    salvage_modules=[],
+                )
+                return {
+                    "combat_ended": True,
+                    "combat_result": combat_result,
+                    "round_number": round_number,
+                    "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                    "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+                }
+        
+        if enemy_action == "Attempt Escape":
+            escape = _escape_attempt(
+                world_seed=str(self.world_seed),
+                combat_id=f"{combat_id}_enemy",
+                round_number=round_number,
+                fleeing_ship_state=enemy_ship_dict,
+                pursuing_ship_state=player_ship_state,
+                fleeing_engine_effective=enemy_engine,
+                pursuing_engine_effective=player_engine,
+                fleeing_combat_state=enemy_state,
+                pursuing_combat_state=player_state,
+            )
+            if escape["escaped"]:
+                pending["log"].append({"round": round_number, "outcome": "escape", "escaped_by": "enemy"})
+                combat_result = CombatResult(
+                    outcome="escape",
+                    rounds=round_number,
+                    winner="enemy",
+                    final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                    final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                    log=pending["log"],
+                    tr_player=pending["tr_player"],
+                    tr_enemy=pending["tr_enemy"],
+                    rcp_player=pending["rcp_player"],
+                    rcp_enemy=pending["rcp_enemy"],
+                    salvage_modules=[],
+                )
+                return {
+                    "combat_ended": True,
+                    "combat_result": combat_result,
+                    "round_number": round_number,
+                    "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                    "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+                }
+        
+        # Resolve attacks
+        rng_events = []
+        player_attack = _resolve_attack("player", "enemy", player_weapon, enemy_defense, enemy_action, rng, round_number, rng_events)
+        enemy_attack = _resolve_attack("enemy", "player", enemy_weapon, player_defense, player_action, rng, round_number, rng_events)
+        
+        # Apply damage and degradation
+        player_degrade = _apply_damage_and_degradation(player_state, enemy_attack["damage"], rng, round_number, rng_events, target_ship_state=player_ship_state)
+        enemy_degrade = _apply_damage_and_degradation(enemy_state, player_attack["damage"], rng, round_number, rng_events, target_ship_state=enemy_ship_dict)
+        
+        # Check destruction
+        player_destroyed = player_state.hull_current <= 0
+        enemy_destroyed = enemy_state.hull_current <= 0
+        
+        if player_destroyed or enemy_destroyed:
+            if player_destroyed and enemy_destroyed:
+                winner: Literal["player", "enemy", "none"] = "none"
+            elif enemy_destroyed:
+                winner = "player"
+            else:
+                winner = "enemy"
+            
+            destruction = {
+                "player_destroyed": player_destroyed,
+                "enemy_destroyed": enemy_destroyed,
+                "requires_external_insurance_resolution": player_destroyed,
+            }
+            
+            salvage_modules: list[dict[str, Any]] = []
+            if enemy_destroyed:
+                salvage_modules.extend(
+                    resolve_salvage_modules(
+                        world_seed=str(self.world_seed),
+                        system_id=self.player_state.current_system_id,
+                        encounter_id=f"{combat_id}_enemy_destroyed",
+                        destroyed_ship=enemy_ship_dict,
+                    )
+                )
+            
+            pending["log"].append({"round": round_number, "outcome": "destroyed", "winner": winner})
+            combat_result = CombatResult(
+                outcome="destroyed",
+                rounds=round_number,
+                winner=winner,
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                destruction_event=destruction,
+                salvage_modules=salvage_modules,
+            )
+            return {
+                "combat_ended": True,
+                "combat_result": combat_result,
+                "round_number": round_number,
+                "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+            }
+        
+        # Check max rounds
+        if round_number >= max_rounds:
+            pending["log"].append({"round": round_number, "outcome": "max_rounds"})
+            combat_result = CombatResult(
+                outcome="max_rounds",
+                rounds=round_number,
+                winner="none",
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                salvage_modules=[],
+            )
+            return {
+                "combat_ended": True,
+                "combat_result": combat_result,
+                "round_number": round_number,
+                "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+                "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+            }
+        
+        # Combat continues
+        pending["log"].append({"round": round_number, "actions": {"player": player_action, "enemy": enemy_action}})
+        return {
+            "combat_ended": False,
+            "combat_result": None,
+            "round_number": round_number,
+            "player_hull_pct": hull_percent(player_state.hull_current, player_state.hull_max),
+            "enemy_hull_pct": hull_percent(enemy_state.hull_current, enemy_state.hull_max),
+        }
+
+    def _handle_player_ship_destruction(self, combat_id: str) -> dict[str, Any]:
+        """
+        Handle player ship destruction with insurance logic.
+        
+        Returns a result dict with hard_stop, hard_stop_reason, and game_over flags.
+        """
+        import random
+        
+        # Clear pending combat immediately
+        self._pending_combat = None
+        
+        # Check insurance
+        if self.player_state.has_ship_insurance:
+            roll = random.random()
+            if roll < 0.5:
+                # Insurance save - ship destroyed but run continues
+                self.player_state.ship_destroyed = True
+                self.player_state.ship_insurance_consumed = True
+                self.player_state.has_ship_insurance = False
+                
+                return {
+                    "hard_stop": True,
+                    "hard_stop_reason": "ship_destroyed_insured",
+                    "game_over": False,
+                    "error": None,
+                    "game_over_reason": None,
+                }
+            else:
+                # Insurance failed
+                self.player_state.run_ended = True
+                self.player_state.run_end_reason = "ship_destroyed"
+                
+                return {
+                    "hard_stop": True,
+                    "hard_stop_reason": "game_over",
+                    "game_over": True,
+                    "error": "game_over",
+                    "game_over_reason": "ship_destroyed",
+                }
+        else:
+            # No insurance - Game Over
+            self.player_state.run_ended = True
+            self.player_state.run_end_reason = "ship_destroyed"
+            
+            return {
+                "hard_stop": True,
+                "hard_stop_reason": "game_over",
+                "game_over": True,
+                "error": "game_over",
+                "game_over_reason": "ship_destroyed",
+            }
+    
+    def _execute_combat_action(self, context: EngineContext, payload: dict[str, Any]) -> None:
+        """
+        Execute player combat action for one round.
+        
+        Command format:
+        {
+            "type": "combat_action",
+            "action": "Focus Fire" | "Reinforce Shields" | "Evasive Maneuvers" | "Attempt Escape" | "Surrender",
+            "encounter_id": str (optional, for validation)
+        }
+        
+        Per combat_resolution_contract.md Section 3: "CORE ACTIONS"
+        Always available: Focus Fire, Reinforce Shields, Evasive Maneuvers, Attempt Escape, Surrender
+        """
+        if self._pending_combat is None:
+            raise ValueError("No pending combat session.")
+        
+        # Validate encounter_id if provided
+        encounter_id = payload.get("encounter_id")
+        if encounter_id and str(encounter_id) != self._pending_combat["encounter_id"]:
+            raise ValueError(f"Encounter ID mismatch: expected {self._pending_combat['encounter_id']}, got {encounter_id}")
+        
+        # Get action (map from action_id to contract name if needed)
+        action_id = payload.get("action")
+        if not isinstance(action_id, str):
+            raise ValueError("combat_action requires 'action' (string).")
+        
+        # Map lower_snake_case to contract names if needed
+        action_map = {
+            "focus_fire": "Focus Fire",
+            "reinforce_shields": "Reinforce Shields",
+            "evasive_maneuvers": "Evasive Maneuvers",
+            "attempt_escape": "Attempt Escape",
+            "surrender": "Surrender",
+        }
+        player_action = action_map.get(action_id, action_id)  # Use as-is if already contract name
+        
+        # Load current pending combat session
+        pending = self._pending_combat
+        combat_rng_seed = pending["combat_rng_seed"]
+        round_number = pending["round_number"] + 1  # Next round to execute
+        player_state = pending["player_state"]
+        enemy_state = pending["enemy_state"]
+        player_ship_state = pending["player_ship_state"]
+        enemy_ship_dict = pending["enemy_ship_dict"]
+        max_rounds = pending["max_rounds"]
+        
+        # Store initial state for progress validation
+        initial_player_hull = player_state.hull_current
+        initial_enemy_hull = enemy_state.hull_current
+        initial_round = round_number
+        
+        # Determine enemy action (simple deterministic AI for now)
+        enemy_action: str = "Focus Fire"
+        
+        # Execute one round using resolve_combat_round
+        from combat_resolver import resolve_combat_round, available_actions, CombatResult, _ship_state_to_dict, hull_percent
+        
+        # Validate player action is allowed
+        player_allowed = available_actions(player_ship_state, player_state)
+        if player_action not in player_allowed:
+            player_action = "Focus Fire"  # Default fallback
+        
+        # Check max rounds before executing (if at max, force termination)
+        if round_number > max_rounds:
+            # Already exceeded max rounds - force termination
+            from combat_resolver import CombatResult, _ship_state_to_dict
+            combat_result = CombatResult(
+                outcome="max_rounds",
+                rounds=round_number - 1,  # Last completed round
+                winner="none",
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                salvage_modules=[],
+                combat_rng_seed=combat_rng_seed,
+            )
+            
+            # Apply combat results
+            from combat_application import apply_combat_result
+            from time_engine import get_current_turn
+            
+            apply_combat_result(
+                player_state=self.player_state,
+                player_ship_entity=pending["player_ship_entity"],
+                enemy_ship_entity_or_dict=enemy_ship_dict,
+                combat_result=combat_result,
+                system_id=self.player_state.current_system_id,
+                encounter_id=pending["encounter_id"],
+                world_seed=self.world_seed,
+                logger=self._silent_logger,
+                turn=int(get_current_turn()),
+            )
+            
+            # Clear pending combat
+            self._pending_combat = None
+            context.hard_stop = False
+            return
+        
+        # Execute the round
+        round_result = resolve_combat_round(
+            combat_rng_seed=combat_rng_seed,
+            round_number=round_number,
+            player_state=player_state,
+            enemy_state=enemy_state,
+            player_action=player_action,
+            enemy_action=enemy_action,
+            player_ship_state=player_ship_state,
+            enemy_ship_state=enemy_ship_dict,
+            system_id=self.player_state.current_system_id,
+        )
+        
+        # Update pending combat state
+        pending["round_number"] = round_number
+        pending["player_state"] = round_result["player_state"]
+        pending["enemy_state"] = round_result["enemy_state"]
+        pending["log"].append(round_result["round_summary"])
+        
+        # Check max rounds after execution
+        if round_number >= max_rounds and not round_result["combat_ended"]:
+            # Force termination at max rounds
+            from combat_resolver import CombatResult, _ship_state_to_dict
+            combat_result = CombatResult(
+                outcome="max_rounds",
+                rounds=round_number,
+                winner="none",
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                salvage_modules=[],
+                combat_rng_seed=combat_rng_seed,
+            )
+            round_result["combat_ended"] = True
+            round_result["outcome"] = "max_rounds"
+        
+        if round_result["combat_ended"]:
+            # Combat ended - build CombatResult and apply
+            outcome = round_result["outcome"]
+            round_summary = round_result["round_summary"]
+            
+            # Determine winner based on outcome
+            winner: Literal["player", "enemy", "none"] = "none"
+            surrendered_by: Optional[str] = None
+            
+            if outcome == "surrender":
+                surrendered_by = round_summary.get("surrendered_by", "player")
+                winner = "enemy" if surrendered_by == "player" else "player"
+            elif outcome == "escape":
+                escaped_by = round_summary.get("escaped_by", "player")
+                winner = "player" if escaped_by == "player" else "enemy"
+            elif outcome == "destroyed":
+                winner = round_summary.get("winner", "none")
+            
+            # Handle player ship destruction immediately
+            # Check if player was destroyed (winner == "enemy" or player hull <= 0)
+            if outcome == "destroyed" and (winner == "enemy" or player_state.hull_current <= 0):
+                destruction_result = self._handle_player_ship_destruction(pending["combat_id"])
+                
+                # If game over, set context and return early
+                if destruction_result.get("game_over"):
+                    context.hard_stop = True
+                    context.hard_stop_reason = destruction_result.get("hard_stop_reason", "game_over")
+                    # Store game over info in context for result building
+                    context.game_over_reason = destruction_result.get("game_over_reason", "ship_destroyed")
+                    return
+            
+            from combat_resolver import resolve_salvage_modules
+            salvage_modules: list[dict[str, Any]] = []
+            if outcome == "destroyed" and winner == "player":
+                salvage_modules.extend(
+                    resolve_salvage_modules(
+                        world_seed=str(self.world_seed),
+                        system_id=self.player_state.current_system_id,
+                        encounter_id=f"{pending['combat_id']}_enemy_destroyed",
+                        destroyed_ship=enemy_ship_dict,
+                    )
+                )
+            
+            combat_result = CombatResult(
+                outcome=outcome,
+                rounds=round_number,
+                winner=winner,
+                final_state_player=_ship_state_to_dict(player_ship_state, player_state),
+                final_state_enemy=_ship_state_to_dict(enemy_ship_dict, enemy_state),
+                log=pending["log"],
+                tr_player=pending["tr_player"],
+                tr_enemy=pending["tr_enemy"],
+                rcp_player=pending["rcp_player"],
+                rcp_enemy=pending["rcp_enemy"],
+                salvage_modules=salvage_modules,
+                surrendered_by=surrendered_by,
+                combat_rng_seed=combat_rng_seed,
+            )
+            
+            # Apply combat results (hull/degradation/state only; no rewards here)
+            from combat_application import apply_combat_result
+            from time_engine import get_current_turn
+
+            apply_combat_result(
+                player_state=self.player_state,
+                player_ship_entity=pending["player_ship_entity"],
+                enemy_ship_entity_or_dict=enemy_ship_dict,
+                combat_result=combat_result,
+                system_id=self.player_state.current_system_id,
+                encounter_id=pending["encounter_id"],
+                world_seed=self.world_seed,
+                logger=self._silent_logger,
+                turn=int(get_current_turn()),
+            )
+
+            # Decide whether post-combat rewards handler should run (engine layer only)
+            apply_rewards = False
+            if combat_result.outcome in {"destroyed", "surrender", "escape"}:
+                # Player victory or successful escape by player can qualify
+                if combat_result.outcome == "destroyed" and combat_result.winner == "player":
+                    apply_rewards = True
+                elif combat_result.outcome == "surrender":
+                    # Only apply if enemy surrendered (player did not surrender)
+                    surrendered_by = getattr(combat_result, "surrendered_by", None)
+                    if surrendered_by == "enemy":
+                        apply_rewards = True
+                elif combat_result.outcome == "escape":
+                    # Treat player escape as escape_success; enemy escape should not trigger rewards
+                    escaped_by = round_summary.get("escaped_by")
+                    if escaped_by == "player":
+                        apply_rewards = True
+
+            # Log combat action result BEFORE invoking reward handler
+            # This ensures layering: combat_action log precedes reward_handler:post_combat
+            self._event(
+                context,
+                stage="combat",
+                subsystem="combat_action",
+                detail={
+                    "action": "resolved",
+                    "combat_id": pending["combat_id"],
+                    "round_executed": round_number,
+                    "player_action": player_action,
+                    "enemy_action": enemy_action,
+                    "player_hull_current": player_state.hull_current,
+                    "enemy_hull_current": enemy_state.hull_current,
+                        "outcome": outcome,
+                },
+            )
+
+            # Invoke post-combat reward handler ONLY after terminal state is logged
+            if apply_rewards:
+                self._apply_post_combat_rewards_and_salvage(
+                    context=context,
+                    combat_result=combat_result,
+                    encounter_id=pending["encounter_id"],
+                )
+                
+                # Evaluate active missions after combat (all mission types through centralized authority)
+                # Delivery missions are evaluated on travel arrival, not after combat
+                # Bounty missions can be evaluated here if needed, but all evaluation goes through evaluate_active_missions()
+                evaluate_active_missions(
+                    mission_manager=self._mission_manager,
+                    player_state=self.player_state,
+                    current_system_id=self.player_state.current_system_id,
+                    current_destination_id=self.player_state.current_destination_id,
+                    event_context={"event": "combat_complete"},
+                    logger=self._logger if self._logging_enabled else None,
+                    turn=context.turn_after,
+                )
+
+            # Clear pending combat after rewards/loot have been prepared
+            self._pending_combat = None
+
+            # If loot handler did not set a loot decision hard_stop, resume travel encounters
+            if context.hard_stop_reason != "pending_loot_decision":
+                # No loot pending - check if we should resume travel encounters
+                # This will set hard_stop=True with pending_encounter_decision if encounters remain
+                # or hard_stop=False if no encounters remain
+                self._resume_travel_encounters_if_any(context)
+        else:
+            # Combat continues - set hard_stop for next round
+            context.hard_stop = True
+            context.hard_stop_reason = "pending_combat_action"
+            
+            # Log combat action resolved
+            self._event(
+                context,
+                stage="combat",
+                subsystem="combat_action",
+                detail={
+                    "action": "resolved",
+                    "combat_id": pending["combat_id"],
+                    "round_executed": round_number,
+                    "player_action": player_action,
+                    "enemy_action": enemy_action,
+                    "player_hull_current": player_state.hull_current,
+                    "enemy_hull_current": enemy_state.hull_current,
+                },
+            )
 
     def _run_law_checkpoint(
         self,
@@ -2381,7 +4490,19 @@ class GameEngine:
         resolver = str(resolver_outcome.get("resolver", "none"))
         outcome = resolver_outcome.get("outcome")
         if resolver == "combat":
-            return str(resolver_outcome.get("winner")) == "player"
+            # Only grant rewards for actual wins (destroyed or enemy surrender), not escapes
+            winner = str(resolver_outcome.get("winner", "none"))
+            if winner != "player":
+                return False
+            # Check outcome: destroyed or surrender (but not player escape)
+            if str(outcome) == "escape":
+                return False  # Player escaped, no rewards
+            if str(outcome) == "surrender":
+                # Only grant if enemy surrendered
+                surrendered_by = resolver_outcome.get("surrendered_by")
+                return str(surrendered_by) == "enemy"
+            # destroyed or max_rounds with player win
+            return str(outcome) in {"destroyed", "max_rounds"}
         if resolver == "pursuit":
             return str(outcome) == "escape_success"
         if resolver == "reaction":
@@ -2394,6 +4515,250 @@ class GameEngine:
         if isinstance(npc_outcome, str) and npc_outcome in {"accept"}:
             return True
         return False
+
+    def _apply_post_combat_rewards_and_salvage(
+        self,
+        context: EngineContext,
+        combat_result: Any,
+        encounter_id: str,
+    ) -> None:
+        """
+        Post-combat reward and salvage handler.
+        
+        This function:
+        - Materializes rewards from encounter reward_profile_id
+        - Combines rewards with salvage modules into a loot bundle
+        - Stores the bundle in context for player prompt (deferred application)
+        - Does NOT apply rewards immediately (player must accept via prompt)
+        """
+        # Defensive guard: only run for terminal combat outcomes
+        outcome = getattr(combat_result, "outcome", None)
+        if outcome not in {"destroyed", "surrender", "escape", "max_rounds"}:
+            raise ValueError(f"post_combat_rewards_called_for_non_terminal_outcome:{outcome}")
+
+        # Use encounter spec stored on pending combat (authoritative)
+        if self._pending_combat is None:
+            return
+
+        spec = self._pending_combat.get("spec")
+        if spec is None:
+            return
+        
+        # Only materialize if encounter has a reward profile
+        reward_profile_id = getattr(spec, "reward_profile_id", None)
+        if reward_profile_id is None:
+            # No reward profile, but salvage may still be available
+            self._event(
+                context,
+                stage="post_combat",
+                subsystem="reward_handler",
+                detail={
+                    "encounter_id": encounter_id,
+                    "reward_profile_id": None,
+                    "salvage_count": len(getattr(combat_result, "salvage_modules", [])),
+                    "loot_bundle_created": False,
+                },
+            )
+            return
+        
+        # Materialize reward (deterministic, uses existing seed strategy)
+        from reward_materializer import materialize_reward
+        
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            return
+        
+        reward_payload = materialize_reward(
+            spec,
+            self._system_market_payloads(system),
+            str(self.world_seed),
+        )
+        
+        # Get salvage modules from combat result
+        salvage_modules = list(getattr(combat_result, "salvage_modules", []))
+        
+        # Create loot bundle (deferred application - player must accept)
+        loot_bundle = {
+            "encounter_id": encounter_id,
+            "reward_payload": reward_payload,
+            "salvage_modules": salvage_modules,
+            "credits": getattr(reward_payload, "credits", 0) if reward_payload else 0,
+            "cargo": None,
+            "cargo_quantity": 0,
+            "cargo_sku": None,
+            "stolen_applied": False,
+        }
+        
+        if reward_payload:
+            loot_bundle["cargo_sku"] = getattr(reward_payload, "sku_id", None)
+            loot_bundle["cargo_quantity"] = getattr(reward_payload, "quantity", 0)
+            loot_bundle["stolen_applied"] = getattr(reward_payload, "stolen_applied", False)
+        
+        # Store loot bundle in context for CLI prompt (deferred application)
+        if not hasattr(context, "pending_loot"):
+            context.pending_loot = None
+        context.pending_loot = loot_bundle
+        
+        # Also store in engine state for CLI access
+        self._pending_loot = loot_bundle
+        
+        # Set hard_stop to require loot decision
+        context.hard_stop = True
+        context.hard_stop_reason = "pending_loot_decision"
+        
+        self._event(
+            context,
+            stage="post_combat",
+            subsystem="reward_handler",
+            detail={
+                "encounter_id": encounter_id,
+                "reward_profile_id": str(reward_profile_id),
+                "credits": loot_bundle["credits"],
+                "cargo_sku": loot_bundle["cargo_sku"],
+                "cargo_quantity": loot_bundle["cargo_quantity"],
+                "salvage_count": len(salvage_modules),
+                "stolen_applied": loot_bundle["stolen_applied"],
+                "loot_bundle_created": True,
+            },
+        )
+
+    def _apply_loot_bundle(
+        self,
+        context: EngineContext,
+        loot_bundle: dict[str, Any],
+        accepted_items: dict[str, bool],
+    ) -> dict[str, Any]:
+        """
+        Apply accepted items from loot bundle to player state.
+        
+        Args:
+            context: EngineContext
+            loot_bundle: Loot bundle from _apply_post_combat_rewards_and_salvage
+            accepted_items: Dict with keys "credits", "cargo", "salvage_modules" -> bool
+        
+        Returns:
+            dict with application results and any errors
+        """
+        result = {
+            "credits_applied": 0,
+            "cargo_applied": None,
+            "cargo_quantity": 0,
+            "salvage_applied": 0,
+            "errors": [],
+        }
+        
+        if not loot_bundle:
+            return result
+        
+        # Get ship capacities for enforcement
+        try:
+            ship = self._active_ship()
+            physical_capacity = int(ship.get_effective_physical_capacity())
+            data_capacity = int(ship.get_effective_data_capacity())
+        except Exception:
+            physical_capacity = None
+            data_capacity = None
+        
+        # Apply credits if accepted
+        if accepted_items.get("credits", False):
+            credits = loot_bundle.get("credits", 0)
+            if credits > 0:
+                self.player_state.credits = max(0, int(self.player_state.credits) + int(credits))
+                result["credits_applied"] = int(credits)
+        
+        # Apply cargo if accepted
+        if accepted_items.get("cargo", False):
+            reward_payload = loot_bundle.get("reward_payload")
+            if reward_payload:
+                sku_id = getattr(reward_payload, "sku_id", None)
+                quantity = getattr(reward_payload, "quantity", 0)
+                stolen = loot_bundle.get("stolen_applied", False)
+                
+                if sku_id and quantity > 0:
+                    applied = apply_materialized_reward(
+                        player=self.player_state,
+                        reward_payload=reward_payload,
+                        context="game_engine_post_combat",
+                        catalog=self.catalog if hasattr(self, "catalog") else None,
+                        physical_cargo_capacity=physical_capacity,
+                        data_cargo_capacity=data_capacity,
+                        enforce_capacity=True,
+                        stolen_applied=stolen,
+                    )
+                    
+                    if applied.get("error") == "cargo_capacity_exceeded":
+                        result["errors"].append("cargo_capacity_exceeded")
+                    else:
+                        result["cargo_applied"] = applied.get("cargo")
+                        result["cargo_quantity"] = applied.get("quantity", 0)
+        
+        # Apply salvage modules if accepted
+        if accepted_items.get("salvage_modules", False):
+            salvage_modules = loot_bundle.get("salvage_modules", [])
+            if salvage_modules:
+                # Each module consumes 1 physical cargo unit when stored as cargo
+                # For now, store in salvage_modules list (player can install later via shipdock)
+                # But we need to check capacity
+                module_count = len(salvage_modules)
+                
+                if physical_capacity is not None and physical_capacity > 0:
+                    # Calculate current physical cargo usage
+                    from reward_applicator import _is_data_cargo
+                    current_physical_usage = 0
+                    holdings = self.player_state.cargo_by_ship.get("active", {})
+                    for sku, qty in holdings.items():
+                        try:
+                            if not _is_data_cargo(sku, self.catalog if hasattr(self, "catalog") else None):
+                                current_physical_usage += int(qty)
+                        except Exception:
+                            pass
+                    
+                    # Check if modules would fit
+                    if current_physical_usage + module_count > physical_capacity:
+                        result["errors"].append("salvage_capacity_exceeded")
+                    else:
+                        # Store modules in salvage_modules list
+                        if not hasattr(self.player_state, "salvage_modules"):
+                            self.player_state.salvage_modules = []
+                        if not isinstance(self.player_state.salvage_modules, list):
+                            self.player_state.salvage_modules = []
+                        
+                        import copy
+                        for module in salvage_modules:
+                            if isinstance(module, dict):
+                                module_copy = copy.deepcopy(module)
+                                self.player_state.salvage_modules.append(module_copy)
+                                result["salvage_applied"] += 1
+                else:
+                    # No capacity limit or unknown: store anyway
+                    if not hasattr(self.player_state, "salvage_modules"):
+                        self.player_state.salvage_modules = []
+                    if not isinstance(self.player_state.salvage_modules, list):
+                        self.player_state.salvage_modules = []
+                    
+                    import copy
+                    for module in salvage_modules:
+                        if isinstance(module, dict):
+                            module_copy = copy.deepcopy(module)
+                            self.player_state.salvage_modules.append(module_copy)
+                            result["salvage_applied"] += 1
+        
+        # Log application
+        self._event(
+            context,
+            stage="post_combat",
+            subsystem="loot_applicator",
+            detail={
+                "encounter_id": loot_bundle.get("encounter_id", ""),
+                "credits_applied": result["credits_applied"],
+                "cargo_applied": result["cargo_applied"],
+                "cargo_quantity": result["cargo_quantity"],
+                "salvage_applied": result["salvage_applied"],
+                "errors": result["errors"],
+            },
+        )
+        
+        return result
 
     def _evaluate_hard_stop(self, context: EngineContext) -> None:
         if context.hard_stop:
@@ -2429,7 +4794,7 @@ class GameEngine:
             return "", {}, "command type must be a string."
         if not isinstance(payload, dict):
             return command_type, {}, "command payload must be an object."
-        allowed = {"travel_to_destination", "location_action", "encounter_action", "wait", "quit"}
+        allowed = {"travel_to_destination", "location_action", "encounter_action", "encounter_decision", "wait", "quit"}
         allowed.add("list_location_actions")
         allowed.add("list_location_npcs")
         allowed.add("list_npc_interactions")
@@ -2454,13 +4819,16 @@ class GameEngine:
         allowed.add("set_logging")
         allowed.add("mission_discuss")
         allowed.add("mission_accept")
+        allowed.add("abandon_mission")  # Phase 7.x.1 - abandon routing
+        allowed.add("claim_mission")
         allowed.add("dismiss_crew")
+        allowed.add("combat_action")
         if command_type not in allowed:
             return command_type, payload, f"unsupported command type: {command_type}"
         return command_type, payload, None
 
     def _build_step_result(self, *, context: EngineContext, ok: bool, error: str | None) -> dict[str, Any]:
-        return {
+        result = {
             "ok": bool(ok),
             "error": error,
             "command_type": context.command_type,
@@ -2479,6 +4847,55 @@ class GameEngine:
             "active_encounter_count": len(context.active_encounters),
             "version": self._version,
         }
+        
+        # Add game_over_reason if present
+        if context.game_over_reason is not None:
+            result["game_over_reason"] = context.game_over_reason
+        elif error == "game_over" and self.player_state.run_end_reason:
+            result["game_over_reason"] = self.player_state.run_end_reason
+        
+        # Add pending_combat payload if hard_stop is due to pending combat action
+        if context.hard_stop and context.hard_stop_reason == "pending_combat_action" and self._pending_combat:
+            from combat_resolver import available_actions, hull_percent
+            
+            pending = self._pending_combat
+            player_ship_state = pending.get("player_ship_state")
+            player_state = pending.get("player_state")
+            enemy_state = pending.get("enemy_state")
+            
+            if player_ship_state and player_state:
+                allowed_actions = available_actions(player_ship_state, player_state)
+                round_number = pending.get("round_number", 0) + 1  # Next round
+                player_hull_pct = hull_percent(player_state.hull_current, player_state.hull_max) if player_state.hull_max > 0 else 0
+                enemy_hull_pct = hull_percent(enemy_state.hull_current, enemy_state.hull_max) if enemy_state and enemy_state.hull_max > 0 else 0
+                
+                # Check for invalid state (hull_max <= 0)
+                invalid_state = False
+                error_msg = None
+                if player_state.hull_max <= 0 or (enemy_state and enemy_state.hull_max <= 0):
+                    invalid_state = True
+                    error_msg = f"invalid_combat_state: player_hull_max={player_state.hull_max}, enemy_hull_max={enemy_state.hull_max if enemy_state else 'None'}, player_hull_id={player_ship_state.get('hull_id', 'unknown')}, enemy_hull_id={pending.get('enemy_ship_dict', {}).get('hull_id', 'unknown')}"
+                
+                # Map contract action names to lower_snake_case IDs
+                action_options = []
+                for action in allowed_actions:
+                    action_id = action.lower().replace(" ", "_")
+                    action_options.append({"id": action_id, "label": action})
+                
+                result["pending_combat"] = {
+                    "combat_id": pending.get("combat_id", ""),
+                    "encounter_id": pending.get("encounter_id", ""),
+                    "round_number": round_number,
+                    "player_hull_pct": player_hull_pct,
+                    "enemy_hull_pct": enemy_hull_pct,
+                    "allowed_actions": action_options,
+                    "invalid_state": invalid_state,
+                    "error": error_msg,
+                    "player_hull_max": player_state.hull_max if player_state else 0,
+                    "enemy_hull_max": enemy_state.hull_max if enemy_state else 0,
+                }
+        
+        return result
 
     def _event(self, context: EngineContext, *, stage: str, subsystem: str, detail: dict[str, Any]) -> None:
         event_payload = {
@@ -2509,6 +4926,16 @@ class GameEngine:
         self._apply_recurring_costs(days_completed=int(result.days_completed))
         # Update bankruptcy warning after time advance completes
         self._update_bankruptcy_warning()
+        
+        # Lightweight mission evaluation on turn advance (secondary trigger)
+        if int(result.days_completed) > 0:
+            self._evaluate_active_missions_on_turn_tick(
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+            # Clear all DataNet mission offers on turn advance (Phase 7.x)
+            self._mission_manager.clear_datanet_offers(location_id=None)
+        
         return result
 
     def _advance_time_in_chunks(self, *, days: int, reason: str) -> dict[str, Any]:
@@ -2535,30 +4962,70 @@ class GameEngine:
         self.player_state.current_destination_id = destination_id
         self.player_state.current_location_id = destination_id
 
-    def _build_default_fleet(self) -> dict[str, ShipEntity]:
+    def _build_default_fleet(self, starting_ship_override: dict | None = None) -> dict[str, ShipEntity]:
         """
-        Enforce starting ship: Midge (civ_t1_midge) with no modules.
+        Build default starting ship with config-driven or data-driven hull selection.
         
         This is deterministic and occurs only on new game initialization.
         All ship stats derive from assemble_ship() output.
+        
+        If starting_ship_override is provided, it must contain:
+        - hull_id: str
+        - modules: list[dict] where each dict has module_id: str
         """
-        hull_id = "civ_t1_midge"
+        from data_loader import load_hulls, load_modules
+        
+        # Handle admin override
+        if starting_ship_override is not None:
+            return self._build_override_fleet(starting_ship_override)
+        
+        # Default logic (unchanged)
+        hulls_data = load_hulls()
+        hulls_list = hulls_data.get("hulls", [])
+        
+        if not hulls_list:
+            raise ValueError("no_hulls_available: No hulls found in hulls.json")
+        
+        # Try config-provided starting_hull_id first
+        config_hull_id = self.config.get("starting_hull_id")
+        hull_id = None
+        hull_data = None
+        
+        if config_hull_id:
+            # Validate config hull exists
+            for hull in hulls_list:
+                if hull.get("hull_id") == config_hull_id:
+                    hull_data = hull
+                    hull_id = config_hull_id
+                    break
+            if hull_id is None:
+                # Config provided invalid hull_id, fall through to fallback
+                pass
+        
+        # Fallback: pick first tier 1 CIV frame hull, or first hull if no match
+        if hull_id is None:
+            for hull in hulls_list:
+                if hull.get("tier") == 1 and hull.get("frame") == "CIV":
+                    hull_data = hull
+                    hull_id = hull.get("hull_id")
+                    break
+            # If still no match, use first hull (deterministic)
+            if hull_id is None:
+                hull_data = hulls_list[0]
+                hull_id = hull_data.get("hull_id")
+        
+        if not hull_id or not hull_data:
+            raise ValueError("no_hulls_available: Could not select valid starting hull")
+        
         module_instances = []
         degradation_state = {"weapon": 0, "defense": 0, "engine": 0}
         
+        # assemble_ship will raise ValueError if hull_id is invalid
         assembled = assemble_ship(hull_id, module_instances, degradation_state)
         
-        # Extract hull data for crew_capacity and cargo base
-        from data_loader import load_hulls
-        hulls_data = load_hulls()
-        hull_data = None
-        for hull in hulls_data.get("hulls", []):
-            if hull.get("hull_id") == hull_id:
-                hull_data = hull
-                break
-        
-        if hull_data is None:
-            raise ValueError(f"Hull data not found for {hull_id}")
+        # Validate assembled ship has valid hull_max
+        if assembled.get("hull_max", 0) <= 0:
+            raise ValueError(f"invalid_hull_assembly: hull_id={hull_id} resulted in hull_max={assembled.get('hull_max', 0)}")
         
         # Extract cargo capacities: base from hull + module bonuses from assembler
         cargo_base = hull_data.get("cargo", {})
@@ -2606,12 +5073,402 @@ class GameEngine:
         self.player_state.owned_ship_ids = [ship.ship_id]
         return fleet
 
+    def _build_override_fleet(self, override: dict) -> dict[str, ShipEntity]:
+        """
+        Build starting ship from admin override.
+        
+        Validates:
+        - hull_id exists in catalog
+        - module_ids exist in catalog
+        - Slot compatibility (modules don't exceed available slots)
+        - No secondaries allowed
+        
+        Raises ValueError on any validation failure.
+        """
+        from data_loader import load_hulls, load_modules
+        
+        # Validate override structure
+        if not isinstance(override, dict):
+            raise ValueError("starting_ship_override must be a dict")
+        
+        hull_id = override.get("hull_id")
+        if not isinstance(hull_id, str):
+            raise ValueError("starting_ship_override.hull_id must be a string")
+        
+        modules_override = override.get("modules")
+        if not isinstance(modules_override, list):
+            raise ValueError("starting_ship_override.modules must be a list")
+        
+        # Load catalogs
+        hulls_data = load_hulls()
+        hulls_list = hulls_data.get("hulls", [])
+        modules_data = load_modules()
+        modules_list = modules_data.get("modules", [])
+        
+        # Build lookup dictionaries
+        hulls_by_id = {hull.get("hull_id"): hull for hull in hulls_list}
+        modules_by_id = {module.get("module_id"): module for module in modules_list}
+        
+        # Validate hull_id exists
+        if hull_id not in hulls_by_id:
+            raise ValueError(f"starting_ship_override: hull_id '{hull_id}' not found in hull catalog")
+        
+        hull_data = hulls_by_id[hull_id]
+        
+        # Get slot distribution from ship system contract
+        frame = hull_data.get("frame")
+        tier = hull_data.get("tier")
+        if not isinstance(frame, str) or not isinstance(tier, int):
+            raise ValueError(f"starting_ship_override: hull '{hull_id}' has invalid frame or tier")
+        
+        slots = get_slot_distribution(frame, tier)
+        weapon_slots = slots["weapon_slots"]
+        defense_slots = slots["defense_slots"]
+        utility_slots = slots["utility_slots"]
+        untyped_slots = slots["untyped_slots"]
+        total_slots = slots["total_slots"]
+        
+        # Validate and build module_instances
+        module_instances = []
+        module_ids_list = []
+        slot_type_counts = {"weapon": 0, "defense": 0, "utility": 0}
+        
+        for module_entry in modules_override:
+            if not isinstance(module_entry, dict):
+                raise ValueError("starting_ship_override.modules entries must be dicts")
+            
+            module_id = module_entry.get("module_id")
+            if not isinstance(module_id, str):
+                raise ValueError("starting_ship_override.modules entries must have module_id as string")
+            
+            # Validate module_id exists
+            if module_id not in modules_by_id:
+                raise ValueError(f"starting_ship_override: module_id '{module_id}' not found in module catalog")
+            
+            module_def = modules_by_id[module_id]
+            slot_type = module_def.get("slot_type")
+            
+            if slot_type not in ("weapon", "defense", "utility"):
+                raise ValueError(f"starting_ship_override: module '{module_id}' has invalid slot_type '{slot_type}'")
+            
+            # Check for secondaries (not allowed)
+            if module_entry.get("secondaries"):
+                raise ValueError(f"starting_ship_override: module '{module_id}' must not have secondaries")
+            
+            # Count by slot type
+            slot_type_counts[slot_type] += 1
+            module_ids_list.append(module_id)
+            
+            # Build module instance with empty secondaries
+            module_instances.append({
+                "module_id": module_id,
+                "secondaries": []
+            })
+        
+        # Validate slot compatibility
+        # Each module consumes 1 slot (no compact secondaries allowed)
+        total_modules = len(module_instances)
+        if total_modules > total_slots:
+            raise ValueError(
+                f"starting_ship_override: {total_modules} modules exceed total slots {total_slots} "
+                f"(weapon={weapon_slots}, defense={defense_slots}, utility={utility_slots}, untyped={untyped_slots})"
+            )
+        
+        # Check typed slot limits
+        untyped_remaining = untyped_slots
+        for slot_type in ("weapon", "defense", "utility"):
+            needed = slot_type_counts[slot_type]
+            base_slots = {
+                "weapon": weapon_slots,
+                "defense": defense_slots,
+                "utility": utility_slots,
+            }[slot_type]
+            
+            base_used = min(base_slots, needed)
+            overflow = needed - base_used
+            
+            if overflow > 0:
+                if overflow > untyped_remaining:
+                    raise ValueError(
+                        f"starting_ship_override: {slot_type} modules exceed capacity: "
+                        f"needs {needed}, base slots {base_slots}, untyped remaining {untyped_remaining}"
+                    )
+                untyped_remaining -= overflow
+        
+        # Build ship using assemble_ship (single authority)
+        degradation_state = {"weapon": 0, "defense": 0, "engine": 0}
+        assembled = assemble_ship(hull_id, module_instances, degradation_state)
+        
+        # Validate assembled ship
+        if assembled.get("hull_max", 0) <= 0:
+            raise ValueError(
+                f"starting_ship_override: hull_id={hull_id} resulted in invalid hull_max={assembled.get('hull_max', 0)}"
+            )
+        
+        # Log admin override event (immediately after successful override application)
+        self._logger.log(
+            turn=0,
+            action="admin_override_starting_ship",
+            state_change=json.dumps({
+                "event": "admin_override_starting_ship",
+                "hull_id": hull_id,
+                "modules": module_ids_list,
+            }),
+        )
+        
+        # Extract cargo capacities
+        cargo_base = hull_data.get("cargo", {})
+        physical_cargo_base = int(cargo_base.get("physical_base", 0))
+        data_cargo_base = int(cargo_base.get("data_base", 0))
+        utility_effects = assembled.get("ship_utility_effects", {})
+        physical_cargo_capacity = physical_cargo_base + int(utility_effects.get("physical_cargo_bonus", 0))
+        data_cargo_capacity = data_cargo_base + int(utility_effects.get("data_cargo_bonus", 0))
+        
+        # Extract crew capacity
+        crew_capacity = int(hull_data.get("crew_capacity", 0))
+        
+        # Extract subsystem bands
+        bands = assembled.get("bands", {})
+        effective_bands = bands.get("effective", {})
+        
+        # Create ShipEntity
+        ship = ShipEntity(
+            ship_id="PLAYER-SHIP-001",
+            model_id=hull_id,
+            owner_id=self.player_state.player_id,
+            owner_type="player",
+            activity_state="active",
+            destination_id=self.player_state.current_destination_id,
+            current_system_id=self.player_state.current_system_id,
+            current_destination_id=self.player_state.current_destination_id,
+            fuel_capacity=int(assembled["fuel_capacity"]),
+            current_fuel=int(assembled["fuel_capacity"]),
+            crew_capacity=crew_capacity,
+            physical_cargo_capacity=physical_cargo_capacity,
+            data_cargo_capacity=data_cargo_capacity,
+        )
+        ship.persistent_state["module_instances"] = list(module_instances)
+        ship.persistent_state["degradation_state"] = dict(degradation_state)
+        ship.persistent_state["max_hull_integrity"] = int(assembled.get("hull_max", 0))
+        ship.persistent_state["current_hull_integrity"] = int(assembled.get("hull_max", 0))
+        ship.persistent_state["assembled"] = assembled
+        ship.persistent_state["subsystem_bands"] = {
+            "weapon": int(effective_bands.get("weapon", 0)),
+            "defense": int(effective_bands.get("defense", 0)),
+            "engine": int(effective_bands.get("engine", 0)),
+        }
+        
+        fleet = {ship.ship_id: ship}
+        self.player_state.active_ship_id = ship.ship_id
+        self.player_state.owned_ship_ids = [ship.ship_id]
+        return fleet
+
     def _active_ship(self) -> ShipEntity:
         ship_id = self.player_state.active_ship_id
         ship = self.fleet_by_id.get(ship_id)
         if ship is None:
             raise ValueError("Player has no active ship.")
         return ship
+
+    def _get_encounter_description(self, subtype_id: str) -> str:
+        """Get human-readable description for an encounter subtype."""
+        # Map subtype_id to display name
+        description_map = {
+            "civilian_trader_ship": "Civilian Trader",
+            "customs_patrol": "Border Patrol",
+            "bounty_hunter": "Bounty Hunter",
+            "pirate_raider": "Pirate Raider",
+            "merchant_convoy": "Merchant Convoy",
+            "smuggler": "Smuggler",
+            "scavenger": "Scavenger",
+            "military_patrol": "Military Patrol",
+        }
+        return description_map.get(subtype_id, subtype_id.replace("_", " ").title())
+
+    def _format_ship_info_frame_only(self, ship_dict: dict[str, Any]) -> dict[str, Any]:
+        """Format ship information for encounter display - only frame, no modules/stats."""
+        from data_loader import load_hulls
+        
+        hull_id = ship_dict.get("hull_id", "unknown")
+        hulls_data = load_hulls()
+        hulls_list = hulls_data.get("hulls", [])
+        
+        hull_name = "Unknown Ship"
+        frame = "UNKNOWN"
+        tier = 0
+        
+        for hull in hulls_list:
+            if hull.get("hull_id") == hull_id:
+                hull_name = hull.get("name", hull_id)
+                frame = hull.get("frame", "UNKNOWN")
+                tier = hull.get("tier", 0)
+                break
+        
+        return {
+            "hull_id": hull_id,
+            "hull_name": hull_name,
+            "frame": frame,
+            "tier": tier,
+        }
+
+    def _format_ship_info(self, ship_dict: dict[str, Any]) -> dict[str, Any]:
+        """Format ship information for combat display - includes modules/stats."""
+        from data_loader import load_hulls, load_modules
+        
+        hull_id = ship_dict.get("hull_id", "unknown")
+        hulls_data = load_hulls()
+        hulls_list = hulls_data.get("hulls", [])
+        
+        hull_name = "Unknown Ship"
+        for hull in hulls_list:
+            if hull.get("hull_id") == hull_id:
+                hull_name = hull.get("name", hull_id)
+                break
+        
+        # Count modules by type using module catalog
+        module_instances = ship_dict.get("module_instances", [])
+        modules_data = load_modules()
+        modules_list = modules_data.get("modules", [])
+        modules_by_id = {m.get("module_id"): m for m in modules_list}
+        
+        weapon_count = 0
+        defense_count = 0
+        utility_count = 0
+        for module_instance in module_instances:
+            module_id = module_instance.get("module_id")
+            module_def = modules_by_id.get(module_id)
+            if module_def:
+                slot_type = module_def.get("slot_type", "")
+                if slot_type == "weapon":
+                    weapon_count += 1
+                elif slot_type == "defense":
+                    defense_count += 1
+                elif slot_type == "utility":
+                    utility_count += 1
+        
+        return {
+            "hull_id": hull_id,
+            "hull_name": hull_name,
+            "module_count": len(module_instances),
+            "weapon_modules": weapon_count,
+            "defense_modules": defense_count,
+            "utility_modules": utility_count,
+        }
+
+    # Read-only accessors for CLI/UI
+    def get_owned_ships(self) -> list[dict[str, Any]]:
+        """Get list of all owned ships with summary information."""
+        ships = []
+        for ship_id in self.player_state.owned_ship_ids:
+            ship = self.fleet_by_id.get(ship_id)
+            if ship is None:
+                continue
+            hull_integrity = ship.persistent_state.get("current_hull_integrity", 0) or 0
+            max_hull = ship.persistent_state.get("max_hull_integrity", 0) or 0
+            ships.append({
+                "ship_id": ship.ship_id,
+                "hull_id": ship.model_id,
+                "destination_id": ship.destination_id or ship.current_destination_id,
+                "hull_integrity": {
+                    "current": int(hull_integrity),
+                    "max": int(max_hull),
+                },
+                "fuel": {
+                    "current": int(ship.current_fuel or 0),
+                    "capacity": int(ship.fuel_capacity or 0),
+                },
+            })
+        return ships
+
+    def get_active_ship(self) -> dict[str, Any] | None:
+        """Get active ship summary information."""
+        ship_id = self.player_state.active_ship_id
+        if not ship_id:
+            return None
+        ship = self.fleet_by_id.get(ship_id)
+        if ship is None:
+            return None
+        hull_integrity = ship.persistent_state.get("current_hull_integrity", 0) or 0
+        max_hull = ship.persistent_state.get("max_hull_integrity", 0) or 0
+        return {
+            "ship_id": ship.ship_id,
+            "hull_id": ship.model_id,
+            "destination_id": ship.destination_id or ship.current_destination_id,
+            "hull_integrity": {
+                "current": int(hull_integrity),
+                "max": int(max_hull),
+            },
+            "fuel": {
+                "current": int(ship.current_fuel or 0),
+                "capacity": int(ship.fuel_capacity or 0),
+            },
+        }
+
+    def get_ship_modules(self, ship_id: str) -> list[dict[str, Any]]:
+        """Get installed modules for a ship."""
+        ship = self.fleet_by_id.get(ship_id)
+        if ship is None:
+            return []
+        module_instances = ship.persistent_state.get("module_instances", [])
+        if not isinstance(module_instances, list):
+            return []
+        modules = []
+        for idx, module in enumerate(module_instances):
+            if isinstance(module, dict):
+                modules.append({
+                    "slot_index": idx,
+                    "module_id": module.get("module_id", "N/A"),
+                    "slot_type": module.get("slot_type", "N/A"),
+                })
+        return modules
+
+    def get_ship_cargo(self, ship_id: str) -> dict[str, int]:
+        """Get cargo manifest for a ship."""
+        return dict(self.player_state.cargo_by_ship.get(ship_id, {}))
+
+    def get_warehouse_rentals(self) -> list[dict[str, Any]]:
+        """Get list of warehouse rentals."""
+        warehouses = self.player_state.warehouses
+        rentals = []
+        for destination_id, warehouse in warehouses.items():
+            if not isinstance(warehouse, dict):
+                continue
+            capacity = int(warehouse.get("capacity", 0) or 0)
+            goods = warehouse.get("goods", {})
+            used = sum(int(qty) for qty in goods.values() if isinstance(qty, (int, str)))
+            cost_per_turn = int(warehouse.get("cost_per_turn", 0) or 0)
+            expiration_day = warehouse.get("expiration_day", "N/A")
+            rentals.append({
+                "destination_id": destination_id,
+                "capacity": capacity,
+                "used": used,
+                "available": capacity - used,
+                "cost_per_turn": cost_per_turn,
+                "expiration_day": expiration_day,
+            })
+        return rentals
+
+    def get_active_missions(self) -> list[dict[str, Any]]:
+        """Get list of active missions."""
+        return self._active_mission_rows()
+
+    def get_claimable_missions(self) -> list[dict[str, Any]]:
+        """Get list of completed missions with unclaimed rewards (Phase 7.11.2b)."""
+        claimable = []
+        for mission_id, mission in self._mission_manager.missions.items():
+            # Phase 7.11.2b - Only include missions that meet ALL criteria:
+            # - payout_policy == "claim_required"
+            # - reward_status == "ungranted"
+            # - mission_state == "resolved"
+            if (mission.payout_policy == "claim_required" 
+                and mission.reward_status == "ungranted"
+                and mission.mission_state.value == "resolved"):
+                claimable.append({
+                    "mission_id": mission.mission_id,
+                    "mission_type": mission.mission_type,
+                    "mission_tier": mission.mission_tier,
+                })
+        return claimable
 
     def _world_state_engine(self) -> Any | None:
         import time_engine as time_engine_module
@@ -2792,15 +5649,43 @@ class GameEngine:
         rows: list[dict[str, Any]] = []
         for mission_id in sorted(self.player_state.active_missions):
             mission = self._mission_manager.missions.get(mission_id)
+            # Get target from structured schema (Phase 7.11.2b)
+            target = getattr(mission, "target", {})
+            target_id = target.get("target_id") if isinstance(target, dict) else None
+            target_system_id = target.get("system_id") if isinstance(target, dict) else None
+            
+            # Get source from structured schema
+            source = getattr(mission, "source", {})
+            source_type = source.get("source_type") if isinstance(source, dict) else None
+            source_id = source.get("source_id") if isinstance(source, dict) else None
+            
+            # Get payout policy (collection format)
+            payout_policy = getattr(mission, "payout_policy", "auto")
+            collection_format = "Auto" if payout_policy == "auto" else "Claim"
+            
+            # Calculate reward preview if ungranted (Phase 7.11.2b)
+            reward_summary = []
+            if mission.reward_status == "ungranted":
+                preview = self._mission_manager.calculate_reward_preview(mission)
+                if preview and "credits" in preview:
+                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+            # If already granted, reward_summary remains empty (not shown in active missions)
+            
             rows.append(
                 {
                     "mission_id": mission_id,
                     "mission_type": getattr(mission, "mission_type", None),
+                    "mission_tier": getattr(mission, "mission_tier", 1),
                     "origin_system_id": getattr(mission, "system_id", None),
-                    "target_system_id": getattr(mission, "destination_location_id", None),
+                    "target_system_id": target_system_id,  # Phase 7.11.2b - Use mission.target["system_id"]
+                    "target_destination_id": target_id,  # Phase 7.11.2b - Use mission.target["target_id"]
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "payout_policy": payout_policy,
+                    "collection_format": collection_format,
                     "status": "active",
                     "days_remaining": None,
-                    "reward_summary": list(getattr(mission, "rewards", []) or []) if mission is not None else None,
+                    "reward_summary": reward_summary,  # Phase 7.11.2b - Use preview calculation
                 }
             )
         return rows
@@ -4224,6 +7109,17 @@ def _read_version() -> str:
         if line.startswith("Version:"):
             return line.split("Version:", 1)[1].strip()
     return "0.0.0"
+
+
+def _is_data_cargo_sku(sku_id: str) -> bool:
+    """Helper to determine if SKU is data cargo (simplified check)."""
+    from data_loader import load_goods
+    goods_data = load_goods()
+    for good in goods_data.get("goods", []):
+        if good.get("sku_id") == sku_id:
+            tags = good.get("tags", [])
+            return "data" in tags
+    return False
 
 
 def run_step_as_json(engine: GameEngine, command: dict[str, Any]) -> str:

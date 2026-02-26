@@ -337,27 +337,37 @@ def mission_system_tests(collector: ResultCollector) -> None:
     _print_group("MISSION SYSTEM TESTS")
 
     def test_mission_serialization() -> None:
-        mission = MissionEntity(mission_id="MIS-1", mission_type="delivery", mission_tier=1)
+        mission = MissionEntity(
+            mission_id="MIS-1",
+            mission_type="delivery",
+            mission_tier=1,
+            payout_policy="auto",
+            claim_scope="none",
+        )
         payload = mission.to_dict()
         restored = MissionEntity.from_dict(payload)
         assert payload == restored.to_dict()
 
     def test_mission_factory_determinism() -> None:
         mission_a = create_mission(
-            source_type="npc",
+            source_type="bar",
             source_id="NPC-1",
             system_id="SYS-1",
             destination_id="DST-1",
             mission_type="delivery",
             mission_tier=2,
+            payout_policy="auto",
+            claim_scope="none",
         )
         mission_b = create_mission(
-            source_type="npc",
+            source_type="bar",
             source_id="NPC-1",
             system_id="SYS-1",
             destination_id="DST-1",
             mission_type="delivery",
             mission_tier=2,
+            payout_policy="auto",
+            claim_scope="none",
         )
         assert mission_a.mission_id == mission_b.mission_id
 
@@ -366,12 +376,14 @@ def mission_system_tests(collector: ResultCollector) -> None:
         player.mission_slots = 1
         manager = MissionManager()
         mission = create_mission(
-            source_type="system",
+            source_type="bar",
             source_id="SYS-1",
             system_id="SYS-1",
             destination_id=None,
             mission_type="delivery",
             mission_tier=1,
+            payout_policy="auto",
+            claim_scope="none",
             rewards=[{"field": "credits", "delta": 5}],
         )
         manager.offer(mission)
@@ -381,9 +393,115 @@ def mission_system_tests(collector: ResultCollector) -> None:
         assert mission.mission_id in player.completed_missions
         assert player.credits == 5
 
+    def test_delivery_mission_completion_on_arrival() -> None:
+        """Test that delivery missions complete when player arrives at destination."""
+        from game_engine import GameEngine
+        from mission_entity import MissionState, MissionOutcome
+        
+        engine = GameEngine(world_seed=12345, config={"system_count": 5})
+        
+        # Get current destination and location
+        system = engine.sector.get_system(engine.player_state.current_system_id)
+        destination = system.destinations[0] if system.destinations else None
+        assert destination is not None
+        
+        # Create a delivery mission with destination matching current location
+        destination_location_id = f"{destination.destination_id}-LOC-delivery"
+        mission = create_mission(
+            source_type="bar",
+            source_id="TEST",
+            system_id=engine.player_state.current_system_id,
+            destination_id=destination.destination_id,
+            mission_type="delivery",
+            mission_tier=1,
+            payout_policy="auto",
+            claim_scope="none",
+            rewards=[{"field": "credits", "delta": 100}],
+        )
+        mission.destination_location_id = destination_location_id
+        mission.mission_state = MissionState.ACTIVE
+        
+        # Add mission to manager and active missions
+        engine._mission_manager.missions[mission.mission_id] = mission
+        engine.player_state.active_missions.append(mission.mission_id)
+        
+        # Set player location to match destination
+        engine.player_state.current_location_id = destination_location_id
+        
+        # Evaluate active missions
+        engine._evaluate_active_missions(
+            logger=engine._logger if engine._logging_enabled else None,
+            turn=0,
+        )
+        
+        # Assert mission is completed
+        assert mission.mission_state == MissionState.RESOLVED
+        assert mission.outcome == MissionOutcome.COMPLETED
+        assert mission.mission_id in engine.player_state.completed_missions
+        assert mission.mission_id not in engine.player_state.active_missions
+
+    def test_bounty_mission_completion_on_target_destroyed() -> None:
+        """Test that bounty missions complete when target ship is destroyed."""
+        from game_engine import GameEngine
+        from mission_entity import MissionState, MissionOutcome
+        
+        engine = GameEngine(world_seed=12345, config={"system_count": 5})
+        
+        # Create a mock target ship and add it to fleet
+        from ship_entity import ShipEntity
+        target_ship_id = "SHIP-TARGET-1"
+        target_ship = ShipEntity(
+            ship_id=target_ship_id,
+            model_id="hull_small",
+            current_system_id=engine.player_state.current_system_id,
+        )
+        engine.fleet_by_id[target_ship_id] = target_ship
+        
+        # Create a bounty mission targeting the ship
+        mission = create_mission(
+            source_type="bar",
+            source_id="TEST",
+            system_id=engine.player_state.current_system_id,
+            destination_id=None,
+            mission_type="bounty",
+            mission_tier=2,
+            payout_policy="claim_required",
+            claim_scope="source_entity",
+        )
+        mission.target_ship_id = target_ship_id
+        mission.mission_state = MissionState.ACTIVE
+        
+        # Add mission to manager and active missions
+        engine._mission_manager.missions[mission.mission_id] = mission
+        engine.player_state.active_missions.append(mission.mission_id)
+        
+        # Initially, target exists - mission should not complete
+        engine._evaluate_active_missions(
+            logger=engine._logger if engine._logging_enabled else None,
+            turn=0,
+        )
+        assert mission.mission_state == MissionState.ACTIVE
+        
+        # Remove target ship (simulating destruction)
+        del engine.fleet_by_id[target_ship_id]
+        
+        # Evaluate active missions again
+        engine._evaluate_active_missions(
+            logger=engine._logger if engine._logging_enabled else None,
+            turn=1,
+        )
+        
+        # Assert mission is completed
+        assert mission.mission_state == MissionState.RESOLVED
+        assert mission.outcome == MissionOutcome.COMPLETED
+        assert mission.mission_id in engine.player_state.completed_missions
+        assert mission.mission_id not in engine.player_state.active_missions
+
     _run_test("mission serialization", test_mission_serialization, collector)
     _run_test("mission factory determinism", test_mission_factory_determinism, collector)
     _run_test("mission manager flow", test_mission_manager_flow, collector)
+    _run_test("delivery mission completion on arrival", test_delivery_mission_completion_on_arrival, collector)
+    _run_test("bounty mission completion on target destroyed", test_bounty_mission_completion_on_target_destroyed, collector)
 
 
 def end_game_goal_tests(collector: ResultCollector) -> None:
@@ -402,6 +520,8 @@ def end_game_goal_tests(collector: ResultCollector) -> None:
             mission_state=MissionState.RESOLVED,
             outcome=MissionOutcome.COMPLETED,
             persistent_state={"victory_id": "charter_of_authority"},
+            payout_policy="claim_required",
+            claim_scope="any_source_type",
         )
         result = evaluate_end_game(player=player, missions=[mission])
         assert result.status == "win"

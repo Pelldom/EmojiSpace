@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 import random
+import secrets
 from typing import Any, Callable, Literal, Optional
 
 try:
@@ -98,14 +99,13 @@ class CombatResult:
     destruction_event: Optional[dict] = None
     surrendered_by: Optional[SideName] = None
     salvage_modules: list[dict[str, Any]] = field(default_factory=list)
+    combat_rng_seed: int = 0
 
 
 class CombatRng:
-    def __init__(self, world_seed: str | int, salt: str):
-        seed_text = f"{world_seed}|{salt}"
-        digest = hashlib.sha256(seed_text.encode("ascii")).hexdigest()
-        self._rng = random.Random(int(digest[:16], 16))
-        self.seed_text = seed_text
+    def __init__(self, combat_rng_seed: int):
+        self._rng = random.Random(combat_rng_seed)
+        self.combat_rng_seed = combat_rng_seed
         self.counter = 0
 
     def randint(self, low: int, high: int, label: str, round_number: int, event_log: list[dict]) -> int:
@@ -302,59 +302,10 @@ def _module_is_repair(module_instance: dict[str, Any]) -> bool:
     return bool(module and module["primary_tag"] == "combat:utility_repair_system")
 
 
-def _legacy_loadout_to_ship_state(loadout: ShipLoadout) -> dict[str, Any]:
-    hulls = [
-        entry["hull_id"]
-        for entry in load_hulls()["hulls"]
-        if entry["tier"] == loadout.tier and entry["frame"] == loadout.frame
-    ]
-    if not hulls:
-        raise ValueError(f"No hull available for tier/frame {loadout.tier}/{loadout.frame}.")
-    hull_id = sorted(hulls)[0]
-
-    tag_to_module = {
-        "combat:weapon_energy": "weapon_energy_mk1",
-        "combat:weapon_kinetic": "weapon_kinetic_mk1",
-        "combat:weapon_disruptive": "weapon_disruptive_mk1",
-        "combat:defense_shielded": "defense_shielded_mk1",
-        "combat:defense_armored": "defense_armored_mk1",
-        "combat:defense_adaptive": "defense_adaptive_mk1",
-        "combat:utility_engine_boost": "combat_utility_engine_boost_mk1",
-        "combat:utility_targeting": "combat_utility_targeting_mk1",
-        "combat:utility_repair_system": "combat_utility_repair_system_mk1",
-        "combat:utility_signal_scrambler": "combat_utility_signal_scrambler_mk1",
-        "combat:utility_overcharger": "combat_utility_overcharger_mk1",
-            "combat:utility_cloak": "ship_utility_probe_array",
-        "ship:utility_extra_cargo": "ship_utility_extra_cargo",
-        "ship:utility_data_array": "ship_utility_data_array",
-        "ship:utility_smuggler_hold": "ship_utility_smuggler_hold",
-        "ship:utility_mining_equipment": "ship_utility_mining_equipment",
-        "ship:utility_probe_array": "ship_utility_probe_array",
-        "ship:utility_interdiction": "ship_utility_interdiction",
-    }
-
-    module_instances = []
-    for module in loadout.modules:
-        mapped = None
-        for tag in sorted(module.tags):
-            mapped = tag_to_module.get(tag)
-            if mapped:
-                break
-        if not mapped:
-            raise ValueError(f"Unable to map legacy module '{module.module_id}' to catalog module_id.")
-        module_instances.append(
-            {
-                "module_id": mapped,
-                "secondary_tags": _normalize_secondary_list(module.secondary),
-                "legacy_module_id": module.module_id,
-            }
-        )
-    return {"hull_id": hull_id, "module_instances": module_instances, "degradation_state": {"weapon": 0, "defense": 0, "engine": 0}}
 
 
-def compute_rcp_and_tr(loadout: ShipLoadout) -> tuple[int, int]:
-    ship_state = _legacy_loadout_to_ship_state(loadout)
-    assembled = assemble_ship(ship_state["hull_id"], ship_state["module_instances"], ship_state["degradation_state"])
+def compute_rcp_and_tr_from_ship_state(ship_state: dict[str, Any]) -> tuple[int, int]:
+    assembled = assemble_ship(ship_state["hull_id"], ship_state["module_instances"], ship_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0}))
     w = assembled["bands"]["pre_degradation"]["weapon"]
     d = assembled["bands"]["pre_degradation"]["defense"]
     e = assembled["bands"]["pre_degradation"]["engine"]
@@ -364,9 +315,292 @@ def compute_rcp_and_tr(loadout: ShipLoadout) -> tuple[int, int]:
     return rcp, map_rcp_to_tr(rcp)
 
 
-def create_initial_state(loadout: ShipLoadout) -> CombatState:
-    ship_state = _legacy_loadout_to_ship_state(loadout)
-    return _create_initial_state_from_ship_state(ship_state)
+
+
+def resolve_combat_round(
+    combat_rng_seed: int,
+    round_number: int,
+    player_state: CombatState,
+    enemy_state: CombatState,
+    player_action: ActionName,
+    enemy_action: ActionName,
+    player_ship_state: dict[str, Any],
+    enemy_ship_state: dict[str, Any],
+    system_id: str = "",
+) -> dict[str, Any]:
+    """
+    Execute exactly ONE combat round.
+    
+    This function mutates player_state and enemy_state in place.
+    It does NOT reinitialize CombatState or reset hull_current.
+    
+    Args:
+        combat_rng_seed: Base RNG seed for this combat
+        round_number: Current round number (1-indexed)
+        player_state: Current player CombatState (mutated in place)
+        enemy_state: Current enemy CombatState (mutated in place)
+        player_action: Player's action for this round
+        enemy_action: Enemy's action for this round
+        player_ship_state: Player ship state dict (for module info)
+        enemy_ship_state: Enemy ship state dict (for module info)
+        system_id: System ID (optional, for logging)
+    
+    Returns:
+        dict with:
+        - "player_state": CombatState (same object, mutated)
+        - "enemy_state": CombatState (same object, mutated)
+        - "combat_ended": bool
+        - "outcome": str | None ("destroyed", "escape", "surrender", "max_rounds", or None)
+        - "round_summary": dict with round details
+    """
+    # Create RNG for this round: use combat_rng_seed + round_number for reproducibility
+    rng_seed = combat_rng_seed + round_number
+    rng = CombatRng(combat_rng_seed=rng_seed)
+    rng_events: list[dict] = []
+    
+    # Check surrender (immediate termination)
+    if player_action == "Surrender":
+        return {
+            "player_state": player_state,
+            "enemy_state": enemy_state,
+            "combat_ended": True,
+            "outcome": "surrender",
+            "round_summary": {
+                "round": round_number,
+                "player_action": player_action,
+                "enemy_action": enemy_action,
+                "player_hull_current": player_state.hull_current,
+                "enemy_hull_current": enemy_state.hull_current,
+                "surrendered_by": "player",
+            },
+        }
+    
+    if enemy_action == "Surrender":
+        return {
+            "player_state": player_state,
+            "enemy_state": enemy_state,
+            "combat_ended": True,
+            "outcome": "surrender",
+            "round_summary": {
+                "round": round_number,
+                "player_action": player_action,
+                "enemy_action": enemy_action,
+                "player_hull_current": player_state.hull_current,
+                "enemy_hull_current": enemy_state.hull_current,
+                "surrendered_by": "enemy",
+            },
+        }
+    
+    # Handle repair actions
+    player_crew_mods = _crew_modifiers_for_ship_state(player_ship_state)
+    enemy_crew_mods = _crew_modifiers_for_ship_state(enemy_ship_state)
+    
+    if player_action == "Repair Systems":
+        _repair_once(player_ship_state, player_state, action_repair_bonus=int(player_crew_mods.repair_focus_bonus))
+    if enemy_action == "Repair Systems":
+        _repair_once(enemy_ship_state, enemy_state, action_repair_bonus=int(enemy_crew_mods.repair_focus_bonus))
+    
+    # Handle scan actions
+    module_defs = _modules_by_id()
+    if player_action == "Scan" and any(module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_probe_array" for entry in player_ship_state["module_instances"]):
+        scan_roll = rng.randint(0, 1, "scan_roll_player", round_number, rng_events)
+        if scan_roll == 1:
+            enemy_state.scanned = True
+    
+    if enemy_action == "Scan" and any(module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_probe_array" for entry in enemy_ship_state["module_instances"]):
+        scan_roll = rng.randint(0, 1, "scan_roll_enemy", round_number, rng_events)
+        if scan_roll == 1:
+            player_state.scanned = True
+    
+    # Assemble ships with current degradation (for effective bands calculation)
+    assembled_player = assemble_ship(player_ship_state["hull_id"], player_ship_state["module_instances"], player_state.degradation)
+    assembled_enemy = assemble_ship(enemy_ship_state["hull_id"], enemy_ship_state["module_instances"], enemy_state.degradation)
+    
+    # Calculate RPS adjustments
+    player_rps = 0
+    enemy_rps = 0
+    own_weapon = _primary_weapon_type(player_ship_state)
+    opp_def = _primary_defense_type(enemy_ship_state)
+    if own_weapon is not None and opp_def is not None:
+        player_rps = RPS_MATRIX.get((own_weapon, opp_def), 0)
+    own_weapon_e = _primary_weapon_type(enemy_ship_state)
+    opp_def_p = _primary_defense_type(player_ship_state)
+    if own_weapon_e is not None and opp_def_p is not None:
+        enemy_rps = RPS_MATRIX.get((own_weapon_e, opp_def_p), 0)
+    
+    # Calculate effective bands
+    player_weapon = _effective_from_assembled(
+        assembled_player,
+        player_action,
+        "weapon",
+        player_rps,
+        crew_band_bonus=int(player_crew_mods.attack_band_bonus),
+        action_bonus=int(player_crew_mods.focus_fire_bonus if player_action == "Focus Fire" else 0),
+    )
+    player_defense = _effective_from_assembled(
+        assembled_player,
+        player_action,
+        "defense",
+        crew_band_bonus=int(player_crew_mods.defense_band_bonus),
+        action_bonus=int(player_crew_mods.reinforce_shields_bonus if player_action == "Reinforce Shields" else 0),
+    )
+    player_engine = _effective_from_assembled(
+        assembled_player,
+        player_action,
+        "engine",
+        crew_band_bonus=int(player_crew_mods.engine_band_bonus),
+        action_bonus=int(player_crew_mods.evasive_bonus if player_action == "Evasive Maneuvers" else 0),
+    )
+    enemy_weapon = _effective_from_assembled(
+        assembled_enemy,
+        enemy_action,
+        "weapon",
+        enemy_rps,
+        crew_band_bonus=int(enemy_crew_mods.attack_band_bonus),
+        action_bonus=int(enemy_crew_mods.focus_fire_bonus if enemy_action == "Focus Fire" else 0),
+    )
+    enemy_defense = _effective_from_assembled(
+        assembled_enemy,
+        enemy_action,
+        "defense",
+        crew_band_bonus=int(enemy_crew_mods.defense_band_bonus),
+        action_bonus=int(enemy_crew_mods.reinforce_shields_bonus if enemy_action == "Reinforce Shields" else 0),
+    )
+    enemy_engine = _effective_from_assembled(
+        assembled_enemy,
+        enemy_action,
+        "engine",
+        crew_band_bonus=int(enemy_crew_mods.engine_band_bonus),
+        action_bonus=int(enemy_crew_mods.evasive_bonus if enemy_action == "Evasive Maneuvers" else 0),
+    )
+    
+    # Handle escape attempts BEFORE any damage resolution
+    #
+    # Mutual escape: both sides choose Attempt Escape. This is treated as an immediate
+    # disengage with no damage exchanged.
+    if player_action == "Attempt Escape" and enemy_action == "Attempt Escape":
+        return {
+            "player_state": player_state,
+            "enemy_state": enemy_state,
+            "combat_ended": True,
+            "outcome": "escape",
+            "round_summary": {
+                "round": round_number,
+                "player_action": player_action,
+                "enemy_action": enemy_action,
+                "player_hull_current": player_state.hull_current,
+                "enemy_hull_current": enemy_state.hull_current,
+                # Mark mutual escape explicitly for downstream consumers/tests.
+                "escape": "mutual",
+            },
+        }
+    
+    # Single‑side escape attempts happen before damage. If escape fails, combat
+    # proceeds to normal damage resolution.
+    #
+    # Player escape attempt
+    if player_action == "Attempt Escape":
+        escape = _escape_attempt_in_combat(
+            rng=rng,
+            round_number=round_number,
+            fleeing_ship_state=player_ship_state,
+            pursuing_ship_state=enemy_ship_state,
+            fleeing_engine_effective=player_engine,
+            pursuing_engine_effective=enemy_engine,
+            rng_events=rng_events,
+        )
+        if escape["escaped"]:
+            return {
+                "player_state": player_state,
+                "enemy_state": enemy_state,
+                "combat_ended": True,
+                "outcome": "escape",
+                "round_summary": {
+                    "round": round_number,
+                    "player_action": player_action,
+                    "enemy_action": enemy_action,
+                    "player_hull_current": player_state.hull_current,
+                    "enemy_hull_current": enemy_state.hull_current,
+                    "escaped_by": "player",
+                },
+            }
+    
+    # Enemy escape attempt (only if player did not already succeed escaping)
+    if enemy_action == "Attempt Escape":
+        escape = _escape_attempt_in_combat(
+            rng=rng,
+            round_number=round_number,
+            fleeing_ship_state=enemy_ship_state,
+            pursuing_ship_state=player_ship_state,
+            fleeing_engine_effective=enemy_engine,
+            pursuing_engine_effective=player_engine,
+            rng_events=rng_events,
+        )
+        if escape["escaped"]:
+            return {
+                "player_state": player_state,
+                "enemy_state": enemy_state,
+                "combat_ended": True,
+                "outcome": "escape",
+                "round_summary": {
+                    "round": round_number,
+                    "player_action": player_action,
+                    "enemy_action": enemy_action,
+                    "player_hull_current": player_state.hull_current,
+                    "enemy_hull_current": enemy_state.hull_current,
+                    "escaped_by": "enemy",
+                },
+            }
+    
+    # Resolve attacks
+    player_attack = _resolve_attack("player", "enemy", player_weapon, enemy_defense, enemy_action, rng, round_number, rng_events)
+    enemy_attack = _resolve_attack("enemy", "player", enemy_weapon, player_defense, player_action, rng, round_number, rng_events)
+    
+    # Apply damage and degradation (mutates player_state and enemy_state)
+    _apply_damage_and_degradation(player_state, enemy_attack["damage"], rng, round_number, rng_events, target_ship_state=player_ship_state)
+    _apply_damage_and_degradation(enemy_state, player_attack["damage"], rng, round_number, rng_events, target_ship_state=enemy_ship_state)
+    
+    # Check destruction
+    player_destroyed = player_state.hull_current <= 0
+    enemy_destroyed = enemy_state.hull_current <= 0
+    
+    if player_destroyed or enemy_destroyed:
+        if player_destroyed and enemy_destroyed:
+            winner: Literal["player", "enemy", "none"] = "none"
+        elif enemy_destroyed:
+            winner = "player"
+        else:
+            winner = "enemy"
+        
+        return {
+            "player_state": player_state,
+            "enemy_state": enemy_state,
+            "combat_ended": True,
+            "outcome": "destroyed",
+            "round_summary": {
+                "round": round_number,
+                "player_action": player_action,
+                "enemy_action": enemy_action,
+                "player_hull_current": player_state.hull_current,
+                "enemy_hull_current": enemy_state.hull_current,
+                "winner": winner,
+            },
+        }
+    
+    # Combat continues (no termination conditions met)
+    return {
+        "player_state": player_state,
+        "enemy_state": enemy_state,
+        "combat_ended": False,
+        "outcome": None,
+        "round_summary": {
+            "round": round_number,
+            "player_action": player_action,
+            "enemy_action": enemy_action,
+            "player_hull_current": player_state.hull_current,
+            "enemy_hull_current": enemy_state.hull_current,
+        },
+    }
 
 
 def _create_initial_state_from_ship_state(ship_state: dict[str, Any]) -> CombatState:
@@ -444,9 +678,7 @@ def _default_selector(
     return "Focus Fire"
 
 
-def _repair_once(ship_state: ShipLoadout | dict[str, Any], state: CombatState, action_repair_bonus: int = 0) -> Optional[dict]:
-    if isinstance(ship_state, ShipLoadout):
-        ship_state = _legacy_loadout_to_ship_state(ship_state)
+def _repair_once(ship_state: dict[str, Any], state: CombatState, action_repair_bonus: int = 0) -> Optional[dict]:
     if not state.repair_uses_remaining:
         return None
     module_key = None
@@ -537,45 +769,73 @@ def _apply_damage_and_degradation(
     return events
 
 
-def _escape_attempt(
-    world_seed: str | int,
-    combat_id: str,
+def _escape_attempt_in_combat(
+    rng: CombatRng,
     round_number: int,
     fleeing_ship_state: dict[str, Any],
     pursuing_ship_state: dict[str, Any],
     fleeing_engine_effective: int,
     pursuing_engine_effective: int,
+    rng_events: list[dict],
 ) -> dict:
+    """
+    Resolve escape attempt inside combat using combat RNG.
+    Uses engine band delta + modifiers (cloak helps escape; interdiction hurts escape).
+    """
     module_defs = _modules_by_id()
-    fleeing_escape_mod = 0
-    pursuing_mod = 0
-
-    for entry in fleeing_ship_state["module_instances"]:
-        if module_defs[entry["module_id"]]["primary_tag"] == "combat:utility_cloak":
-            fleeing_escape_mod += 1
-    for entry in pursuing_ship_state["module_instances"]:
-        if module_defs[entry["module_id"]]["primary_tag"] == "ship:utility_interdiction":
-            pursuing_mod += 1
-
-    pursued_speed = max(0, fleeing_engine_effective + fleeing_escape_mod)
-    pursuer_speed = max(0, pursuing_engine_effective + pursuing_mod)
-    encounter_id = f"{combat_id}_escape_r{round_number}"
-    pursuit = resolve_pursuit(
-        encounter_id=encounter_id,
-        world_seed=str(world_seed),
-        pursuer_ship={"speed": pursuer_speed, "pilot_skill": 3},
-        pursued_ship={"speed": pursued_speed, "pilot_skill": 3},
+    
+    # Extract cloaking and interdiction devices
+    fleeing_cloak = any(
+        module_defs.get(entry.get("module_id", ""), {}).get("primary_tag") == "combat:utility_cloak"
+        or module_defs.get(entry.get("module_id", ""), {}).get("primary_tag") == "ship:utility_cloak"
+        for entry in fleeing_ship_state.get("module_instances", [])
     )
+    pursuing_interdiction = any(
+        module_defs.get(entry.get("module_id", ""), {}).get("primary_tag") == "ship:utility_interdiction"
+        for entry in pursuing_ship_state.get("module_instances", [])
+    )
+    
+    # Count pilot crew
+    fleeing_pilot_count = sum(1 for crew in fleeing_ship_state.get("crew", []) if crew == "crew:pilot")
+    pursuing_pilot_count = sum(1 for crew in pursuing_ship_state.get("crew", []) if crew == "crew:pilot")
+    
+    # Calculate engine delta
+    engine_delta = fleeing_engine_effective - pursuing_engine_effective
+    
+    # Apply modifiers
+    escape_modifier = 0
+    if fleeing_cloak:
+        escape_modifier += 1
+    escape_modifier += fleeing_pilot_count
+    
+    pursuer_modifier = 0
+    if pursuing_interdiction:
+        pursuer_modifier += 1
+    pursuer_modifier += pursuing_pilot_count
+    
+    # Final delta with modifiers
+    final_delta = engine_delta + escape_modifier - pursuer_modifier
+    
+    # Roll escape: need positive delta to escape
+    if final_delta > 0:
+        # Escape succeeds
+        roll = rng.randint(1, 100, "escape_roll", round_number, rng_events)
+        threshold = 50  # Simple threshold for positive delta
+        escaped = True
+    else:
+        # Escape fails
+        roll = rng.randint(1, 100, "escape_roll", round_number, rng_events)
+        threshold = 100  # Impossible threshold
+        escaped = False
+    
     return {
-        "encounter_id": encounter_id,
-        "escaped": bool(pursuit.escaped),
-        "roll": pursuit.roll,
-        "threshold": pursuit.threshold,
-        "pursuer_speed": pursuer_speed,
-        "pursued_speed": pursued_speed,
-        "fleeing_escape_mod": fleeing_escape_mod,
-        "pursuing_mod": pursuing_mod,
-        "pursuit_log": pursuit.log,
+        "escaped": escaped,
+        "roll": roll,
+        "threshold": threshold,
+        "engine_delta": engine_delta,
+        "escape_modifier": escape_modifier,
+        "pursuer_modifier": pursuer_modifier,
+        "final_delta": final_delta,
     }
 
 
@@ -627,100 +887,84 @@ def _effective_from_assembled(
     return max(0, value)
 
 
-def _to_ship_state(loadout: Optional[ShipLoadout], ship_state: Optional[dict[str, Any]], role: str) -> dict[str, Any]:
-    if ship_state is not None:
-        normalized = {
-            "hull_id": ship_state["hull_id"],
-            "module_instances": list(ship_state["module_instances"]),
-            "degradation_state": dict(ship_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})),
-        }
-        if "crew" in ship_state:
-            normalized["crew"] = list(ship_state.get("crew", []))
-        if "tags" in ship_state:
-            normalized["tags"] = list(ship_state.get("tags", []))
-        return normalized
-    if loadout is not None:
-        return _legacy_loadout_to_ship_state(loadout)
-    raise ValueError(f"Missing {role} ship input.")
+def _normalize_ship_state(ship_state: dict[str, Any], role: str) -> dict[str, Any]:
+    if ship_state is None:
+        raise ValueError(f"Missing {role} ship input. ship_state is required.")
+    if "hull_id" not in ship_state:
+        raise ValueError(f"Missing {role} ship input. hull_id is required.")
+    if "module_instances" not in ship_state:
+        raise ValueError(f"Missing {role} ship input. module_instances is required.")
+    normalized = {
+        "hull_id": ship_state["hull_id"],
+        "module_instances": list(ship_state["module_instances"]),
+        "degradation_state": dict(ship_state.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})),
+    }
+    if "crew" in ship_state:
+        normalized["crew"] = list(ship_state.get("crew", []))
+    if "tags" in ship_state:
+        normalized["tags"] = list(ship_state.get("tags", []))
+    return normalized
 
 
-def _effective_band(
-    loadout: ShipLoadout,
-    state: CombatState,
-    subsystem: str,
-    action: ActionName,
-    opponent_loadout: ShipLoadout,
-    for_attack: bool,
-) -> tuple[int, int]:
-    ship_state = _legacy_loadout_to_ship_state(loadout)
-    opponent_state = _legacy_loadout_to_ship_state(opponent_loadout)
-    assembled = assemble_ship(ship_state["hull_id"], ship_state["module_instances"], state.degradation)
-    rps_bias = 0
-    if for_attack and subsystem == "weapon":
-        own_weapon = _primary_weapon_type(ship_state)
-        opp_def = _primary_defense_type(opponent_state)
-        if own_weapon is not None and opp_def is not None:
-            rps_bias = RPS_MATRIX.get((own_weapon, opp_def), 0)
-    return _effective_from_assembled(assembled, action, subsystem, rps_bias if subsystem == "weapon" else 0), rps_bias
 
 
 def resolve_combat(
     world_seed: str | int,
     combat_id: str,
-    player_loadout: ShipLoadout | None = None,
-    enemy_loadout: ShipLoadout | None = None,
-    player_ship_state: dict[str, Any] | None = None,
-    enemy_ship_state: dict[str, Any] | None = None,
+    player_ship_state: dict[str, Any],
+    enemy_ship_state: dict[str, Any],
     player_action_selector: Optional[Callable[..., ActionName]] = None,
     enemy_action_selector: Optional[Callable[..., ActionName]] = None,
     max_rounds: int = 20,
     system_id: str = "",
+    combat_rng_seed: int | None = None,
 ) -> CombatResult:
-    player_selector = player_action_selector or _default_selector
-    enemy_selector = enemy_action_selector or _default_selector
-
-    player_ship = _to_ship_state(player_loadout, player_ship_state, "player")
-    enemy_ship = _to_ship_state(enemy_loadout, enemy_ship_state, "enemy")
-
-    if player_loadout is not None:
-        rcp_player, tr_player = compute_rcp_and_tr(player_loadout)
-    else:
-        assembled_player = assemble_ship(player_ship["hull_id"], player_ship["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
-        rcp_player = (
-            assembled_player["bands"]["pre_degradation"]["weapon"]
-            + assembled_player["bands"]["pre_degradation"]["defense"]
-            + (assembled_player["bands"]["pre_degradation"]["engine"] // 2)
-            + (int(assembled_player["hull_max"]) // 4)
-            + (2 * sum(1 for entry in player_ship["module_instances"] if _module_is_repair(entry)))
-        )
-        tr_player = map_rcp_to_tr(rcp_player)
-    if enemy_loadout is not None:
-        rcp_enemy, tr_enemy = compute_rcp_and_tr(enemy_loadout)
-    else:
-        assembled_enemy = assemble_ship(enemy_ship["hull_id"], enemy_ship["module_instances"], {"weapon": 0, "defense": 0, "engine": 0})
-        rcp_enemy = (
-            assembled_enemy["bands"]["pre_degradation"]["weapon"]
-            + assembled_enemy["bands"]["pre_degradation"]["defense"]
-            + (assembled_enemy["bands"]["pre_degradation"]["engine"] // 2)
-            + (int(assembled_enemy["hull_max"]) // 4)
-            + (2 * sum(1 for entry in enemy_ship["module_instances"] if _module_is_repair(entry)))
-        )
-        tr_enemy = map_rcp_to_tr(rcp_enemy)
-
+    # Generate or use provided combat RNG seed
+    if combat_rng_seed is None:
+        combat_rng_seed = secrets.randbits(64)
+    
+    # Normalize ship states
+    player_ship = _normalize_ship_state(player_ship_state, "player")
+    enemy_ship = _normalize_ship_state(enemy_ship_state, "enemy")
+    
+    # Assemble ships once at combat start (with initial degradation)
+    player_initial_degradation = dict(player_ship.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0}))
+    enemy_initial_degradation = dict(enemy_ship.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0}))
+    
+    assembled_player_base = assemble_ship(player_ship["hull_id"], player_ship["module_instances"], player_initial_degradation)
+    assembled_enemy_base = assemble_ship(enemy_ship["hull_id"], enemy_ship["module_instances"], enemy_initial_degradation)
+    
+    # Store base pre-degradation bands (immutable)
+    player_base_bands = dict(assembled_player_base["bands"]["pre_degradation"])
+    enemy_base_bands = dict(assembled_enemy_base["bands"]["pre_degradation"])
+    
+    # Compute RCP and TR
+    rcp_player, tr_player = compute_rcp_and_tr_from_ship_state(player_ship)
+    rcp_enemy, tr_enemy = compute_rcp_and_tr_from_ship_state(enemy_ship)
+    
+    # Initialize combat states
     player_state = _create_initial_state_from_ship_state(player_ship)
     enemy_state = _create_initial_state_from_ship_state(enemy_ship)
-    player_state.degradation.update(player_ship.get("degradation_state", {}))
-    enemy_state.degradation.update(enemy_ship.get("degradation_state", {}))
+    player_state.degradation.update(player_initial_degradation)
+    enemy_state.degradation.update(enemy_initial_degradation)
     player_crew_mods = _crew_modifiers_for_ship_state(player_ship)
     enemy_crew_mods = _crew_modifiers_for_ship_state(enemy_ship)
-
-    rng = CombatRng(world_seed=world_seed, salt=f"{combat_id}_combat")
+    
+    # Create combat RNG
+    rng = CombatRng(combat_rng_seed)
     log: list[dict] = []
+    
+    # Log combat start with combat_rng_seed
+    log.append({
+        "combat_start": True,
+        "combat_id": combat_id,
+        "combat_rng_seed": combat_rng_seed,
+    })
 
     for round_number in range(1, max_rounds + 1):
         round_log = {
             "round": round_number,
-            "rng_seed": rng.seed_text,
+            "combat_rng_seed": combat_rng_seed,
             "actions": {},
             "bands": {},
             "rps": {},
@@ -736,8 +980,23 @@ def resolve_combat(
 
         player_allowed = available_actions(player_ship, player_state)
         enemy_allowed = available_actions(enemy_ship, enemy_state)
-        player_action = player_selector(round_number, player_state, enemy_state, player_ship, enemy_ship, player_allowed)
-        enemy_action = enemy_selector(round_number, enemy_state, player_state, enemy_ship, player_ship, enemy_allowed)
+        
+        # Action selectors - support both old signature (with args) and new (no args)
+        if player_action_selector:
+            try:
+                player_action = player_action_selector(round_number, player_state, enemy_state, player_ship, enemy_ship, player_allowed)
+            except TypeError:
+                player_action = player_action_selector()
+        else:
+            player_action = _default_selector(round_number, player_state, enemy_state, player_ship, enemy_ship, player_allowed)
+        
+        if enemy_action_selector:
+            try:
+                enemy_action = enemy_action_selector(round_number, enemy_state, player_state, enemy_ship, player_ship, enemy_allowed)
+            except TypeError:
+                enemy_action = enemy_action_selector()
+        else:
+            enemy_action = _default_selector(round_number, enemy_state, player_state, enemy_ship, player_ship, enemy_allowed)
         if player_action not in player_allowed:
             player_action = "Focus Fire"
         if enemy_action not in enemy_allowed:
@@ -760,6 +1019,7 @@ def resolve_combat(
                 rcp_enemy=rcp_enemy,
                 surrendered_by="player",
                 salvage_modules=[],
+                combat_rng_seed=combat_rng_seed,
             )
         if enemy_action == "Surrender":
             round_log["outcome"] = {"outcome": "surrender", "surrendered_by": "enemy"}
@@ -777,6 +1037,7 @@ def resolve_combat(
                 rcp_enemy=rcp_enemy,
                 surrendered_by="enemy",
                 salvage_modules=[],
+                combat_rng_seed=combat_rng_seed,
             )
 
         if player_action == "Repair Systems":
@@ -816,9 +1077,7 @@ def resolve_combat(
                 "enemy_scanned": player_state.scanned,
             }
 
-        assembled_player = assemble_ship(player_ship["hull_id"], player_ship["module_instances"], player_state.degradation)
-        assembled_enemy = assemble_ship(enemy_ship["hull_id"], enemy_ship["module_instances"], enemy_state.degradation)
-
+        # Compute RPS (unchanged)
         player_rps = 0
         enemy_rps = 0
         own_weapon = _primary_weapon_type(player_ship)
@@ -829,50 +1088,91 @@ def resolve_combat(
         opp_def_p = _primary_defense_type(player_ship)
         if own_weapon_e is not None and opp_def_p is not None:
             enemy_rps = RPS_MATRIX.get((own_weapon_e, opp_def_p), 0)
-
-        player_weapon = _effective_from_assembled(
-            assembled_player,
-            player_action,
+        
+        # Compute effective bands from base bands + degradation + focus + RPS + crew bonuses
+        # Check for RED state (degradation >= capacity)
+        player_red = {
+            "weapon": player_state.degradation.get("weapon", 0) >= player_state.subsystem_capacity.get("weapon", 1),
+            "defense": player_state.degradation.get("defense", 0) >= player_state.subsystem_capacity.get("defense", 1),
+            "engine": player_state.degradation.get("engine", 0) >= player_state.subsystem_capacity.get("engine", 1),
+        }
+        enemy_red = {
+            "weapon": enemy_state.degradation.get("weapon", 0) >= enemy_state.subsystem_capacity.get("weapon", 1),
+            "defense": enemy_state.degradation.get("defense", 0) >= enemy_state.subsystem_capacity.get("defense", 1),
+            "engine": enemy_state.degradation.get("engine", 0) >= enemy_state.subsystem_capacity.get("engine", 1),
+        }
+        
+        def _compute_effective_band(base_band: int, degradation: int, subsystem: str, action: ActionName, rps_bias: int, crew_bonus: int, action_bonus: int, is_red: bool) -> int:
+            if is_red:
+                return 0
+            effective = max(0, base_band - degradation)
+            effective += crew_bonus
+            if _focus_target(action) == subsystem:
+                effective += 1
+            effective += action_bonus
+            if subsystem == "weapon":
+                effective = max(0, effective + rps_bias)
+            return max(0, effective)
+        
+        player_weapon = _compute_effective_band(
+            player_base_bands["weapon"],
+            player_state.degradation.get("weapon", 0),
             "weapon",
+            player_action,
             player_rps,
-            crew_band_bonus=int(player_crew_mods.attack_band_bonus),
-            action_bonus=int(player_crew_mods.focus_fire_bonus if player_action == "Focus Fire" else 0),
+            int(player_crew_mods.attack_band_bonus),
+            int(player_crew_mods.focus_fire_bonus if player_action == "Focus Fire" else 0),
+            player_red["weapon"],
         )
-        player_defense = _effective_from_assembled(
-            assembled_player,
-            player_action,
+        player_defense = _compute_effective_band(
+            player_base_bands["defense"],
+            player_state.degradation.get("defense", 0),
             "defense",
-            crew_band_bonus=int(player_crew_mods.defense_band_bonus),
-            action_bonus=int(player_crew_mods.reinforce_shields_bonus if player_action == "Reinforce Shields" else 0),
-        )
-        player_engine = _effective_from_assembled(
-            assembled_player,
             player_action,
-            "engine",
-            crew_band_bonus=int(player_crew_mods.engine_band_bonus),
-            action_bonus=int(player_crew_mods.evasive_bonus if player_action == "Evasive Maneuvers" else 0),
+            0,
+            int(player_crew_mods.defense_band_bonus),
+            int(player_crew_mods.reinforce_shields_bonus if player_action == "Reinforce Shields" else 0),
+            player_red["defense"],
         )
-        enemy_weapon = _effective_from_assembled(
-            assembled_enemy,
-            enemy_action,
+        player_engine = _compute_effective_band(
+            player_base_bands["engine"],
+            player_state.degradation.get("engine", 0),
+            "engine",
+            player_action,
+            0,
+            int(player_crew_mods.engine_band_bonus),
+            int(player_crew_mods.evasive_bonus if player_action == "Evasive Maneuvers" else 0),
+            player_red["engine"],
+        )
+        enemy_weapon = _compute_effective_band(
+            enemy_base_bands["weapon"],
+            enemy_state.degradation.get("weapon", 0),
             "weapon",
+            enemy_action,
             enemy_rps,
-            crew_band_bonus=int(enemy_crew_mods.attack_band_bonus),
-            action_bonus=int(enemy_crew_mods.focus_fire_bonus if enemy_action == "Focus Fire" else 0),
+            int(enemy_crew_mods.attack_band_bonus),
+            int(enemy_crew_mods.focus_fire_bonus if enemy_action == "Focus Fire" else 0),
+            enemy_red["weapon"],
         )
-        enemy_defense = _effective_from_assembled(
-            assembled_enemy,
-            enemy_action,
+        enemy_defense = _compute_effective_band(
+            enemy_base_bands["defense"],
+            enemy_state.degradation.get("defense", 0),
             "defense",
-            crew_band_bonus=int(enemy_crew_mods.defense_band_bonus),
-            action_bonus=int(enemy_crew_mods.reinforce_shields_bonus if enemy_action == "Reinforce Shields" else 0),
-        )
-        enemy_engine = _effective_from_assembled(
-            assembled_enemy,
             enemy_action,
+            0,
+            int(enemy_crew_mods.defense_band_bonus),
+            int(enemy_crew_mods.reinforce_shields_bonus if enemy_action == "Reinforce Shields" else 0),
+            enemy_red["defense"],
+        )
+        enemy_engine = _compute_effective_band(
+            enemy_base_bands["engine"],
+            enemy_state.degradation.get("engine", 0),
             "engine",
-            crew_band_bonus=int(enemy_crew_mods.engine_band_bonus),
-            action_bonus=int(enemy_crew_mods.evasive_bonus if enemy_action == "Evasive Maneuvers" else 0),
+            enemy_action,
+            0,
+            int(enemy_crew_mods.engine_band_bonus),
+            int(enemy_crew_mods.evasive_bonus if enemy_action == "Evasive Maneuvers" else 0),
+            enemy_red["engine"],
         )
 
         round_log["bands"] = {
@@ -882,14 +1182,14 @@ def resolve_combat(
         round_log["rps"] = {"player_attack_vs_enemy": player_rps, "enemy_attack_vs_player": enemy_rps}
 
         if player_action == "Attempt Escape":
-            escape = _escape_attempt(
-                world_seed=world_seed,
-                combat_id=combat_id,
+            escape = _escape_attempt_in_combat(
+                rng=rng,
                 round_number=round_number,
                 fleeing_ship_state=player_ship,
                 pursuing_ship_state=enemy_ship,
                 fleeing_engine_effective=player_engine,
                 pursuing_engine_effective=enemy_engine,
+                rng_events=round_log["rng_events"],
             )
             round_log["escape"]["player"] = escape
             if escape["escaped"]:
@@ -907,16 +1207,17 @@ def resolve_combat(
                     rcp_player=rcp_player,
                     rcp_enemy=rcp_enemy,
                     salvage_modules=[],
+                    combat_rng_seed=combat_rng_seed,
                 )
         if enemy_action == "Attempt Escape":
-            escape = _escape_attempt(
-                world_seed=world_seed,
-                combat_id=f"{combat_id}_enemy",
+            escape = _escape_attempt_in_combat(
+                rng=rng,
                 round_number=round_number,
                 fleeing_ship_state=enemy_ship,
                 pursuing_ship_state=player_ship,
                 fleeing_engine_effective=enemy_engine,
                 pursuing_engine_effective=player_engine,
+                rng_events=round_log["rng_events"],
             )
             round_log["escape"]["enemy"] = escape
             if escape["escaped"]:
@@ -934,6 +1235,7 @@ def resolve_combat(
                     rcp_player=rcp_player,
                     rcp_enemy=rcp_enemy,
                     salvage_modules=[],
+                    combat_rng_seed=combat_rng_seed,
                 )
 
         player_attack = _resolve_attack(
@@ -1008,6 +1310,7 @@ def resolve_combat(
                 rcp_enemy=rcp_enemy,
                 destruction_event=destruction,
                 salvage_modules=salvage_modules,
+                combat_rng_seed=combat_rng_seed,
             )
         log.append(round_log)
 
@@ -1023,4 +1326,5 @@ def resolve_combat(
         rcp_player=rcp_player,
         rcp_enemy=rcp_enemy,
         salvage_modules=[],
+        combat_rng_seed=combat_rng_seed,
     )
