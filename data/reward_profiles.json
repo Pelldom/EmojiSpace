@@ -81,6 +81,184 @@
       },
       "distance_multiplier_per_ly": 0.1,
       "notes": "Credit reward for delivery missions. Formula: base_credits * tier_multiplier * (1 + distance_ly * distance_multiplier_per_ly)"
+    },
+
+    {
+      "reward_profile_id": "goods_generic",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {},
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 3
+      },
+      "notes": "Generic goods reward. Scales by mission tier and distance."
+    },
+
+    {
+      "reward_profile_id": "goods_legal_only",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {
+        "exclude_tags": ["illegal", "contraband"]
+      },
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 3
+      }
+    },
+
+    {
+      "reward_profile_id": "goods_illegal_only",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {
+        "include_tags": ["illegal"]
+      },
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 2
+      }
+    },
+
+    {
+      "reward_profile_id": "goods_contraband_only",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {
+        "include_tags": ["contraband"]
+      },
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 2
+      }
+    },
+
+    {
+      "reward_profile_id": "goods_luxury",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {
+        "include_tags": ["luxury"]
+      },
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 2
+      }
+    },
+
+    {
+      "reward_profile_id": "goods_weaponized",
+      "emoji": "crate_placeholder",
+      "reward_type": "goods",
+      "selector": {
+        "include_tags": ["weaponized"]
+      },
+      "quantity": {
+        "type": "range",
+        "min": 1,
+        "max": 2
+      }
+    },
+
+    {
+      "reward_profile_id": "module_generic",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "module_weapon",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "slot_type": "weapon",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "module_defense",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "slot_type": "defense",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "module_engine",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "slot_type": "engine",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "module_illegal",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "include_tags": ["illegal"],
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "module_alien_tagged",
+      "emoji": "module_placeholder",
+      "reward_type": "module",
+      "selector": {
+        "dynamic_source": "npc_tags"
+      }
+    },
+
+    {
+      "reward_profile_id": "hull_voucher_generic",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "selector": {
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "hull_voucher_alien_only",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "selector": {
+        "include_tags": ["alien"],
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "hull_voucher_specific_scarab",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "selector": {
+        "hull_id": "scarab",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "credits_base_500",
+      "emoji": "credit_placeholder",
+      "reward_type": "credits",
+      "base": 500,
+      "notes": "Base credit reward. Scales by mission tier and distance."
     }
 
   ]
