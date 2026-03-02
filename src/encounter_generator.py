@@ -288,8 +288,8 @@ def select_subtype(
         if not isinstance(travel_context, dict):
             raise ValueError("travel_context must be None or a dict.")
         travel_context_mode = travel_context.get("mode", "in_system")
-        if travel_context_mode not in {"in_system", "system_arrival"}:
-            raise ValueError("travel_context.mode must be 'in_system' or 'system_arrival'.")
+        if travel_context_mode not in {"in_system", "system_arrival", "local_activity"}:
+            raise ValueError("travel_context.mode must be 'in_system', 'system_arrival', or 'local_activity'.")
 
     normalized_situations = active_situations or []
     weighted_candidates = []
@@ -316,6 +316,14 @@ def select_subtype(
     for encounter_type in encounter_types:
         subtype_id = encounter_type["subtype_id"]
         base_weight = encounter_type["base_weight"]
+        # Subtype-level weighting factor (optional, default 1, clamped to >=1)
+        raw_subtype_weight = encounter_type.get("weight", 1)
+        try:
+            subtype_weight = int(raw_subtype_weight)
+        except (TypeError, ValueError):
+            subtype_weight = 1
+        if subtype_weight < 1:
+            subtype_weight = 1
         modifiers = []
         effective_weight = base_weight
 
@@ -405,6 +413,8 @@ def select_subtype(
 
         clamped_weight = max(effective_weight, 0)
         clamped_weight_int = int(round(clamped_weight))
+        # Apply subtype-level weight as a final integer multiplier
+        final_weight = max(clamped_weight_int * subtype_weight, 0)
         candidate_log = {
             "subtype_id": subtype_id,
             "base_weight": base_weight,
@@ -416,17 +426,27 @@ def select_subtype(
             "arrival_enforcement_applied": arrival_enforcement_applied,
             "effective_weight_before_clamp": effective_weight,
             "final_weight": clamped_weight_int,
+            "subtype_weight": subtype_weight,
+            "final_weight_with_subtype": final_weight,
         }
         candidate_logs.append(candidate_log)
 
-        if clamped_weight_int > 0:
-            weighted_candidates.append((subtype_id, encounter_type, clamped_weight_int))
+        if final_weight > 0:
+            weighted_candidates.append((subtype_id, encounter_type, final_weight))
 
     if not weighted_candidates:
         for encounter_type in encounter_types:
             base_weight = int(encounter_type["base_weight"])
-            if base_weight > 0:
-                weighted_candidates.append((encounter_type["subtype_id"], encounter_type, base_weight))
+            raw_subtype_weight = encounter_type.get("weight", 1)
+            try:
+                subtype_weight = int(raw_subtype_weight)
+            except (TypeError, ValueError):
+                subtype_weight = 1
+            if subtype_weight < 1:
+                subtype_weight = 1
+            effective_baseline = max(base_weight * subtype_weight, 0)
+            if effective_baseline > 0:
+                weighted_candidates.append((encounter_type["subtype_id"], encounter_type, effective_baseline))
         weighted_candidates.sort(key=lambda row: row[0])
         items = [row[1] for row in weighted_candidates]
         weights = [row[2] for row in weighted_candidates]
@@ -592,7 +612,11 @@ def generate_travel_encounters(
     if population < 0:
         raise ValueError("population must be >= 0 for travel encounter generation.")
 
-    cap = population * 2
+    # Phase 7.12: local_activity mode gets exactly one encounter roll, no chaining
+    if travel_context and travel_context.get("mode") == "local_activity":
+        cap = 1
+    else:
+        cap = population * 2
     if cap == 0:
         return []
 

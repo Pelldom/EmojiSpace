@@ -24,6 +24,18 @@ Required Fields Per Encounter Type Object
 - reward_profiles: array of { reward_profile_id, weight }
 - npc_response_profile: object
 
+Optional, documentation-only fields:
+
+- encounter_category: string (e.g. "environmental_opportunity", "environmental_hazard", "environmental_anomaly")
+  - Used for grouping and logging only.
+  - Encounter Generator and Interaction Layer MUST NOT rely on this field for logic.
+  - Travel / resolver layers MAY use this as a hint when selecting deterministic side effects.
+
+- weight: integer >= 1 (optional)
+  - Subtype-level weighting factor applied on top of base_weight and all bias/percent adjustments.
+  - Default is 1 if missing.
+  - Used only by the encounter generator when building final deterministic weights.
+
 ------------------------------------------------------------
 Removed Fields
 ------------------------------------------------------------
