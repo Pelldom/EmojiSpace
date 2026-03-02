@@ -1,10 +1,474 @@
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import json
 import math
+import re
+import sys
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# Ensure src directory is on path for imports when running as module
+try:
+    _src_dir = Path(__file__).resolve().parent
+except NameError:
+    # __file__ not defined (e.g., in interactive mode)
+    _src_dir = Path.cwd() / "src"
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
 
 from game_engine import GameEngine
+from logger import Logger, LogEntry
+from time_engine import get_current_turn
+
+
+# Global context for playtest logging (set in main())
+_playtest_context: Dict[str, Any] = {}
+
+
+def _format_result(result: Dict[str, Any], action_type: str = "action") -> None:
+    """
+    Format engine result for player-facing output.
+    
+    In verbose mode, shows full JSON. Otherwise, shows clean summary.
+    """
+    verbose = _playtest_context.get("verbose", False)
+    playtest_logger = _playtest_context.get("playtest_logger")
+    
+    # Record action for Markdown
+    if playtest_logger:
+        turn = get_current_turn()
+        playtest_logger.record_action(turn, action_type, result)
+    
+    if verbose:
+        print(json.dumps(result, sort_keys=True, indent=2))
+    else:
+        # Clean player-facing output
+        if result.get("ok"):
+            # Success - show minimal feedback
+            detail = result.get("detail", {})
+            if isinstance(detail, dict):
+                # Show key information from detail
+                if "message" in detail:
+                    print(detail["message"])
+                elif "state_change" in detail:
+                    print(f"✓ {detail['state_change']}")
+        else:
+            # Error - show error message
+            error = result.get("error", "unknown_error")
+            print(f"✗ Error: {error}")
+
+
+# Global flag to suppress logger console output
+_logger_console_suppressed = False
+
+
+@contextlib.contextmanager
+def _suppress_logger_console():
+    """Context manager to suppress Logger print output while preserving file logging."""
+    global _logger_console_suppressed
+    old_suppress = _logger_console_suppressed
+    _logger_console_suppressed = True
+    try:
+        # Monkey-patch Logger.log to check suppression flag
+        original_log = Logger.log
+        
+        def suppressed_log(self, turn: int, action: str, state_change: str) -> None:
+            entry = LogEntry(
+                turn=turn,
+                version=self._version,
+                action=action,
+                state_change=state_change,
+            )
+            line = entry.format_line()
+            # Only print if not suppressed
+            if not _logger_console_suppressed:
+                print(line)
+            # Always write to file if enabled
+            if self._file_enabled and isinstance(self._file_path, str):
+                try:
+                    with open(self._file_path, "a", encoding="ascii", errors="replace") as handle:
+                        handle.write(line)
+                        handle.write("\n")
+                except Exception:  # noqa: BLE001
+                    pass
+        
+        Logger.log = suppressed_log
+        yield
+    finally:
+        Logger.log = original_log
+        _logger_console_suppressed = old_suppress
+
+
+# ============================================================================
+# NAME RESOLUTION HELPERS (Part 1: Display Names, Not IDs)
+# ============================================================================
+
+def _get_system_name(engine: GameEngine, system_id: str) -> str:
+    """Resolve system_id to system name."""
+    if not system_id:
+        return "Unknown System"
+    system = engine.sector.get_system(system_id)
+    if system:
+        return system.name
+    return system_id  # Fallback to ID if system not found
+
+
+def _get_destination_name(engine: GameEngine, destination_id: str | None) -> str:
+    """Resolve destination_id to destination display_name."""
+    if not destination_id:
+        return "Unknown Destination"
+    # Find destination in sector
+    for system in engine.sector.systems:
+        for destination in system.destinations:
+            if destination.destination_id == destination_id:
+                return destination.display_name
+    return destination_id  # Fallback to ID if destination not found
+
+
+def _get_npc_name(engine: GameEngine, npc_id: str | None) -> str:
+    """Resolve npc_id to NPC display_name."""
+    if not npc_id:
+        return "Unknown NPC"
+    # Try to get NPC from registry
+    try:
+        npc_registry = getattr(engine, "_npc_registry", None)
+        if npc_registry:
+            npc = npc_registry.get_npc(npc_id)
+            if npc:
+                return getattr(npc, "display_name", npc_id)
+    except Exception:  # noqa: BLE001
+        pass
+    return npc_id  # Fallback to ID if NPC not found
+
+
+def _get_good_name(engine: GameEngine, sku_id: str) -> str:
+    """Resolve sku_id to good name."""
+    if not sku_id:
+        return "Unknown Good"
+    try:
+        from data_catalog import load_data_catalog
+        catalog = load_data_catalog()
+        good = catalog.good_by_sku(sku_id)
+        return good.name
+    except (KeyError, Exception):  # noqa: BLE001
+        return sku_id  # Fallback to ID if good not found
+
+
+def _format_mission_objectives(engine: GameEngine, mission: Dict[str, Any]) -> List[str]:
+    """
+    Format mission objectives for display (Part 2 & 3).
+    
+    Returns list of objective description strings.
+    """
+    objectives = mission.get("objectives", [])
+    if not objectives:
+        return ["No objectives specified"]
+    
+    # Get target destination from mission if not in objective parameters
+    # Target is stored as: {"target_type": "destination", "target_id": destination_id, "system_id": system_id}
+    mission_target = mission.get("target", {})
+    mission_target_dest_id = None
+    if isinstance(mission_target, dict):
+        mission_target_dest_id = mission_target.get("target_id")
+    # Fallback to direct field if target dict not available
+    if not mission_target_dest_id:
+        mission_target_dest_id = mission.get("target_destination_id")
+    
+    lines = []
+    for obj in objectives:
+        if not isinstance(obj, dict):
+            continue
+        
+        obj_type = obj.get("objective_type", "")
+        params = obj.get("parameters", {})
+        
+        if obj_type == "destination_visited":
+            dest_id = params.get("destination_id") or obj.get("target_id", "") or mission_target_dest_id
+            dest_name = _get_destination_name(engine, dest_id)
+            lines.append(f"Visit {dest_name}")
+        
+        elif obj_type in ("cargo_delivered", "deliver_cargo"):
+            # Extract delivery requirements
+            goods = params.get("goods", [])
+            if goods and isinstance(goods, list):
+                for good_entry in goods:
+                    if isinstance(good_entry, dict):
+                        good_id = good_entry.get("good_id") or good_entry.get("sku_id", "")
+                        quantity = good_entry.get("quantity", 1)
+                        good_name = _get_good_name(engine, good_id)
+                        # Try multiple sources for destination_id
+                        dest_id = (params.get("destination_id") or 
+                                  obj.get("target_id", "") or 
+                                  mission_target_dest_id)
+                        dest_name = _get_destination_name(engine, dest_id) if dest_id else "Unknown Destination"
+                        lines.append(f"Deliver {quantity}x {good_name} to {dest_name}")
+            else:
+                # Fallback: try to extract from target_id or parameters
+                good_id = params.get("good_id") or params.get("sku_id") or obj.get("target_id", "")
+                quantity = params.get("quantity", obj.get("required_count", 1))
+                good_name = _get_good_name(engine, good_id)
+                # Try multiple sources for destination_id
+                dest_id = (params.get("destination_id", "") or 
+                          obj.get("target_id", "") or 
+                          mission_target_dest_id)
+                dest_name = _get_destination_name(engine, dest_id) if dest_id else "Unknown Destination"
+                lines.append(f"Deliver {quantity}x {good_name} to {dest_name}")
+        
+        elif obj_type == "cargo_acquired":
+            goods = params.get("goods", [])
+            if goods and isinstance(goods, list):
+                for good_entry in goods:
+                    if isinstance(good_entry, dict):
+                        good_id = good_entry.get("good_id") or good_entry.get("sku_id", "")
+                        quantity = good_entry.get("quantity", 1)
+                        good_name = _get_good_name(engine, good_id)
+                        lines.append(f"Acquire {quantity}x {good_name}")
+        
+        elif obj_type in ("npc_destroyed", "combat_victory"):
+            target_id = obj.get("target_id", "")
+            target_type = obj.get("target_type", "")
+            if target_type == "npc":
+                npc_name = _get_npc_name(engine, target_id)
+                lines.append(f"Destroy {npc_name}")
+            else:
+                lines.append(f"Defeat target: {target_id}")
+        
+        else:
+            # Generic objective display
+            target_id = obj.get("target_id", "")
+            if target_id:
+                lines.append(f"{obj_type}: {target_id}")
+            else:
+                lines.append(f"{obj_type}")
+    
+    return lines if lines else ["No objectives specified"]
+
+
+def _format_mission_rewards(engine: GameEngine, mission: Dict[str, Any]) -> List[str]:
+    """
+    Format mission rewards (Part 2) - DISPLAY ONLY, NO RECALCULATION.
+    
+    Returns list of reward display strings from existing mission data.
+    """
+    # Use reward_summary_lines if available (from mission_core.get_details)
+    reward_summary_lines = mission.get("reward_summary_lines", [])
+    if reward_summary_lines:
+        return reward_summary_lines
+    
+    # Use reward_summary if available (legacy format)
+    reward_summary = mission.get("reward_summary", [])
+    if reward_summary:
+        lines = []
+        for reward in reward_summary:
+            if not isinstance(reward, dict):
+                continue
+            field = reward.get("field", "")
+            if field == "credits":
+                delta = reward.get("delta", 0)
+                lines.append(f"{delta:+d} credits")
+            elif field == "goods":
+                sku_id = reward.get("sku_id", "")
+                quantity = reward.get("quantity", 1)
+                good_name = _get_good_name(engine, sku_id)
+                lines.append(f"{quantity}x {good_name}")
+            elif field == "module":
+                module_id = reward.get("module_id", "")
+                lines.append(module_id)  # Module ID is the display name
+            elif field == "hull_voucher":
+                hull_id = reward.get("hull_id", "")
+                lines.append(f"Hull voucher: {hull_id}")
+        
+        return lines if lines else ["No rewards"]
+    
+    return ["No rewards"]
+
+
+class PlaytestLogger:
+    """
+    Logger wrapper that collects structured logs per turn and writes Markdown playtest files.
+    
+    Does not interfere with engine logging - wraps the existing Logger and collects logs
+    for later Markdown formatting.
+    """
+    
+    def __init__(self, base_logger: Logger, verbose: bool = False):
+        self._base_logger = base_logger
+        self._verbose = verbose
+        self._logs_by_turn: Dict[int, List[LogEntry]] = {}
+        self._actions_by_turn: Dict[int, List[Dict[str, Any]]] = {}
+        self._current_turn = 0
+    
+    @property
+    def version(self) -> str:
+        return self._base_logger.version
+    
+    def configure_file_logging(self, *, enabled: bool, log_path: str | None = None, truncate: bool = False) -> str | None:
+        return self._base_logger.configure_file_logging(enabled=enabled, log_path=log_path, truncate=truncate)
+    
+    def log(self, turn: int, action: str, state_change: str) -> None:
+        """Log entry - forwards to base logger and collects for Markdown."""
+        # Forward to base logger (preserves existing behavior)
+        self._base_logger.log(turn, action, state_change)
+        
+        # Collect for Markdown
+        entry = LogEntry(turn=turn, version=self.version, action=action, state_change=state_change)
+        if turn not in self._logs_by_turn:
+            self._logs_by_turn[turn] = []
+        self._logs_by_turn[turn].append(entry)
+        
+        # Update current turn tracking
+        self._current_turn = max(self._current_turn, turn)
+    
+    def record_action(self, turn: int, action_type: str, action_data: Dict[str, Any]) -> None:
+        """Record a player action for this turn."""
+        if turn not in self._actions_by_turn:
+            self._actions_by_turn[turn] = []
+        self._actions_by_turn[turn].append({
+            "type": action_type,
+            "data": action_data,
+        })
+    
+    def load_logs_from_file(self, log_path: Path) -> None:
+        """
+        Load structured logs from engine's log file.
+        
+        Parses log file format: [v{version}][turn {turn}] action={action} change={state_change}
+        """
+        if not log_path.exists():
+            return
+        
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    
+                    # Parse format: [v{version}][turn {turn}] action={action} change={state_change}
+                    match = re.match(r'\[v([^\]]+)\]\[turn (\d+)\] action=([^ ]+) change=(.+)$', line)
+                    if match:
+                        version_str, turn_str, action_str, state_change_str = match.groups()
+                        turn = int(turn_str)
+                        entry = LogEntry(
+                            turn=turn,
+                            version=version_str,
+                            action=action_str,
+                            state_change=state_change_str,
+                        )
+                        if turn not in self._logs_by_turn:
+                            self._logs_by_turn[turn] = []
+                        self._logs_by_turn[turn].append(entry)
+                        self._current_turn = max(self._current_turn, turn)
+        except Exception:
+            # If parsing fails, silently continue (logs already collected via log() calls)
+            pass
+    
+    def write_markdown(self, output_path: Path, seed: int, version: str, log_file_path: Path | None = None) -> None:
+        """
+        Write collected logs to Markdown playtest file.
+        
+        Format:
+        # Playtest Log
+        
+        **Seed:** {seed}  
+        **Date/Time:** {timestamp}  
+        **Version:** {version}
+        
+        ## Turn X
+        - Action: {action_type}
+        - Result: {summary}
+        - Player State: {changes}
+        - Missions: {updates}
+        - Combat: {events}
+        
+        <details>
+        <summary>Raw Logs</summary>
+        
+        ```json
+        {structured_logs}
+        ```
+        
+        </details>
+        """
+        # Load logs from file if provided (to capture engine's internal logs)
+        if log_file_path:
+            self.load_logs_from_file(log_file_path)
+        
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            # Header
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write("# Playtest Log\n\n")
+            f.write(f"**Seed:** {seed}\n")
+            f.write(f"**Date/Time:** {timestamp}\n")
+            f.write(f"**Version:** {version}\n\n")
+            f.write("---\n\n")
+            
+            # Turn-by-turn sections
+            all_turns = sorted(set(self._logs_by_turn.keys()) | set(self._actions_by_turn.keys()))
+            
+            for turn in all_turns:
+                f.write(f"## Turn {turn}\n\n")
+                
+                # Action taken
+                actions = self._actions_by_turn.get(turn, [])
+                if actions:
+                    for action in actions:
+                        f.write(f"- **Action:** {action['type']}\n")
+                        if action.get('data'):
+                            f.write(f"  - Details: {json.dumps(action['data'], sort_keys=True)}\n")
+                else:
+                    f.write("- **Action:** (no recorded action)\n")
+                
+                # Engine result summary (from logs)
+                logs = self._logs_by_turn.get(turn, [])
+                if logs:
+                    # Group by action type for summary
+                    action_groups: Dict[str, List[str]] = {}
+                    for log_entry in logs:
+                        action_type = log_entry.action
+                        if action_type not in action_groups:
+                            action_groups[action_type] = []
+                        action_groups[action_type].append(log_entry.state_change)
+                    
+                    # Write summary
+                    f.write("\n**Engine Events:**\n")
+                    for action_type, changes in sorted(action_groups.items()):
+                        f.write(f"- {action_type}: {len(changes)} event(s)\n")
+                        # Show first few changes as examples
+                        for change in changes[:3]:
+                            if len(change) > 100:
+                                change = change[:97] + "..."
+                            f.write(f"  - {change}\n")
+                        if len(changes) > 3:
+                            f.write(f"  - ... and {len(changes) - 3} more\n")
+                
+                # Raw logs in collapsible section
+                if logs:
+                    f.write("\n<details>\n")
+                    f.write("<summary>Raw Structured Logs</summary>\n\n")
+                    f.write("```json\n")
+                    logs_json = [
+                        {
+                            "turn": entry.turn,
+                            "version": entry.version,
+                            "action": entry.action,
+                            "state_change": entry.state_change,
+                        }
+                        for entry in logs
+                    ]
+                    f.write(json.dumps(logs_json, indent=2, sort_keys=True))
+                    f.write("\n```\n\n")
+                    f.write("</details>\n\n")
+                
+                f.write("\n---\n\n")
+        
+        print(f"\nPlaytest log written to {output_path}")
 
 
 def _is_game_over_result(result: dict) -> bool:
@@ -263,7 +727,9 @@ def _show_player_info(engine: GameEngine) -> None:
             for index, crew_member in enumerate(crew_list, start=1):
                 npc_id = crew_member.get('npc_id', 'N/A')
                 daily_wage = crew_member.get('daily_wage', 0)
-                print(f"    {index}) {npc_id} (wage: {daily_wage})")
+                # Part 1: Display NPC name instead of ID
+                npc_name = _get_npc_name(engine, npc_id)
+                print(f"    {index}) {npc_name} (wage: {daily_wage})")
         else:
             print("  Crew: None")
     
@@ -598,7 +1064,9 @@ def _show_financial(engine: GameEngine) -> None:
             capacity = rental.get("capacity", 0)
             cost = rental.get("cost_per_turn", 0)
             expiration = rental.get("expiration_day", "N/A")
-            print(f"  {idx}) Location: {destination_id}, Capacity: {capacity}, Cost/turn: {cost}, Expiration: {expiration}")
+            # Part 1: Display destination name instead of ID
+            dest_name = _get_destination_name(engine, destination_id)
+            print(f"  {idx}) Location: {dest_name}, Capacity: {capacity}, Cost/turn: {cost}, Expiration: {expiration}")
     
     # Insurance stub
     print("\nINSURANCE:")
@@ -664,7 +1132,9 @@ def _cancel_warehouse_rental(engine: GameEngine) -> None:
             _game_over_loop(engine, result)
             return
         if result.get("ok"):
-            print(f"Warehouse rental at {destination_id} cancelled.")
+            # Part 1: Display destination name instead of ID
+            dest_name = _get_destination_name(engine, destination_id)
+            print(f"Warehouse rental at {dest_name} cancelled.")
         else:
             error = result.get("error", "unknown_error")
             print(f"Failed to cancel warehouse rental: {error}")
@@ -688,48 +1158,54 @@ def _show_missions(engine: GameEngine) -> None:
             mission_type = mission.get("mission_type", "N/A")
             mission_tier = mission.get("mission_tier", 0)
             
-            # Source information
-            source_type = mission.get("source_type", "N/A")
-            source_id = mission.get("source_id", "N/A")
-            if source_type and source_type != "N/A":
-                source_display = f"{source_type}"
-                if source_id and source_id != "N/A":
-                    source_display += f" ({source_id})"
-            else:
-                source_display = "N/A"
+            # Get mission entity ONLY to access objectives - NO RECALCULATION
+            mission_entity = None
+            try:
+                mission_manager = engine._mission_manager
+                mission_entity = mission_manager.missions.get(mission_id)
+            except Exception:  # noqa: BLE001
+                pass
             
-            # Target information
+            # Part 1: Target information with names - from mission dict
             target_destination_id = mission.get("target_destination_id")
-            target_system_id = mission.get("target_system_id", "N/A")
+            target_system_id = mission.get("target_system_id")
             if target_destination_id:
-                target_display = f"{target_destination_id}"
-                if target_system_id and target_system_id != "N/A":
-                    target_display += f" in {target_system_id}"
-            elif target_system_id and target_system_id != "N/A":
-                target_display = target_system_id
+                dest_name = _get_destination_name(engine, target_destination_id)
+                if target_system_id:
+                    system_name = _get_system_name(engine, target_system_id)
+                    target_display = f"{dest_name} ({system_name})"
+                else:
+                    target_display = dest_name
+            elif target_system_id:
+                system_name = _get_system_name(engine, target_system_id)
+                target_display = system_name
             else:
-                target_display = "N/A"
+                target_display = "Unknown"
             
-            # Rewards
-            reward_summary = mission.get("reward_summary", [])
-            reward_text = "None"
-            if reward_summary:
-                reward_parts = []
-                for reward in reward_summary:
-                    field = reward.get("field", "")
-                    delta = reward.get("delta", 0)
-                    if field == "credits":
-                        reward_parts.append(f"{delta:+d} credits")
-                if reward_parts:
-                    reward_text = ", ".join(reward_parts)
+            # Part 2 & 3: Objectives - from mission entity ONLY (not in mission dict)
+            objective_text = "No objectives specified"
+            if mission_entity:
+                mission_dict_for_obj = mission_entity.to_dict()
+                objective_lines = _format_mission_objectives(engine, mission_dict_for_obj)
+                if objective_lines:
+                    objective_text = "; ".join(objective_lines)
             
-            # Collection format
+            # Part 2: Rewards - use reward_summary_lines from mission dict (already calculated by engine)
+            reward_lines = mission.get("reward_summary_lines", [])
+            reward_text = ", ".join(reward_lines) if reward_lines else "No rewards"
+            
+            # Mission Title - from mission entity if available, else use mission_id
+            title = mission_id
+            if mission_entity:
+                title = mission_entity.name or mission_id
+            
+            # Collection format - from mission dict
             collection_format = mission.get("collection_format", "Auto")
             
-            print(f"\n  Mission {idx}: {mission_id}")
+            print(f"\n  Mission {idx}: {title}")
             print(f"    Type: {mission_type} (Tier {mission_tier})")
-            print(f"    Source: {source_display}")
             print(f"    Target: {target_display}")
+            print(f"    Objectives: {objective_text}")
             print(f"    Rewards: {reward_text}")
             print(f"    Collection: {collection_format}")
     
@@ -925,7 +1401,7 @@ def _dismiss_crew_menu(engine: GameEngine) -> None:
             reason = result_detail.get("reason", "unknown_error")
             print(f"Dismissal failed: {reason}")
     else:
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
 
 
 def _show_system_info(engine: GameEngine) -> None:
@@ -936,7 +1412,7 @@ def _show_system_info(engine: GameEngine) -> None:
         return
     detail = _extract_detail_from_stage(step_result=result, stage="system_profile")
     if not isinstance(detail, dict):
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
         return
     coords = detail.get("coordinates", {})
     system_id = str(detail.get("system_id", "") or "")
@@ -965,13 +1441,15 @@ def _show_system_info(engine: GameEngine) -> None:
     print(f"  Active flags: {detail.get('active_system_flags')}")
     print("  Reachable systems:")
     for row in detail.get("reachable_systems", []):
+        system_id_reachable = row.get('system_id', '')
+        system_name_reachable = row.get('name', system_id_reachable)
+        distance = row.get('distance_ly', 0.0)
+        in_range = row.get('in_range', False)
         print(
-            f"    {row.get('system_id')} {row.get('name')} "
-            f"distance_ly={row.get('distance_ly'):.3f} in_range={row.get('in_range')}"
+            f"    {system_name_reachable} "
+            f"distance_ly={distance:.3f} in_range={in_range}"
         )
-    # Display galaxy map
-    print()
-    _render_galaxy_map(engine.sector)
+    # Part 4: Map removed from System Info - only shown in Travel menu
 
 
 def _show_destination_info(engine: GameEngine) -> None:
@@ -982,13 +1460,14 @@ def _show_destination_info(engine: GameEngine) -> None:
         return
     detail = _extract_detail_from_stage(step_result=result, stage="destination_profile")
     if not isinstance(detail, dict):
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
         return
     destination_id = str(detail.get("destination_id", "") or "")
     destination_visited = destination_id in _visited_destination_ids(engine)
+    # Part 1: Display destination name instead of ID
+    destination_name = _get_destination_name(engine, destination_id)
     print("DESTINATION INFO")
-    print(f"  Name: {detail.get('name')}")
-    print(f"  ID: {destination_id}")
+    print(f"  Name: {destination_name}")
     print(f"  Population: {detail.get('population')}")
     if destination_visited:
         print(f"  Primary economy: {detail.get('primary_economy')}")
@@ -1008,6 +1487,61 @@ def _show_destination_info(engine: GameEngine) -> None:
             print("    none")
         for row in locations:
             print(f"    {row.get('location_id')} type={row.get('location_type')}")
+
+
+def _show_encounter_result(result: Dict[str, Any], encounter_description: str | None) -> None:
+    """
+    Display player-friendly encounter result.
+    
+    Shows what the NPC is doing: hailing, demanding inspection, ignoring, etc.
+    """
+    # Extract resolver outcome from events
+    events = result.get("events", [])
+    resolver_outcome = None
+    for event in events:
+        if isinstance(event, dict) and event.get("stage") == "resolver":
+            detail = event.get("detail", {})
+            resolver_outcome = detail.get("resolver_outcome", {})
+            break
+    
+    if resolver_outcome:
+        resolver = resolver_outcome.get("resolver", "none")
+        outcome = resolver_outcome.get("outcome")
+        
+        if resolver == "reaction":
+            # NPC reaction outcome
+            if outcome == "hail":
+                print("The ship hails you.")
+            elif outcome == "warn":
+                print("The ship issues a warning.")
+            elif outcome == "ignore":
+                print("The ship ignores you and continues on its way.")
+            elif outcome == "attack":
+                print("The ship attacks!")
+            elif outcome == "pursue":
+                print("The ship begins pursuit!")
+            elif outcome == "accept":
+                print("The ship accepts your communication.")
+            else:
+                # Unknown outcome - show generic message
+                print(f"The encounter resolves: {outcome}")
+        elif resolver == "law":
+            # Law enforcement outcome
+            print("Border patrol demands inspection.")
+        elif resolver == "combat":
+            # Combat initiated
+            print("Combat begins!")
+        elif resolver == "pursuit":
+            # Pursuit outcome
+            escaped = resolver_outcome.get("escaped", False)
+            if escaped:
+                print("You escape the pursuit.")
+            else:
+                print("Pursuit continues...")
+    else:
+        # No resolver outcome - encounter ended normally
+        if not result.get("hard_stop"):
+            print("The encounter ends.")
 
 
 def _resolve_pending_encounter(engine: GameEngine) -> None:
@@ -1073,6 +1607,9 @@ def _resolve_pending_encounter(engine: GameEngine) -> None:
                 _print_game_over(result)
                 _game_over_loop(engine, result)
                 return
+            
+            # Show NPC response in player-friendly format
+            _show_encounter_result(result, encounter_description)
             
             # Immediate loot handling: if loot is pending, handle it before continuing
             if result.get("hard_stop") is True and result.get("hard_stop_reason") == "pending_loot_decision":
@@ -1380,9 +1917,11 @@ def _travel_menu(engine: GameEngine) -> None:
         current_destination_id = engine.player_state.current_destination_id
         current_destination_name = current_destination.display_name if current_destination else "Unknown"
         
-        print(f"Current system: {current_system.system_id} ({current_system.name})")
-        print(f"Current destination: {current_destination_id or 'None'} ({current_destination_name})")
-        print("0) Back")
+        # Part 1: Display names instead of IDs
+        system_name = _get_system_name(engine, current_system.system_id)
+        print(f"Current system: {system_name}")
+        print(f"Current destination: {current_destination_name}")
+        print("\n0) Back")
         print("1) Inter-system warp")
         print("2) Intra-system destination travel")
         mode = input("Travel mode: ").strip()
@@ -1390,6 +1929,13 @@ def _travel_menu(engine: GameEngine) -> None:
         if mode == "0":
             return
         elif mode == "1":
+            # Part 4: Display map only when selecting Inter-system travel
+            print("\n" + "="*60)
+            print("GALAXY MAP")
+            print("="*60)
+            _render_galaxy_map(engine.sector)
+            print("="*60 + "\n")
+            
             reachable = _reachable_systems(engine=engine, current_system=current_system, fuel_limit=current_fuel)
             options = [row["system"] for row in reachable]
             if not options:
@@ -1397,20 +1943,25 @@ def _travel_menu(engine: GameEngine) -> None:
                 continue
             for index, row in enumerate(reachable, start=1):
                 system_id = str(row["system_id"])
+                system_name_reachable = _get_system_name(engine, system_id)
                 visited = system_id in _visited_system_ids(engine)
                 distance = row['distance_ly']
                 in_range = distance <= float(current_fuel)
-                base = f"{index}) {row['system_id']} {row['name']} distance_ly={distance:.3f} in_range={in_range}"
+                # Part 1: Display system name instead of ID
+                base = f"{index}) {system_name_reachable} (distance: {distance:.3f} ly, {'in range' if in_range else 'out of range'})"
                 if not visited:
                     print(base)
                     continue
                 system = row["system"]
-                destination_count = len(getattr(system, "destinations", []) or [])
                 live_situations = _active_system_situations(engine=engine, system_id=system_id)
+                # Part 1: Show destination names instead of count
+                destination_names = [d.display_name for d in sorted(system.destinations, key=lambda d: d.destination_id)]
+                destinations_str = ", ".join(destination_names) if destination_names else "none"
                 print(
-                    f"{base} government={getattr(system, 'government_id', None)} "
-                    f"population={getattr(system, 'population', None)} destinations={destination_count} "
-                    f"active_situations={live_situations}"
+                    f"{base}\n"
+                    f"    Government: {getattr(system, 'government_id', 'Unknown')}, "
+                    f"Population: {getattr(system, 'population', 'Unknown')}, "
+                    f"Destinations: {destinations_str}"
                 )
             raw_index = input("Select target system index: ").strip()
             try:
@@ -1430,6 +1981,11 @@ def _travel_menu(engine: GameEngine) -> None:
             }
             if target_destination_id is not None:
                 payload["target_destination_id"] = target_destination_id
+            
+            # Show travel start message
+            target_name = target_system.name if hasattr(target_system, "name") else target_system.system_id
+            print(f"\nTraveling to {target_system.system_id} ({target_name})...")
+            
             result = engine.execute(payload)
             
             # Check for game over
@@ -1437,6 +1993,10 @@ def _travel_menu(engine: GameEngine) -> None:
                 _print_game_over(result)
                 _game_over_loop(engine, result)
                 return
+            
+            # Show travel completion if no hard stops
+            if not result.get("hard_stop"):
+                print(f"Arrived at {target_system.system_id} ({target_name})")
             
             # Handle hard_stop responses (pending encounters or combat)
             # Per interaction_layer_contract.md: all encounters must be resolved before travel continues
@@ -1447,8 +2007,17 @@ def _travel_menu(engine: GameEngine) -> None:
                     print("ERROR: Hard stop loop exceeded safe iteration limit.")
                     break
                 
-                # Check if combat ended - break immediately
+                # Check if combat ended - show result and break
                 if result.get("combat_ended") is True:
+                    combat_result = result.get("combat_result", {})
+                    if combat_result:
+                        winner = combat_result.get("winner", "unknown")
+                        if winner == "player":
+                            print("You win the combat!")
+                        elif winner == "enemy":
+                            print("You lost the combat.")
+                        else:
+                            print("Combat ended.")
                     break
                 
                 hard_stop_reason = result.get("hard_stop_reason")
@@ -1485,6 +2054,11 @@ def _travel_menu(engine: GameEngine) -> None:
                                 "encounter_id": pending_encounter.get("encounter_id"),
                                 "decision_id": decision_id,
                             })
+                            
+                            # Show NPC response
+                            enc_desc = pending_encounter.get("encounter_description", "Unknown")
+                            _show_encounter_result(result, enc_desc)
+                            
                             # Continue loop to check for next hard_stop (may be another encounter or combat)
                             continue
                         else:
@@ -1570,7 +2144,7 @@ def _travel_menu(engine: GameEngine) -> None:
                     # Unknown hard_stop_reason - break to avoid infinite loop
                     break
             
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
             if result.get("ok") is True and result.get("player", {}).get("system_id") == target_system.system_id:
                 print(f"You have arrived in {target_system.name}.")
                 _print_current_system_destinations(engine)
@@ -1581,7 +2155,10 @@ def _travel_menu(engine: GameEngine) -> None:
                 print("No intra-system destinations available.")
                 continue
             for index, destination in enumerate(destinations, start=1):
-                print(f"{index}) {destination.destination_id} {destination.display_name} type={destination.destination_type}")
+                emoji_id = getattr(destination, "emoji_id", "") or ""
+                glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
+                prefix = f"{glyph} " if glyph else ""
+                print(f"{index}) {prefix}{destination.destination_id} {destination.display_name} ({destination.destination_type})")
             raw_index = input("Select destination index: ").strip()
             try:
                 selected = int(raw_index)
@@ -1613,8 +2190,17 @@ def _travel_menu(engine: GameEngine) -> None:
                     print("ERROR: Hard stop loop exceeded safe iteration limit.")
                     break
                 
-                # Check if combat ended - break immediately
+                # Check if combat ended - show result and break
                 if result.get("combat_ended") is True:
+                    combat_result = result.get("combat_result", {})
+                    if combat_result:
+                        winner = combat_result.get("winner", "unknown")
+                        if winner == "player":
+                            print("You win the combat!")
+                        elif winner == "enemy":
+                            print("You lost the combat.")
+                        else:
+                            print("Combat ended.")
                     break
                 
                 hard_stop_reason = result.get("hard_stop_reason")
@@ -1741,7 +2327,7 @@ def _travel_menu(engine: GameEngine) -> None:
                     # Unknown hard_stop_reason - break to avoid infinite loop
                     break
             
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
             return
         else:
             print("Invalid selection.")
@@ -1759,7 +2345,7 @@ def _wait_menu(engine: GameEngine) -> None:
         _print_game_over(result)
         _game_over_loop(engine, result)
         return
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _location_entry_menu(engine: GameEngine) -> None:
@@ -1887,7 +2473,7 @@ def _location_actions_menu(engine: GameEngine) -> None:
             "confirm": confirmed,
         }
         result = engine.execute(payload)
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
 
 
 def _current_location_type(engine: GameEngine) -> str | None:
@@ -1942,6 +2528,7 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
             for index, row in enumerate(npcs, start=1):
                 if not isinstance(row, dict):
                     continue
+                # Part 1: NPC names already displayed via display_name, no change needed
                 name = str(row.get("display_name", "Unknown"))
                 role = str(row.get("role", "unknown"))
                 print(f"  {index}) {name} ({role})")
@@ -2034,7 +2621,12 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                     for index, mission in enumerate(missions, start=1):
                         mission_type = mission.get("mission_type", "Unknown")
                         mission_tier = mission.get("mission_tier", 0)
-                        reward_text = _format_reward_summary(mission.get("reward_summary", []))
+                        # Use reward_summary_lines from mission_core.list_offered
+                        reward_lines = mission.get("reward_summary_lines", [])
+                        if reward_lines:
+                            reward_text = ", ".join(reward_lines)
+                        else:
+                            reward_text = "No rewards"
                         print(f"  {index}) {mission_type} (Tier {mission_tier}) – {reward_text}")
                     print()
                     # Prompt for selection
@@ -2065,24 +2657,83 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                     if discuss_detail and isinstance(discuss_detail, dict):
                         result_data = discuss_detail.get("result", {})
                         if isinstance(result_data, dict):
-                            # Display mission details
-                            mission_type = result_data.get("mission_type", "Unknown")
-                            mission_tier = result_data.get("mission_tier", 0)
-                            reward_summary = result_data.get("reward_summary", [])
-                            status = result_data.get("status")
-                            text = result_data.get("text")
-                            offer_only = result_data.get("offer_only", False)
+                            # Get the actual mission entity to access objectives and full details - NO RECALCULATION
+                            mission_id_from_result = result_data.get("mission_id")
+                            if mission_id_from_result:
+                                try:
+                                    # Get full mission entity from manager - use existing data only
+                                    mission_manager = engine._mission_manager
+                                    mission_entity = mission_manager.missions.get(mission_id_from_result)
+                                    
+                                    if mission_entity:
+                                        # Convert to dict for formatting functions - use existing data
+                                        mission_dict = mission_entity.to_dict()
+                                        # Use reward_summary_lines from get_details result (already calculated)
+                                        mission_dict["reward_summary_lines"] = result_data.get("reward_summary_lines", [])
+                                    else:
+                                        mission_dict = result_data
+                                except Exception:  # noqa: BLE001
+                                    mission_dict = result_data
+                            else:
+                                mission_dict = result_data
                             
-                            print(f"\nMISSION DETAILS")
-                            print(f"  Type: {mission_type}")
-                            print(f"  Tier: {mission_tier}")
-                            reward_text = _format_reward_summary(reward_summary)
-                            print(f"  Rewards: {reward_text}")
+                            # Mission Title
+                            title = mission_dict.get("name") or mission_dict.get("mission_type", "Mission")
+                            print(f"\n{'='*60}")
+                            print(f"MISSION: {title}")
+                            print(f"{'='*60}")
+                            
+                            # Provider Name (Part 2)
+                            provider_npc_id = mission_dict.get("mission_giver_npc_id")
+                            if provider_npc_id:
+                                provider_name = _get_npc_name(engine, provider_npc_id)
+                                print(f"Provider: {provider_name}")
+                            
+                            # Mission Description (Part 2 & 5)
+                            description = mission_dict.get("description") or mission_dict.get("text", "")
+                            if description:
+                                print(f"\n{description}\n")
+                            
+                            # Mission Type and Tier
+                            mission_type = mission_dict.get("mission_type", "Unknown")
+                            mission_tier = mission_dict.get("mission_tier", 0)
+                            print(f"Type: {mission_type} (Tier {mission_tier})")
+                            
+                            # Destination Name (Part 1)
+                            target_destination_id = mission_dict.get("target_destination_id")
+                            target_system_id = mission_dict.get("target_system_id")
+                            if target_destination_id:
+                                dest_name = _get_destination_name(engine, target_destination_id)
+                                if target_system_id:
+                                    system_name = _get_system_name(engine, target_system_id)
+                                    print(f"Destination: {dest_name} ({system_name})")
+                                else:
+                                    print(f"Destination: {dest_name}")
+                            elif target_system_id:
+                                system_name = _get_system_name(engine, target_system_id)
+                                print(f"Target System: {system_name}")
+                            
+                            # Objectives (Part 2 & 3) - from mission entity, NO RECALCULATION
+                            objective_lines = _format_mission_objectives(engine, mission_dict)
+                            if objective_lines:
+                                print(f"\nObjectives:")
+                                for obj_line in objective_lines:
+                                    print(f"  • {obj_line}")
+                            
+                            # Rewards (Part 2) - use reward_summary_lines from get_details (already calculated)
+                            reward_lines = _format_mission_rewards(engine, mission_dict)
+                            if reward_lines:
+                                print(f"\nRewards:")
+                                for reward_line in reward_lines:
+                                    print(f"  • {reward_line}")
+                            
+                            # Status
+                            status = mission_dict.get("status")
+                            offer_only = result_data.get("offer_only", False)
                             if status:
-                                print(f"  Status: {status}")
-                            if text:
-                                print(f"  {text}")
-                            print()
+                                print(f"\nStatus: {status}")
+                            
+                            print(f"\n{'='*60}\n")
                             
                             # Only prompt for acceptance if offer_only is True
                             if offer_only:
@@ -2154,7 +2805,9 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
         interactions = detail.get("interactions", [])
         if not isinstance(interactions, list):
             interactions = []
-        print(f"NPC: {npc_id}")
+        # Part 1: Display NPC name instead of ID
+        npc_name = _get_npc_name(engine, npc_id)
+        print(f"NPC: {npc_name}")
         for index, row in enumerate(interactions, start=1):
             if not isinstance(row, dict):
                 continue
@@ -2196,18 +2849,78 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                         else:
                             print(f"Hint: system={system_id}")
             elif interaction_result.get("offer_only") is True:
-                # Mission offer - show details and prompt for confirmation
+                # Mission offer - show full details like mission board - NO RECALCULATION
                 mission_id = interaction_result.get("mission_id")
-                mission_type = interaction_result.get("mission_type")
-                mission_tier = interaction_result.get("mission_tier")
-                reward_summary = interaction_result.get("reward_summary", [])
-                reward_text = _format_reward_summary(reward_summary)
-                print("MISSION OFFER")
-                print(f"  Mission ID: {mission_id}")
-                print(f"  Type: {mission_type}")
-                print(f"  Tier: {mission_tier}")
-                print(f"  Rewards: {reward_text}")
-                print()
+                if mission_id:
+                    # Get full mission details via mission_discuss (uses existing calculated data)
+                    discuss_result = engine.execute({"type": "mission_discuss", "mission_id": mission_id})
+                    if discuss_result.get("ok"):
+                        discuss_detail = _extract_detail_from_stage(step_result=discuss_result, stage="mission")
+                        if discuss_detail and isinstance(discuss_detail, dict):
+                            result_data = discuss_detail.get("result", {})
+                            if isinstance(result_data, dict):
+                                # Get the actual mission entity - use existing data only
+                                try:
+                                    mission_manager = engine._mission_manager
+                                    mission_entity = mission_manager.missions.get(mission_id)
+                                    
+                                    if mission_entity:
+                                        mission_dict = mission_entity.to_dict()
+                                        # Use reward_summary_lines from get_details (already calculated)
+                                        mission_dict["reward_summary_lines"] = result_data.get("reward_summary_lines", [])
+                                    else:
+                                        mission_dict = result_data
+                                except Exception:  # noqa: BLE001
+                                    mission_dict = result_data
+                                
+                                # Display mission details with proper formatting
+                                title = mission_dict.get("name") or mission_dict.get("mission_type", "Mission")
+                                print(f"\n{'='*60}")
+                                print(f"MISSION: {title}")
+                                print(f"{'='*60}")
+                                
+                                provider_npc_id = mission_dict.get("mission_giver_npc_id")
+                                if provider_npc_id:
+                                    provider_name = _get_npc_name(engine, provider_npc_id)
+                                    print(f"Provider: {provider_name}")
+                                
+                                description = mission_dict.get("description") or mission_dict.get("text", "")
+                                if description:
+                                    print(f"\n{description}\n")
+                                
+                                mission_type = mission_dict.get("mission_type", "Unknown")
+                                mission_tier = mission_dict.get("mission_tier", 0)
+                                print(f"Type: {mission_type} (Tier {mission_tier})")
+                                
+                                target_destination_id = mission_dict.get("target_destination_id")
+                                target_system_id = mission_dict.get("target_system_id")
+                                if target_destination_id:
+                                    dest_name = _get_destination_name(engine, target_destination_id)
+                                    if target_system_id:
+                                        system_name = _get_system_name(engine, target_system_id)
+                                        print(f"Destination: {dest_name} ({system_name})")
+                                    else:
+                                        print(f"Destination: {dest_name}")
+                                elif target_system_id:
+                                    system_name = _get_system_name(engine, target_system_id)
+                                    print(f"Target System: {system_name}")
+                                
+                                # Objectives from mission entity - NO RECALCULATION
+                                objective_lines = _format_mission_objectives(engine, mission_dict)
+                                if objective_lines:
+                                    print(f"\nObjectives:")
+                                    for obj_line in objective_lines:
+                                        print(f"  • {obj_line}")
+                                
+                                # Rewards from reward_summary_lines (already calculated) - NO RECALCULATION
+                                reward_lines = _format_mission_rewards(engine, mission_dict)
+                                if reward_lines:
+                                    print(f"\nRewards:")
+                                    for reward_line in reward_lines:
+                                        print(f"  • {reward_line}")
+                                
+                                print(f"\n{'='*60}\n")
+                
                 confirm = input("Accept this mission? (y/n): ").strip().lower()
                 if confirm == "y":
                     # Call MissionCore.accept via engine command
@@ -2257,7 +2970,7 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
             else:
                 print(json.dumps(interaction_result, sort_keys=True))
         else:
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
 
 
 def _market_location_menu(engine: GameEngine) -> None:
@@ -2337,7 +3050,7 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
                 "confirm": True,
             }
             result = engine.execute(payload)
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
             continue
         if raw_action == "2":
             player_profile = _extract_detail_from_stage(
@@ -2376,7 +3089,7 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
                 "confirm": True,
             }
             result = engine.execute(payload)
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
             continue
         if raw_action == "3":
             raw_sku_id = input("SKU ID: ").strip()
@@ -2393,7 +3106,7 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
                 "confirm": True,
             }
             result = engine.execute(payload)
-            print(json.dumps(result, sort_keys=True))
+            _format_result(result, "location_action")
             continue
         if raw_action == "4":
             _return_to_destination(engine)
@@ -2403,65 +3116,119 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
 
 
 def main() -> None:
-    seed = _prompt_seed()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="EmojiSpace CLI - Player-facing playtest tool")
+    parser.add_argument("--seed", type=int, help="World seed (default: prompt)")
+    parser.add_argument("--verbose", action="store_true", help="Show structured logs inline")
+    args = parser.parse_args()
+    
+    # Get seed
+    if args.seed is not None:
+        seed = args.seed
+    else:
+        seed = _prompt_seed()
+    
     starting_ship_override = _prompt_admin_override()
+    
+    # Create engine
     engine = GameEngine(world_seed=seed, config={"system_count": 50}, starting_ship_override=starting_ship_override)
+    
+    # Set up logging - create PlaytestLogger wrapper
+    from logger import Logger
+    base_logger = Logger(version="0.5.x")
+    playtest_logger = PlaytestLogger(base_logger, verbose=args.verbose)
+    
+    # Configure file logging (preserves existing behavior)
     log_path = str((Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{seed}.log"))
+    base_logger.configure_file_logging(enabled=True, log_path=log_path, truncate=True)
     _ = engine.execute({"type": "set_logging", "enabled": True, "log_path": log_path, "truncate": True})
-    print(f"Logging to {log_path}")
+    
+    # Prepare output path for Markdown
+    output_dir = Path(__file__).resolve().parents[1] / "tests" / "output"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    markdown_path = output_dir / f"playtest_seed_{seed}_{timestamp}.md"
+    
     _configure_cli_test_fuel(engine)
-    print(json.dumps({"event": "engine_init", "seed": seed}, sort_keys=True))
-    # Display galaxy map at game start
-    _render_galaxy_map(engine.sector)
-    while True:
-        # CRITICAL: Enforce hard-stop contract - check for pending encounters/combat BEFORE rendering menu
-        # Per interaction_layer_contract.md and combat_resolution_contract.md, all encounters and combat
-        # must be resolved before allowing menu navigation or travel.
-        if engine.has_pending_encounter():
-            _resolve_pending_encounter(engine)
-            # After resolving encounter, continue loop (don't render menu yet in case combat was initiated)
-            continue
-        
-        if engine.has_pending_combat():
-            _resolve_pending_combat(engine)
-            # After resolving combat, continue loop (don't render menu yet in case another encounter is pending)
-            continue
-        
-        # Check for pending loot decision (after combat ends)
-        pending_loot = engine.get_pending_loot()
-        if pending_loot:
-            _handle_pending_loot(engine, pending_loot)
-            # After resolving loot, continue loop (don't render menu yet in case another encounter is pending)
-            continue
-        
-        # Only render main menu if no pending encounters or combat
-        # Display destination context block
-        _print_destination_context(engine)
-        print("1) Player / Ship Info")
-        print("2) System Info")
-        print("3) Travel")
-        print("4) Destination Actions")
-        print("5) Locations")
-        print("6) Galaxy Summary")
-        print("7) Quit")
-        choice = input("Select: ").strip()
-        if choice == "1":
-            _show_player_info(engine)
-        elif choice == "2":
-            _show_system_info(engine)
-        elif choice == "3":
-            _travel_menu(engine)
-        elif choice == "4":
-            _destination_actions_menu(engine)
-        elif choice == "5":
-            _location_entry_menu(engine)
-        elif choice == "6":
-            _galaxy_summary(engine)
-        elif choice == "7":
-            print(json.dumps(engine.execute({"type": "quit"}), sort_keys=True))
-            break
-        else:
-            print("Invalid menu choice.")
+    
+    # Set global context for helper functions
+    global _playtest_context
+    _playtest_context = {
+        "playtest_logger": playtest_logger,
+        "verbose": args.verbose,
+    }
+    
+    # Clean player-facing output
+    print("\n" + "=" * 60)
+    print("EMOJISPACE")
+    print("=" * 60)
+    print(f"Seed: {seed}")
+    print("=" * 60 + "\n")
+    
+    # Suppress logger console output (structured logs go to file/Markdown only)
+    with _suppress_logger_console():
+        # Display galaxy map at game start
+        _render_galaxy_map(engine.sector)
+        while True:
+            # CRITICAL: Enforce hard-stop contract - check for pending encounters/combat BEFORE rendering menu
+            # Per interaction_layer_contract.md and combat_resolution_contract.md, all encounters and combat
+            # must be resolved before allowing menu navigation or travel.
+            if engine.has_pending_encounter():
+                _resolve_pending_encounter(engine)
+                # After resolving encounter, continue loop (don't render menu yet in case combat was initiated)
+                continue
+            
+            if engine.has_pending_combat():
+                _resolve_pending_combat(engine)
+                # After resolving combat, continue loop (don't render menu yet in case another encounter is pending)
+                continue
+            
+            # Check for pending loot decision (after combat ends)
+            pending_loot = engine.get_pending_loot()
+            if pending_loot:
+                _handle_pending_loot(engine, pending_loot)
+                # After resolving loot, continue loop (don't render menu yet in case another encounter is pending)
+                continue
+            
+            # Only render main menu if no pending encounters or combat
+            # Display destination context block
+            _print_destination_context(engine)
+            print("1) Player / Ship Info")
+            print("2) System Info")
+            print("3) Travel")
+            print("4) Destination Actions")
+            print("5) Locations")
+            print("6) Galaxy Summary")
+            print("7) Quit")
+            choice = input("Select: ").strip()
+            if choice == "1":
+                _show_player_info(engine)
+            elif choice == "2":
+                _show_system_info(engine)
+            elif choice == "3":
+                _travel_menu(engine)
+            elif choice == "4":
+                _destination_actions_menu(engine)
+            elif choice == "5":
+                _location_entry_menu(engine)
+            elif choice == "6":
+                _galaxy_summary(engine)
+            elif choice == "7":
+                result = engine.execute({"type": "quit"})
+                _format_result(result, "quit")
+                break
+            else:
+                print("Invalid menu choice.")
+    
+    # Write Markdown playtest log at end of session
+    try:
+        playtest_logger.write_markdown(
+            markdown_path,
+            seed=seed,
+            version=playtest_logger.version,
+            log_file_path=Path(log_path),
+        )
+    except Exception as e:
+        print(f"\nWarning: Failed to write playtest log: {e}")
 
 
 def _reachable_systems(*, engine: GameEngine, current_system, fuel_limit: int) -> list[dict[str, object]]:
@@ -2589,6 +3356,24 @@ def _render_galaxy_map(sector, width: int = 80, height: int = 30) -> None:
     print()
 
 
+def _emoji_glyph_for_id(emoji_id: str) -> str:
+    """Resolve emoji_id to glyph via data/emoji.json. Returns empty string if not found."""
+    if not emoji_id:
+        return ""
+    try:
+        path = _src_dir.parent / "data" / "emoji.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    if not isinstance(data, list):
+        return ""
+    for entry in data:
+        if isinstance(entry, dict) and entry.get("emoji_id") == emoji_id:
+            glyph = entry.get("glyph", "")
+            return str(glyph) if glyph else ""
+    return ""
+
+
 def _print_current_system_destinations(engine: GameEngine) -> None:
     system = engine.sector.get_system(engine.player_state.current_system_id)
     if system is None:
@@ -2596,7 +3381,10 @@ def _print_current_system_destinations(engine: GameEngine) -> None:
     destinations = sorted(system.destinations, key=lambda destination: destination.destination_id)
     print("Intra-system destinations:")
     for index, destination in enumerate(destinations, start=1):
-        print(f"  {index}) {destination.destination_id} {destination.display_name} type={destination.destination_type}")
+        emoji_id = getattr(destination, "emoji_id", "") or ""
+        glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
+        prefix = f"{glyph} " if glyph else ""
+        print(f"  {index}) {prefix}{destination.destination_id} {destination.display_name} ({destination.destination_type})")
 
 
 def _configure_cli_test_fuel(engine: GameEngine) -> None:
@@ -2638,7 +3426,10 @@ def _print_destination_context(engine: GameEngine) -> None:
     system_visited = ctx.get('system_government', '') != '' or ctx.get('primary_economy') is not None
     
     print("-" * 40)
-    print(f"Destination: {ctx.get('destination_name', 'Unknown')} ({ctx.get('destination_type', 'unknown')})")
+    emoji_id = ctx.get("emoji_id", "") or ""
+    glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
+    prefix = f"{glyph} " if glyph else ""
+    print(f"Destination: {prefix}{ctx.get('destination_name', 'Unknown')} ({ctx.get('destination_type', 'unknown')})")
     print(f"System: {ctx.get('system_name', 'Unknown')}", end="")
     
     system_government = ctx.get('system_government', '')
@@ -2721,15 +3512,39 @@ def _galaxy_summary(engine: GameEngine) -> None:
         for dest in destinations:
             secondary_str = ", ".join(dest.secondary_economy_ids) if dest.secondary_economy_ids else "-"
             primary_str = dest.primary_economy_id if dest.primary_economy_id else "None"
-            
-            print(f"    {dest.destination_id} - {dest.display_name}")
-            print(f"      Type: {dest.destination_type}")
+            emoji_id = getattr(dest, "emoji_id", "") or ""
+            glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
+            prefix = f"{glyph} " if glyph else ""
+            print(f"    {prefix}{dest.destination_id} - {dest.display_name} ({dest.destination_type})")
             print(f"      Population: {dest.population}")
             print(f"      Primary Economy: {primary_str}")
             print(f"      Secondary Economies: {secondary_str}")
         print()
     
     print("=" * 60 + "\n")
+
+
+def _print_exploration_result(engine: GameEngine, result: Dict[str, Any]) -> None:
+    """After Explore action: print SUCCESS/FAIL and exploration progress at this site."""
+    if not result.get("ok"):
+        return
+    events = result.get("events", [])
+    success = None
+    stage_after = None
+    for ev in events:
+        if isinstance(ev, dict) and ev.get("stage") == "exploration":
+            detail = ev.get("detail", {})
+            if isinstance(detail, dict):
+                success = detail.get("success")
+                stage_after = detail.get("stage_after")
+                break
+    if success is True:
+        print("Exploration result: SUCCESS")
+    elif success is False:
+        print("Exploration result: FAIL")
+    dest_id = result.get("player", {}).get("destination_id") or ""
+    progress = int(stage_after) if stage_after is not None else int(getattr(engine.player_state, "exploration_progress", {}).get(dest_id, 0))
+    print(f"Exploration progress at this site: {progress}")
 
 
 def _destination_actions_menu(engine: GameEngine) -> None:
@@ -2766,13 +3581,21 @@ def _destination_actions_menu(engine: GameEngine) -> None:
                 "action_kwargs": kwargs,
             }
         )
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
+        if action["action_id"] == "explore":
+            _print_exploration_result(engine, result)
+        if action["action_id"] in ("explore", "mine") and result.get("ok"):
+            print("Local activity may attract attention...")
+            if result.get("hard_stop") and result.get("hard_stop_reason") == "pending_encounter_decision":
+                _resolve_pending_encounter(engine)
+            else:
+                print("No ships respond to your activity.")
 
 
 def _print_market_profile(engine: GameEngine) -> None:
     result = engine.execute({"type": "get_market_profile"})
     if result.get("ok") is False:
-        print(json.dumps(result, sort_keys=True))
+        _format_result(result, "location_action")
         return
     events = result.get("events", [])
     detail = {}
@@ -2823,7 +3646,8 @@ def _market_buy_menu(engine: GameEngine) -> None:
         print("Invalid buy index.")
         return
     sku_id = rows[selected - 1]["sku_id"]
-    print(json.dumps(engine.execute({"type": "market_buy", "sku_id": sku_id, "quantity": quantity}), sort_keys=True))
+    result = engine.execute({"type": "market_buy", "sku_id": sku_id, "quantity": quantity})
+    _format_result(result, "market_buy")
 
 
 def _market_sell_menu(engine: GameEngine) -> None:
@@ -2849,7 +3673,8 @@ def _market_sell_menu(engine: GameEngine) -> None:
         print("Invalid sell index.")
         return
     sku_id = rows[selected - 1]["sku_id"]
-    print(json.dumps(engine.execute({"type": "market_sell", "sku_id": sku_id, "quantity": quantity}), sort_keys=True))
+    result = engine.execute({"type": "market_sell", "sku_id": sku_id, "quantity": quantity})
+    _format_result(result, "market_sell")
 
 
 def _shipdock_menu(engine: GameEngine) -> None:
@@ -2931,7 +3756,7 @@ def _shipdock_buy_hull(engine: GameEngine) -> None:
         "confirm": confirmed,
     }
     result = engine.execute(payload)
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _shipdock_buy_module(engine: GameEngine) -> None:
@@ -2975,7 +3800,7 @@ def _shipdock_buy_module(engine: GameEngine) -> None:
         "confirm": True,
     }
     result = engine.execute(payload)
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _shipdock_sell_hull(engine: GameEngine) -> None:
@@ -3021,7 +3846,7 @@ def _shipdock_sell_hull(engine: GameEngine) -> None:
         "confirm": confirmed,
     }
     result = engine.execute(payload)
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _shipdock_sell_module(engine: GameEngine) -> None:
@@ -3066,7 +3891,7 @@ def _shipdock_sell_module(engine: GameEngine) -> None:
         "confirm": True,
     }
     result = engine.execute(payload)
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _shipdock_repair_ship(engine: GameEngine) -> None:
@@ -3084,7 +3909,7 @@ def _shipdock_repair_ship(engine: GameEngine) -> None:
         "confirm": True,
     }
     result = engine.execute(payload)
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _print_market_sku_overlay(engine: GameEngine) -> None:
@@ -3206,7 +4031,7 @@ def _accept_mission_from_datanet(engine: GameEngine, profile: dict[str, object])
             "action_kwargs": kwargs,
         }
     )
-    print(json.dumps(result, sort_keys=True))
+    _format_result(result, "location_action")
 
 
 def _build_warehouse_profile(engine: GameEngine) -> dict[str, object]:

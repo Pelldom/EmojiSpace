@@ -30,6 +30,10 @@ from interaction_layer import (
     destination_has_datanet_service,
     dispatch_player_action,
 )
+try:
+    from interaction_resolvers import destination_has_tag
+except ModuleNotFoundError:
+    from src.interaction_resolvers import destination_has_tag
 from law_enforcement import (
     CargoSnapshot,
     PlayerOption,
@@ -42,7 +46,9 @@ from mission_factory import create_mission, create_delivery_mission, CREATOR_BY_
 from mission_generator import select_weighted_mission_type
 from mission_registry import mission_type_candidates_for_source
 from mission_manager import MissionManager, evaluate_active_missions
-from mission_entity import MissionState
+from mission_service import on_arrival, on_cargo_change, on_combat_resolved
+from reward_service import preview as reward_preview
+from mission_entity import MissionState, MissionOutcome
 from mission_core import MissionCore
 from npc_ship_generator import generate_npc_ship
 from npc_entity import NPCEntity, NPCPersistenceTier
@@ -53,7 +59,14 @@ from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
-from ship_assembler import assemble_ship, compute_hull_max_from_ship_state, get_slot_distribution
+from ship_assembler import (
+    assemble_ship,
+    compute_hull_max_from_ship_state,
+    get_slot_distribution,
+    ship_has_capability,
+    CAPABILITY_UNLOCK_PROBE,
+    CAPABILITY_UNLOCK_MINING,
+)
 from ship_entity import ShipEntity
 from time_engine import (
     TimeEngine,
@@ -63,7 +76,7 @@ from time_engine import (
     advance_time,
     get_current_turn,
 )
-from world_generator import Destination, System, WorldGenerator
+from world_generator import Destination, System, WorldGenerator, normalize_destination_type
 from logger import Logger
 
 
@@ -759,14 +772,13 @@ class GameEngine:
         active_ship.current_destination_id = target_destination_id
         active_ship.destination_id = target_destination_id
         
-        # Evaluate active missions after player state is updated (for delivery missions)
-        # This runs even if encounters are pending, so delivery missions can complete on arrival
-        evaluate_active_missions(
+        # Evaluate active missions after arrival (event-driven)
+        on_arrival(
             mission_manager=self._mission_manager,
             player_state=self.player_state,
-            current_system_id=target_system_id,
-            current_destination_id=target_destination_id,
-            event_context={"event": "travel_arrival", "target_system_id": target_system_id, "target_destination_id": target_destination_id},
+            new_system_id=target_system_id,
+            new_destination_id=target_destination_id,
+            new_location_id=target_destination_id,
             world_seed=str(self.world_seed),
             logger=self._logger if self._logging_enabled else None,
             turn=context.turn_before,
@@ -1077,6 +1089,17 @@ class GameEngine:
                 "quantity": quantity,
             },
         )
+        
+        # Evaluate missions for cargo-based objectives if transfer affects active ship
+        if target_ship_id == "active" or target_ship_id == self.player_state.active_ship_id:
+            on_cargo_change(
+                mission_manager=self._mission_manager,
+                player_state=self.player_state,
+                cargo_delta={sku: quantity},
+                world_seed=str(self.world_seed),
+                logger=self._logger if self._logging_enabled else None,
+                turn=context.turn_before,
+            )
 
     def _execute_abandon_mission(self, context: EngineContext, payload: dict[str, Any]) -> None:
         """Abandon an active mission."""
@@ -1159,7 +1182,7 @@ class GameEngine:
             )
             return
         
-        if mission.outcome != "completed":
+        if mission.outcome != MissionOutcome.COMPLETED:
             context.claim_mission_error = f"Mission {mission_id} was not completed (outcome: {mission.outcome})."
             self._event(
                 context,
@@ -1645,64 +1668,49 @@ class GameEngine:
         return random.Random(seed_value)
 
     def _select_mission_tier(self, source_type: str, rng: random.Random) -> int:
-        """Select mission tier deterministically based on source_type (Phase 7.11.x).
-
-        Tier rules:
-        - BAR:
-            roll = rng.randint(0, 99)
-            if roll < 85: tier = rng.randint(1, 3), rare_flag=False
-            else:        tier = rng.randint(4, 5), rare_flag=True
-        - ADMINISTRATION:
-            roll = rng.randint(0, 99)
-            if roll < 85: tier = rng.randint(2, 4), rare_flag=False
-            else:        tier = rng.choice([1, 5]), rare_flag=True
-        - DATANET:
-            tier = rng.randint(4, 5), rare_flag=False  (never below 4)
+        """Select mission tier deterministically using weighted selection per source_type.
+        
+        Weights:
+        - bar: T1=55, T2=30, T3=12, T4=2, T5=1
+        - administration: T1=35, T2=35, T3=20, T4=8, T5=2
+        - datanet: T4=80, T5=20 (never T1-T3)
         """
         source_type = str(source_type or "").strip()
-        rare_flag = False
-        tier_roll: int | None = None
-
+        
+        # Define weighted tier distributions per source_type
         if source_type == "bar":
-            tier_roll = rng.randint(0, 99)
-            if tier_roll < 85:
-                tier = rng.randint(1, 3)
-                rare_flag = False
-            else:
-                tier = rng.randint(4, 5)
-                rare_flag = True
+            weights = [(1, 55), (2, 30), (3, 12), (4, 2), (5, 1)]
         elif source_type == "administration":
-            tier_roll = rng.randint(0, 99)
-            if tier_roll < 85:
-                tier = rng.randint(2, 4)
-                rare_flag = False
-            else:
-                tier = rng.choice([1, 5])
-                rare_flag = True
+            weights = [(1, 35), (2, 35), (3, 20), (4, 8), (5, 2)]
         elif source_type == "datanet":
-            # Datanet missions are always high tier (4–5)
-            tier = rng.randint(4, 5)
-            rare_flag = False
-            tier_roll = None
+            weights = [(4, 80), (5, 20)]
         else:
-            # Should not occur given ALLOWED_LOCATION_TYPES, but keep deterministic default
-            tier = 1
-            rare_flag = False
-            tier_roll = None
-
+            # Default fallback: mostly T1-T2
+            weights = [(1, 70), (2, 25), (3, 5)]
+        
+        # Calculate cumulative weights and pick tier
+        total_weight = sum(weight for _, weight in weights)
+        roll = rng.randint(1, total_weight)
+        cumulative = 0
+        selected_tier = weights[0][0]  # Default to first tier
+        
+        for tier, weight in weights:
+            cumulative += weight
+            if roll <= cumulative:
+                selected_tier = tier
+                break
+        
         # Structured logging for tier selection
         if self._logging_enabled and self._logger:
             self._logger.log(
                 turn=int(get_current_turn()),
-                action="mission_generation:tier_roll",
+                action="mission_generation:tier",
                 state_change=(
-                    f"source_type={source_type} "
-                    f"tier_roll={tier_roll if tier_roll is not None else 'NA'} "
-                    f"selected_tier={tier} rare_flag={rare_flag}"
+                    f"source_type={source_type} selected_tier={selected_tier}"
                 ),
             )
 
-        return tier
+        return selected_tier
 
     def _ensure_location_mission_offers(self, *, location_id: str) -> list[str]:
         """Ensure mission offers exist for a location.
@@ -1800,56 +1808,83 @@ class GameEngine:
                 ),
             )
         
+        # Phase 7.11.4: Build progression context from completed missions
+        progression_context = self._build_progression_context()
+        
         # Generate new mission offers
         offered_ids: list[str] = []
         for index in range(mission_count):
-            # Phase 7.11.2: Mission type selection is data-driven via mission_registry
-            # and filtered to implemented creators only.
-            candidates = mission_type_candidates_for_source(source_type=source_type)
+            # Phase 7.11.4: Mission type selection includes alien missions
+            candidates = mission_type_candidates_for_source(
+                source_type=source_type,
+                progression_context=progression_context,
+            )
 
-            # Filter to mission types that have implemented creators
-            implemented_candidates: list[dict[str, Any]] = []
+            # Separate standard missions from alien missions
+            standard_candidates: list[dict[str, Any]] = []
+            alien_candidates: list[dict[str, Any]] = []
+            
             for row in candidates:
-                mt_id = str(row.get("mission_type_id", "") or "")
-                if mt_id in CREATOR_BY_TYPE:
-                    implemented_candidates.append(row)
+                if row.get("is_alien_mission"):
+                    alien_candidates.append(row)
                 else:
-                    # Deterministic log for registry entries without creators
-                    if self._logging_enabled and self._logger:
-                        self._logger.log(
-                            turn=int(get_current_turn()),
-                            action="mission_generation:skipped_unimplemented_type",
-                            state_change=(
-                                f"location_id={location_id} source_type={source_type} "
-                                f"mission_type_id={mt_id}"
-                            ),
-                        )
+                    mt_id = str(row.get("mission_type_id", "") or "")
+                    if mt_id in CREATOR_BY_TYPE:
+                        standard_candidates.append(row)
+                    else:
+                        # Deterministic log for registry entries without creators
+                        if self._logging_enabled and self._logger:
+                            self._logger.log(
+                                turn=int(get_current_turn()),
+                                action="mission_generation:skipped_unimplemented_type",
+                                state_change=(
+                                    f"location_id={location_id} source_type={source_type} "
+                                    f"mission_type_id={mt_id}"
+                                ),
+                            )
+            
+            # Combine candidates (alien missions have lower weight, so they're rarer)
+            all_candidates = standard_candidates + alien_candidates
 
-            if not implemented_candidates:
+            if not all_candidates:
                 raise ValueError(
                     f"No implemented mission types available for source_type='{source_type}' "
                     f"at location '{location_id}'."
                 )
 
             mission_type, _ = select_weighted_mission_type(
-                eligible_missions=implemented_candidates,
+                eligible_missions=all_candidates,
                 rng=rng,
                 world_state_engine=self._world_state_engine(),
                 system_id=self.player_state.current_system_id,
+                progression_context=progression_context,
             )
 
             mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
-
-            if mission_type_id not in CREATOR_BY_TYPE:
-                raise ValueError(
-                    f"Selected mission_type_id '{mission_type_id}' has no creator in CREATOR_BY_TYPE."
-                )
-            # Deterministic mission_id seed (no turn dependency for persistence)
             
-            # Use structured delivery mission creation for delivery missions
-            if mission_type_id == "delivery":
+            # Phase 7.11.4: Handle alien missions specially
+            selected_candidate = None
+            for candidate in all_candidates:
+                if candidate.get("mission_type_id") == mission_type_id:
+                    selected_candidate = candidate
+                    break
+            
+            if selected_candidate and selected_candidate.get("is_alien_mission"):
+                # Create alien mission from definition
+                alien_def = selected_candidate.get("alien_definition", {})
+                mission = self._create_alien_mission_from_definition(
+                    alien_def=alien_def,
+                    source_type=source_type,
+                    source_id=f"{location_id}:{index}",
+                    location_id=location_id,
+                    rng=rng,
+                )
+            elif mission_type_id in CREATOR_BY_TYPE:
+                # Standard mission creation
                 mission_tier = self._select_mission_tier(source_type=source_type, rng=rng)
-                mission = create_delivery_mission(
+                creator_func = CREATOR_BY_TYPE[mission_type_id]
+                
+                mission = creator_func(
                     source_type=source_type,
                     source_id=f"{location_id}:{index}",
                     origin_system_id=self.player_state.current_system_id,
@@ -1863,12 +1898,8 @@ class GameEngine:
                     turn=int(get_current_turn()),
                 )
             else:
-                # For Phase 7.11.2, only delivery missions are implemented and
-                # should be selectable. If we ever reach this branch, it
-                # indicates a registry/creator mismatch.
                 raise ValueError(
-                    f"Unsupported mission_type_id '{mission_type_id}' for generation. "
-                    f"Only structured types with creators are allowed."
+                    f"Selected mission_type_id '{mission_type_id}' has no creator or alien definition."
                 )
             # Set location_id on mission for location matching
             mission.location_id = location_id
@@ -1879,6 +1910,111 @@ class GameEngine:
         # Store mission_ids in player_state.mission_offers_by_location[location_id]
         self.player_state.mission_offers_by_location[location_id] = list(offered_ids)
         return offered_ids
+
+    def _build_progression_context(self) -> dict[str, Any]:
+        """Build progression context from completed missions with tags (Phase 7.11.4)."""
+        completed_by_tag: dict[str, int] = {}
+        
+        # Count completed missions by tag
+        for mission in self._mission_manager.missions.values():
+            if mission.mission_state != MissionState.RESOLVED:
+                continue
+            if mission.outcome != MissionOutcome.COMPLETED:
+                continue
+            
+            # Count tags on completed missions
+            for tag in mission.tags:
+                completed_by_tag[tag] = completed_by_tag.get(tag, 0) + 1
+        
+        return {
+            "completed_missions_by_tag": completed_by_tag,
+        }
+
+    def _create_alien_mission_from_definition(
+        self,
+        *,
+        alien_def: dict[str, Any],
+        source_type: str,
+        source_id: str,
+        location_id: str,
+        rng: random.Random,
+    ) -> MissionEntity:
+        """Create an alien mission from mission_definitions.json entry (Phase 7.11.4)."""
+        from mission_factory import create_delivery_mission, create_retrieval_mission, _select_reward_profile_id
+        
+        mission_id = str(alien_def.get("mission_id", "") or "")
+        mission_type = str(alien_def.get("mission_type", "delivery") or "delivery")
+        
+        # Handle tier selection
+        tier = int(alien_def.get("tier", 2) or 2)
+        if "tier_min" in alien_def and "tier_max" in alien_def:
+            tier_min = int(alien_def.get("tier_min", 2) or 2)
+            tier_max = int(alien_def.get("tier_max", 4) or 4)
+            tier = rng.randint(tier_min, tier_max)
+        
+        # Use specified reward_profile_id if present, otherwise select from distributions
+        reward_profile_id = alien_def.get("reward_profile_id")
+        if not reward_profile_id:
+            # Map mission_type to category for reward selection
+            category = "delivery" if mission_type in ("delivery", "delivery_or_retrieval") else mission_type
+            reward_profile_id = _select_reward_profile_id(
+                mission_type_id=category,
+                tier=tier,
+                source_type=source_type,
+                rng=rng,
+            )
+        
+        # Create mission based on type
+        if mission_type == "delivery" or mission_type == "delivery_or_retrieval":
+            mission = create_delivery_mission(
+                source_type=source_type,
+                source_id=source_id,
+                origin_system_id=self.player_state.current_system_id,
+                origin_destination_id=self.player_state.current_destination_id,
+                origin_location_id=location_id,
+                mission_tier=tier,
+                galaxy=self.sector,
+                catalog=self.catalog,
+                rng=rng,
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+        elif mission_type == "retrieval":
+            mission = create_retrieval_mission(
+                source_type=source_type,
+                source_id=source_id,
+                origin_system_id=self.player_state.current_system_id,
+                origin_destination_id=self.player_state.current_destination_id,
+                origin_location_id=location_id,
+                mission_tier=tier,
+                galaxy=self.sector,
+                catalog=self.catalog,
+                rng=rng,
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+        else:
+            # Fallback to delivery
+            mission = create_delivery_mission(
+                source_type=source_type,
+                source_id=source_id,
+                origin_system_id=self.player_state.current_system_id,
+                origin_destination_id=self.player_state.current_destination_id,
+                origin_location_id=location_id,
+                mission_tier=tier,
+                galaxy=self.sector,
+                catalog=self.catalog,
+                rng=rng,
+                logger=self._logger if self._logging_enabled else None,
+                turn=int(get_current_turn()),
+            )
+        
+        # Override mission_id and add alien-specific fields
+        mission.mission_id = mission_id
+        mission.tags = list(alien_def.get("tags", []))
+        mission.reward_profile_id = reward_profile_id
+        
+        return mission
 
     def _mission_rows_for_location(self, *, location_id: str, location_type: str | None = None) -> list[dict[str, Any]]:
         mission_ids = self._ensure_location_mission_offers(location_id=location_id)
@@ -2501,6 +2637,12 @@ class GameEngine:
         if action_id == "refuel":
             self._execute_destination_refuel(context, kwargs)
             return
+        if action_id == "explore":
+            self._execute_explore(context)
+            return
+        if action_id == "mine":
+            self._execute_mine(context)
+            return
         if action_id == "customs_inspection":
             allow_repeat = bool(kwargs.get("allow_repeat", False))
             customs = self._run_customs_with_guard(
@@ -2520,6 +2662,193 @@ class GameEngine:
             )
             return
         raise ValueError(f"unsupported_destination_action:{action_id}")
+
+    def _execute_explore(self, context: EngineContext) -> None:
+        """Phase 7.12: Explore at exploration_site. 1 day, 1 fuel; then one local_activity encounter roll."""
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for explore.")
+        dest_type = normalize_destination_type(destination.destination_type, getattr(self, "logger", None))
+        if dest_type != "exploration_site":
+            raise ValueError("explore_only_at_exploration_site")
+        if destination_has_tag(destination, "destroyed"):
+            raise ValueError("destination_destroyed")
+        active_ship = self._active_ship()
+        if not ship_has_capability(active_ship, CAPABILITY_UNLOCK_PROBE):
+            raise ValueError("ship_needs_probe_capability")
+        if int(active_ship.current_fuel) < 1:
+            raise ValueError("insufficient_fuel")
+        destination_id = destination.destination_id
+        # Advance time 1 day, then consume 1 fuel
+        self._advance_time(days=1, reason="explore")
+        active_ship.current_fuel = max(0, int(active_ship.current_fuel) - 1)
+        from exploration_resolver import resolve_exploration
+        exp_result, new_attempts, new_progress = resolve_exploration(
+            world_seed=str(self.world_seed),
+            destination_id=destination_id,
+            player_id=str(self.player_state.player_id),
+            exploration_attempts=getattr(self.player_state, "exploration_attempts", {}),
+            exploration_progress=getattr(self.player_state, "exploration_progress", {}),
+        )
+        self.player_state.exploration_attempts = new_attempts
+        self.player_state.exploration_progress = new_progress
+        self._event(
+            context,
+            stage="exploration",
+            subsystem="exploration_resolver",
+            detail={
+                "destination_id": destination_id,
+                "action_type": "explore",
+                "success": exp_result.success,
+                "stage_before": exp_result.stage_before,
+                "stage_after": exp_result.stage_after,
+                "rng_roll": exp_result.rng_roll,
+                "time_advance": 1,
+                "fuel_consumed": 1,
+            },
+        )
+        self._trigger_local_activity_encounter(context, destination_id=destination_id)
+
+    def _execute_mine(self, context: EngineContext) -> None:
+        """Phase 7.12: Mine at resource_field. 1 day, 1 fuel; then one local_activity encounter roll."""
+        destination = self._current_destination()
+        if destination is None:
+            raise ValueError("No current destination for mine.")
+        destination_id = destination.destination_id
+        mining_attempts_increment_on_failure = bool(self.config.get("mining_attempts_increment_on_failure", True))
+
+        def _mine_early_failure_increment(reason: str) -> None:
+            if mining_attempts_increment_on_failure:
+                attempts = dict(getattr(self.player_state, "mining_attempts", {}))
+                attempts[destination_id] = int(attempts.get(destination_id, 0)) + 1
+                self.player_state.mining_attempts = attempts
+            if self._logging_enabled and self._logger is not None:
+                attempt_after = int(getattr(self.player_state, "mining_attempts", {}).get(destination_id, 0))
+                attempt_before = attempt_after - (1 if mining_attempts_increment_on_failure else 0)
+                self._logger.log(
+                    turn=int(get_current_turn()),
+                    action="mining_attempt",
+                    state_change=f"destination_id={destination_id} attempt_index_before={attempt_before} attempt_index_after={attempt_after} failure_reason={reason} setting={mining_attempts_increment_on_failure}",
+                )
+
+        dest_type = normalize_destination_type(destination.destination_type, getattr(self, "logger", None))
+        if dest_type != "resource_field":
+            _mine_early_failure_increment("mine_only_at_resource_field")
+            raise ValueError("mine_only_at_resource_field")
+        if destination_has_tag(destination, "destroyed"):
+            _mine_early_failure_increment("destination_destroyed")
+            raise ValueError("destination_destroyed")
+        active_ship = self._active_ship()
+        if not ship_has_capability(active_ship, CAPABILITY_UNLOCK_MINING):
+            _mine_early_failure_increment("ship_needs_mining_capability")
+            raise ValueError("ship_needs_mining_capability")
+        if int(active_ship.current_fuel) < 1:
+            _mine_early_failure_increment("insufficient_fuel")
+            raise ValueError("insufficient_fuel")
+        # Advance time 1 day, then consume 1 fuel
+        self._advance_time(days=1, reason="mine")
+        active_ship.current_fuel = max(0, int(active_ship.current_fuel) - 1)
+        from combat_resolver import map_rcp_to_tr
+        hull_id = active_ship.model_id
+        module_instances = list(active_ship.persistent_state.get("module_instances", []))
+        assembled = assemble_ship(hull_id, module_instances, {"weapon": 0, "defense": 0, "engine": 0})
+        bands = assembled.get("bands", {}).get("pre_degradation", {})
+        rcp = (
+            int(bands.get("weapon", 0)) + int(bands.get("defense", 0))
+            + (int(bands.get("engine", 0)) // 2)
+            + (int(assembled.get("hull_max", 0)) // 4)
+        )
+        player_ship_TR_band = map_rcp_to_tr(rcp)
+        cargo = dict(self.player_state.cargo_by_ship.get(active_ship.ship_id, {}))
+        physical_capacity = int(active_ship.get_effective_physical_capacity()) if hasattr(active_ship, "get_effective_physical_capacity") else (int(active_ship.physical_cargo_capacity) if hasattr(active_ship, "physical_cargo_capacity") else 0)
+        attempt_index_before = int(getattr(self.player_state, "mining_attempts", {}).get(destination_id, 0))
+        from mining_resolver import resolve_mining
+        mining_result, new_attempts = resolve_mining(
+            world_seed=str(self.world_seed),
+            destination_id=destination_id,
+            player_id=str(self.player_state.player_id),
+            mining_attempts=getattr(self.player_state, "mining_attempts", {}),
+            player_ship_TR_band=player_ship_TR_band,
+            catalog=self.catalog,
+            current_cargo=cargo,
+            physical_cargo_capacity=physical_capacity,
+            increment_on_failure=mining_attempts_increment_on_failure,
+        )
+        self.player_state.mining_attempts = new_attempts
+        attempt_index_after = int(new_attempts.get(destination_id, 0))
+        failure_reason = mining_result.message if not mining_result.success else "success"
+        if self._logging_enabled and self._logger is not None:
+            self._logger.log(
+                turn=int(get_current_turn()),
+                action="mining_attempt",
+                state_change=f"destination_id={destination_id} attempt_index_before={attempt_index_before} attempt_index_after={attempt_index_after} failure_reason={failure_reason} setting={mining_attempts_increment_on_failure}",
+            )
+        if mining_result.success and mining_result.sku and mining_result.quantity > 0:
+            cargo[mining_result.sku] = cargo.get(mining_result.sku, 0) + mining_result.quantity
+            self.player_state.cargo_by_ship[active_ship.ship_id] = cargo
+        self._event(
+            context,
+            stage="mining",
+            subsystem="mining_resolver",
+            detail={
+                "destination_id": destination_id,
+                "action_type": "mine",
+                "sku": mining_result.sku,
+                "quantity": mining_result.quantity,
+                "attempt_number": mining_result.attempt_number,
+                "multiplier": mining_result.multiplier,
+                "success": mining_result.success,
+                "message": mining_result.message,
+                "time_advance": 1,
+                "fuel_consumed": 1,
+                "attempt_index_before": attempt_index_before,
+                "attempt_index_after": attempt_index_after,
+                "failure_reason": failure_reason,
+                "mining_attempts_increment_on_failure": mining_attempts_increment_on_failure,
+            },
+        )
+        self._trigger_local_activity_encounter(context, destination_id=destination_id)
+
+    def _trigger_local_activity_encounter(self, context: EngineContext, *, destination_id: str) -> None:
+        """Phase 7.12: One encounter roll with mode=local_activity; no chaining."""
+        system = self.sector.get_system(self.player_state.current_system_id)
+        if system is None:
+            return
+        turn = get_current_turn()
+        travel_id = f"local_activity_{destination_id}_{turn}"
+        active_situation_ids = self._active_situation_ids_for_current_system()
+        encounters = generate_travel_encounters(
+            world_seed=str(self.world_seed),
+            travel_id=travel_id,
+            population=int(system.population),
+            system_government_id=str(system.government_id),
+            active_situations=active_situation_ids,
+            travel_context={"mode": "local_activity"},
+            world_state_engine=self._world_state_engine(),
+            current_system_id=self.player_state.current_system_id,
+        )
+        self._event(
+            context,
+            stage="encounter_gen",
+            subsystem="encounter_generator",
+            detail={"travel_id": travel_id, "encounter_mode": "local_activity", "encounter_count": len(encounters)},
+        )
+        if not encounters:
+            return
+        encounters = sorted(encounters, key=lambda e: str(getattr(e, "encounter_id", "")))
+        self._pending_travel = {
+            "travel_id": travel_id,
+            "target_system_id": self.player_state.current_system_id,
+            "target_destination_id": self.player_state.current_destination_id,
+            "payload": {},
+            "original_encounter_count": len(encounters),
+            "encounter_cursor": 0,
+            "remaining_encounters": list(encounters),
+            "current_encounter": None,
+            "encounter_context": None,
+            "events_so_far": list(context.events),
+        }
+        self._resume_travel_encounters_if_any(context)
 
     def _execute_destination_refuel(self, context: EngineContext, kwargs: dict[str, Any]) -> None:
         destination = self._current_destination()
@@ -3039,6 +3368,16 @@ class GameEngine:
                 "cargo_after": int(holdings.get(sku_id, 0)),
             },
         )
+        
+        # Evaluate missions for cargo-based objectives (event-driven)
+        on_cargo_change(
+            mission_manager=self._mission_manager,
+            player_state=self.player_state,
+            cargo_delta={sku_id: quantity},
+            world_seed=str(self.world_seed),
+            logger=self._logger if self._logging_enabled else None,
+            turn=context.turn_before,
+        )
 
     def _execute_market_sell(self, context: EngineContext, payload: dict[str, Any]) -> None:
         self._require_market_location()
@@ -3085,6 +3424,16 @@ class GameEngine:
                 "credits_after": int(self.player_state.credits),
                 "cargo_after": int(holdings.get(sku_id, 0)),
             },
+        )
+        
+        # Evaluate missions for cargo-based objectives (event-driven)
+        on_cargo_change(
+            mission_manager=self._mission_manager,
+            player_state=self.player_state,
+            cargo_delta={sku_id: -quantity},
+            world_seed=str(self.world_seed),
+            logger=self._logger if self._logging_enabled else None,
+            turn=context.turn_before,
         )
 
     def _execute_get_player_profile(self, context: EngineContext) -> None:
@@ -4523,15 +4872,15 @@ class GameEngine:
                     encounter_id=pending["encounter_id"],
                 )
                 
-                # Evaluate active missions after combat (all mission types through centralized authority)
-                # Delivery missions are evaluated on travel arrival, not after combat
-                # Bounty missions can be evaluated here if needed, but all evaluation goes through evaluate_active_missions()
-                evaluate_active_missions(
+                # Evaluate active missions after combat (event-driven)
+                combat_result_dict = {
+                    "outcome": "victory" if combat_result.player_won else "defeat",
+                    "destroyed_npcs": getattr(combat_result, "destroyed_ship_ids", []),
+                }
+                on_combat_resolved(
                     mission_manager=self._mission_manager,
                     player_state=self.player_state,
-                    current_system_id=self.player_state.current_system_id,
-                    current_destination_id=self.player_state.current_destination_id,
-                    event_context={"event": "combat_complete"},
+                    combat_result=combat_result_dict,
                     world_seed=str(self.world_seed),
                     logger=self._logger if self._logging_enabled else None,
                     turn=context.turn_after,
@@ -5703,6 +6052,8 @@ class GameEngine:
             return {
                 "destination_name": "Unknown",
                 "destination_type": "unknown",
+                "destination_id": "",
+                "emoji_id": "",
                 "population": 0,
                 "system_id": self.player_state.current_system_id or "",
                 "system_name": "Unknown",
@@ -5713,10 +6064,14 @@ class GameEngine:
             }
         
         system = self.sector.get_system(self.player_state.current_system_id)
+        emoji_id = getattr(destination, "emoji_id", "") or ""
         if system is None:
+            dest_type = normalize_destination_type(destination.destination_type, getattr(self, "logger", None))
             return {
                 "destination_name": destination.display_name,
-                "destination_type": destination.destination_type,
+                "destination_type": dest_type,
+                "destination_id": destination.destination_id,
+                "emoji_id": emoji_id,
                 "population": int(destination.population),
                 "system_id": "",
                 "system_name": "Unknown",
@@ -5728,10 +6083,13 @@ class GameEngine:
         
         system_visited = system.system_id in self.player_state.visited_system_ids
         
-        # Base context (always available)
+        # Base context (always available); normalize legacy destination_type for save/load
+        dest_type = normalize_destination_type(destination.destination_type, getattr(self, "logger", None))
         context: Dict[str, Any] = {
             "destination_name": destination.display_name,
-            "destination_type": destination.destination_type,
+            "destination_type": dest_type,
+            "destination_id": destination.destination_id,
+            "emoji_id": emoji_id,
             "population": int(destination.population),
             "system_id": system.system_id,
             "system_name": system.name,
@@ -5820,22 +6178,14 @@ class GameEngine:
             payout_policy = getattr(mission, "payout_policy", "auto")
             collection_format = "Auto" if payout_policy == "auto" else "Claim"
             
-            # Calculate reward preview if ungranted (Phase 7.11.2b)
-            reward_summary = []
-            if mission.reward_status == "ungranted":
-                preview = self._mission_manager.calculate_reward_preview(mission, world_seed=str(self.world_seed))
-                if preview and "credits" in preview:
-                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
-                elif preview and "goods" in preview:
-                    goods_info = preview["goods"]
-                    reward_summary = [{"field": "goods", "sku_id": goods_info.get("sku_id"), "quantity": goods_info.get("quantity", 0)}]
-                elif preview and "module" in preview:
-                    module_info = preview["module"]
-                    reward_summary = [{"field": "module", "module_id": module_info.get("module_id")}]
-                elif preview and "hull_voucher" in preview:
-                    hull_info = preview["hull_voucher"]
-                    reward_summary = [{"field": "hull_voucher", "hull_id": hull_info.get("hull_id")}]
-            # If already granted, reward_summary remains empty (not shown in active missions)
+            # Calculate reward preview using RewardBundle (Commit 4)
+            reward_summary_lines = []
+            if mission.reward_status == "ungranted" and mission.reward_profile_id:
+                system_markets = self._system_market_payloads(
+                    self.sector.get_system(self.player_state.current_system_id)
+                ) if hasattr(self, "sector") else []
+                bundle = reward_preview(mission, system_markets=system_markets, world_seed=str(self.world_seed))
+                reward_summary_lines = bundle.to_reward_summary_lines()
             
             rows.append(
                 {
@@ -5851,7 +6201,7 @@ class GameEngine:
                     "collection_format": collection_format,
                     "status": "active",
                     "days_remaining": None,
-                    "reward_summary": reward_summary,  # Phase 7.11.2b - Use preview calculation
+                    "reward_summary_lines": reward_summary_lines,  # Commit 4 - Unified reward display
                 }
             )
         return rows
@@ -5951,6 +6301,9 @@ class GameEngine:
         destination = self._current_destination()
         if destination is None:
             return []
+        dest_type = normalize_destination_type(destination.destination_type, getattr(self, "logger", None))
+        if destination_has_tag(destination, "destroyed"):
+            dest_type = dest_type  # no explore/mine at destroyed
         actions = [
             LocationActionModel(
                 action_id="customs_inspection",
@@ -5967,11 +6320,18 @@ class GameEngine:
                     parameters=["requested_units"],
                 )
             )
+        if not destination_has_tag(destination, "destroyed"):
+            ship = self._active_ship()
+            if ship and dest_type == "exploration_site" and ship_has_capability(ship, CAPABILITY_UNLOCK_PROBE):
+                actions.append(self._location_action_model("explore"))
+            if ship and dest_type == "resource_field" and ship_has_capability(ship, CAPABILITY_UNLOCK_MINING):
+                actions.append(self._location_action_model("mine"))
         return sorted(actions, key=lambda entry: entry.action_id)
 
     def _allowed_action_ids_for_location_type(self, location_type: str) -> set[str]:
         if location_type == "datanet":
-            return set()
+            # Phase 7.11.4: Add mission_list support for datanet
+            return {"mission_list", "mission_accept"}
         if location_type == "shipdock":
             return {"buy_hull", "sell_hull", "buy_module", "sell_module", "repair_ship"}
         if location_type == "market":
@@ -6116,6 +6476,20 @@ class GameEngine:
                 action_id="admin_mission_board",
                 display_name="View Mission Board",
                 description="Review officially posted contracts.",
+            ),
+            "explore": LocationActionModel(
+                action_id="explore",
+                display_name="Explore",
+                description="Explore this site. Consumes 1 day, 1 fuel.",
+                time_cost_days=1,
+                fuel_cost=1,
+            ),
+            "mine": LocationActionModel(
+                action_id="mine",
+                display_name="Mine",
+                description="Mine resources. Consumes 1 day, 1 fuel.",
+                time_cost_days=1,
+                fuel_cost=1,
             ),
         }
         return catalog[action_id]

@@ -210,6 +210,13 @@ This is documentation only.
 - Top info bar in UI: always show credits (and later fuel/heat/reputation).
 - Warehouse slogan: "Can't sell it? Store it!"
 
+## Game Setup Settings
+- **mining_attempts_increment_on_failure** (bool, default true)
+  - Purpose: Control whether failed mining attempts (e.g. insufficient cargo, no harvestable goods) increment `mining_attempts[destination_id]` and thus degrade future yields.
+  - When true: failed attempts count (current gameplay).
+  - When false: only successful or no-yield (diminishing floor) attempts count; allows test mode where repeated capacity failures do not degrade the site.
+  - Notes: Preserves normal gameplay by default; testing or tuning can disable.
+
 ## Bankruptcy Grace Setting
 - Add configurable bankruptcy grace period setting.
 - Range: 0 (hard mode) to 3 (easy mode).
@@ -248,9 +255,9 @@ This is documentation only.
 - System spacing targets 2-10 LY nearest-neighbor distance
 - Deterministic starlane graph construction (MST + k-NN) replaces linear chain
 - Curated name lists in data/names.json: systems (200+), planets (400+), stations (400+)
-- Destination typing: planets (2-4 per system), stations (1-2 per system), explorable_stub (0-2), mining_stub (0-2)
+- Destination typing: planets (2-4 per system), stations (1-2 per system), exploration_site (0-2), resource_field (0-2)
 - Planets and stations use curated names from data/names.json
-- Explorable and mining destinations are stubs (no mechanics yet)
+- Exploration and resource destinations have dedicated mechanics (Phase 7.12)
 - CLI displays destination_type in destination listings
 - ASCII grid map display in CLI for galaxy visualization
 - All changes preserve determinism from world_seed
@@ -265,15 +272,16 @@ This is documentation only.
 
 ## Phase 7.9 - Explorable Destinations System (Future)
 - Feature: Explorable destinations (lost ships, abandoned stations, archaeology sites, anomalies)
-- Current: Stub destinations (explorable_stub type) generated deterministically (0-2 per system)
+- Current: Exploration sites (exploration_site type) generated deterministically (0-2 per system)
 - Future: Add exploration mechanics, discovery rewards, narrative content
 - Design notes: Explorable destinations should provide unique interactions, rewards, or story content. May require new interaction types, reward systems, or narrative generation.
 
 ## Phase 7.9 - Mining Destinations System (Future)
 - Feature: Mining destinations (asteroid belts, planetary rings, comet clusters, gas pockets)
-- Current: Stub destinations (mining_stub type) generated deterministically (0-2 per system)
+- Current: Resource fields (resource_field type) generated deterministically (0-2 per system)
 - Future: Add mining mechanics, resource extraction, commodity generation
 - Design notes: Mining destinations should provide resource gathering opportunities. May require new interaction types, resource systems, or commodity generation mechanics.
+- Future infrastructure (non-binding): Refined metals (e.g. METAL category) may become manufacturable from ores rather than directly mined; not implemented in current phase.
 
 ## Phase 7.9 - Planet vs Station Differentiated Behaviors (Future)
 - Feature: Distinct behaviors for planets vs stations beyond naming
@@ -477,3 +485,32 @@ All mutating actions:
 - No direct state mutation in UI layer
 - All validation occurs in engine layer
 - Structured logging required for all actions
+
+## Mission System Improvements
+
+### Auto-Collection Feedback (High Priority UX)
+
+When auto-payout missions complete (payout_policy="auto"):
+
+- The UI must explicitly notify the player.
+- Currently rewards are granted silently in the background.
+
+Required:
+- Display a clear notification when an auto mission completes.
+- Include:
+  - Mission type
+  - Tier
+  - Reward summary (formatted using canonical reward formatter)
+
+Example:
+
+MISSION COMPLETED  
+delivery (Tier 3)  
++1000 credits
+
+Design options (TBD):
+- Modal popup after travel resolution
+- Alert banner in destination screen
+- Logged event visible in Player/Missions panel
+
+This is a UX correction, not a mission logic change.

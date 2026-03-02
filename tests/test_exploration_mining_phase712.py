@@ -150,3 +150,48 @@ def test_no_stub_destination_types_in_generated_world() -> None:
             assert dest.destination_type not in stub_types, (
                 f"Generated destination must not have type {dest.destination_type}"
             )
+
+
+def test_mining_attempts_increment_on_failure_false_cargo_capacity() -> None:
+    """When mining_attempts_increment_on_failure is False, cargo capacity failure does not increment attempts."""
+    catalog = load_data_catalog()
+    dest_id = "dest_cap_fail"
+    player_id = "p1"
+    mining_attempts = {dest_id: 0}  # first attempt would get multiplier 1.0, yield > 0
+    # Zero capacity so we get insufficient_cargo_capacity
+    result, new_attempts = resolve_mining(
+        world_seed=1,
+        destination_id=dest_id,
+        player_id=player_id,
+        mining_attempts=mining_attempts,
+        player_ship_TR_band=10,
+        catalog=catalog,
+        current_cargo={},
+        physical_cargo_capacity=0,
+        increment_on_failure=False,
+    )
+    assert result.success is False
+    assert result.message == "insufficient_cargo_capacity"
+    assert new_attempts[dest_id] == 0, "attempts must not increment when increment_on_failure=False and capacity fail"
+
+
+def test_mining_attempts_increment_on_failure_true_cargo_capacity() -> None:
+    """When mining_attempts_increment_on_failure is True, cargo capacity failure increments attempts."""
+    catalog = load_data_catalog()
+    dest_id = "dest_cap_fail_inc"
+    player_id = "p1"
+    mining_attempts = {dest_id: 0}
+    result, new_attempts = resolve_mining(
+        world_seed=1,
+        destination_id=dest_id,
+        player_id=player_id,
+        mining_attempts=mining_attempts,
+        player_ship_TR_band=10,
+        catalog=catalog,
+        current_cargo={},
+        physical_cargo_capacity=0,
+        increment_on_failure=True,
+    )
+    assert result.success is False
+    assert result.message == "insufficient_cargo_capacity"
+    assert new_attempts[dest_id] == 1, "attempts must increment when increment_on_failure=True and capacity fail"

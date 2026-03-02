@@ -65,16 +65,20 @@ def resolve_mining(
     catalog: Any,
     current_cargo: dict[str, int],
     physical_cargo_capacity: int,
+    increment_on_failure: bool = True,
 ) -> tuple[MiningResult, dict[str, int]]:
     """
     Consumes 1 day, 1 fuel (caller must apply).
-    Increments mining_attempts[destination_id].
+    Increments mining_attempts[destination_id] when: yield produced, or no_yield (diminishing floor),
+    or on other failure if increment_on_failure is True.
     Diminishing returns by attempt index. Builds SKU pool from goods where harvestable==true.
     If insufficient cargo space, returns success=False and no partial fill.
     Returns (MiningResult, new_mining_attempts); caller must assign attempts and apply cargo.
     """
     attempts = dict(mining_attempts)
     attempt_count = int(attempts.get(destination_id, 0))
+    attempt_index_before = attempt_count
+    # Tentative increment; reverted for certain failures when increment_on_failure is False
     attempts[destination_id] = attempt_count + 1
 
     multiplier = _yield_multiplier(attempt_count)
@@ -82,6 +86,7 @@ def resolve_mining(
     effective_quantity = int(base_quantity * multiplier)
 
     if effective_quantity <= 0:
+        # no_yield: always count as completed attempt (diminishing returns floor)
         return (
             MiningResult(
                 sku=None,
@@ -96,6 +101,8 @@ def resolve_mining(
 
     pool = _harvestable_sku_pool(catalog)
     if not pool:
+        if not increment_on_failure:
+            attempts[destination_id] = attempt_index_before
         return (
             MiningResult(
                 sku=None,
@@ -114,6 +121,8 @@ def resolve_mining(
 
     current_used = sum(int(v) for v in (current_cargo or {}).values())
     if current_used + effective_quantity > physical_cargo_capacity:
+        if not increment_on_failure:
+            attempts[destination_id] = attempt_index_before
         return (
             MiningResult(
                 sku=sku,
