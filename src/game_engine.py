@@ -24,6 +24,7 @@ from interaction_layer import (
     HANDLER_LAW_STUB,
     HANDLER_PURSUIT_STUB,
     HANDLER_REACTION,
+    HANDLER_EXPLORATION_STUB,
     dispatch_location_action,
     dispatch_destination_action,
     destination_actions,
@@ -59,11 +60,16 @@ from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
+try:
+    from encounter_generator import deterministic_float
+except ModuleNotFoundError:
+    from src.encounter_generator import deterministic_float
 from ship_assembler import (
     assemble_ship,
     compute_hull_max_from_ship_state,
     get_slot_distribution,
     ship_has_capability,
+    ship_get_utility_count,
     CAPABILITY_UNLOCK_PROBE,
     CAPABILITY_UNLOCK_MINING,
 )
@@ -2777,14 +2783,32 @@ class GameEngine:
         self.player_state.mining_attempts = new_attempts
         attempt_index_after = int(new_attempts.get(destination_id, 0))
         failure_reason = mining_result.message if not mining_result.success else "success"
+        # Module-count scaling (applied after depletion multiplier, before flooring)
+        mining_count = ship_get_utility_count(active_ship, "mining_module_count")
+        if mining_count <= 1:
+            module_multiplier = 1.0
+        elif mining_count == 2:
+            module_multiplier = 1.25
+        elif mining_count == 3:
+            module_multiplier = 1.40
+        else:
+            module_multiplier = 1.50
+        scaled_quantity = int(max(0, int(mining_result.quantity * module_multiplier)))
+        final_quantity = scaled_quantity
         if self._logging_enabled and self._logger is not None:
             self._logger.log(
                 turn=int(get_current_turn()),
                 action="mining_attempt",
-                state_change=f"destination_id={destination_id} attempt_index_before={attempt_index_before} attempt_index_after={attempt_index_after} failure_reason={failure_reason} setting={mining_attempts_increment_on_failure}",
+                state_change=(
+                    f"destination_id={destination_id} "
+                    f"attempt_index_before={attempt_index_before} attempt_index_after={attempt_index_after} "
+                    f"failure_reason={failure_reason} setting={mining_attempts_increment_on_failure} "
+                    f"mining_module_count={mining_count} module_multiplier={module_multiplier} "
+                    f"base_quantity={mining_result.quantity} final_quantity={final_quantity}"
+                ),
             )
-        if mining_result.success and mining_result.sku and mining_result.quantity > 0:
-            cargo[mining_result.sku] = cargo.get(mining_result.sku, 0) + mining_result.quantity
+        if mining_result.success and mining_result.sku and final_quantity > 0:
+            cargo[mining_result.sku] = cargo.get(mining_result.sku, 0) + final_quantity
             self.player_state.cargo_by_ship[active_ship.ship_id] = cargo
         self._event(
             context,
@@ -2794,9 +2818,11 @@ class GameEngine:
                 "destination_id": destination_id,
                 "action_type": "mine",
                 "sku": mining_result.sku,
-                "quantity": mining_result.quantity,
+                "quantity": final_quantity,
                 "attempt_number": mining_result.attempt_number,
                 "multiplier": mining_result.multiplier,
+                "module_multiplier": module_multiplier,
+                "mining_module_count": mining_count,
                 "success": mining_result.success,
                 "message": mining_result.message,
                 "time_advance": 1,
@@ -3957,6 +3983,115 @@ class GameEngine:
                 option_name=str(option),
             )
             resolver_outcome = {"resolver": "law", "outcome": law_outcome}
+        elif handler == HANDLER_EXPLORATION_STUB:
+            resolver_outcome = self._resolve_exploration_encounter(
+                context=context,
+                spec=spec,
+                player_action=player_action,
+            )
+
+    def _resolve_exploration_encounter(
+        self,
+        *,
+        context: EngineContext,
+        spec: Any,
+        player_action: str,
+    ) -> dict[str, Any]:
+        """
+        Exploration/anomaly resolver for ACTION_INVESTIGATE via HANDLER_EXPLORATION_STUB.
+        Deterministic, atomic, and uses probe_module_count for success scaling.
+        """
+        # Only handle INVESTIGATE; everything else behaves as before.
+        if player_action != "investigate":
+            return {"resolver": "none", "outcome": None}
+
+        subtype_id = str(getattr(spec, "subtype_id", "") or "")
+        supported = {"spatial_rift", "ancient_beacon", "quantum_echo", "wormhole_anomaly"}
+        if subtype_id not in supported:
+            return {"resolver": "none", "outcome": None}
+
+        # Probe-count-based success chance
+        active_ship = self._active_ship()
+        from ship_assembler import ship_get_utility_count  # already imported at module level, but safe
+
+        probe_count = (
+            ship_get_utility_count(active_ship, "probe_module_count") if active_ship is not None else 0
+        )
+
+        base = 0.25
+        per_module = 0.15
+        chance = base + per_module * probe_count
+        if chance > 1.0:
+            chance = 1.0
+
+        seed_string = f"{self.world_seed}{spec.encounter_id}explore"
+        roll = deterministic_float(seed_string)
+        success = roll < chance
+
+        # Log probe math and outcome
+        self._event(
+            context,
+            stage="exploration_investigate",
+            subsystem="exploration_handler",
+            detail={
+                "encounter_id": str(spec.encounter_id),
+                "subtype_id": subtype_id,
+                "probe_module_count": int(probe_count),
+                "chance": float(chance),
+                "roll": float(roll),
+                "success": bool(success),
+            },
+        )
+
+        # Wormhole-specific reveal (no teleport, no rewards)
+        if subtype_id == "wormhole_anomaly":
+            current_system = self.sector.get_system(self.player_state.current_system_id)
+            if success and current_system is not None:
+                # Choose deterministic target system != current
+                candidates = [s for s in self.sector.systems if s.system_id != current_system.system_id]
+                if candidates:
+                    candidates_sorted = sorted(candidates, key=lambda s: s.system_id)
+                    seed_target = f"{self.world_seed}{spec.encounter_id}wormhole_target"
+                    roll_target = deterministic_float(seed_target)
+                    index = int(roll_target * len(candidates_sorted))
+                    if index >= len(candidates_sorted):
+                        index = len(candidates_sorted) - 1
+                    target = candidates_sorted[index]
+                    distance_ly = float(self._warp_distance_ly(origin=current_system, target=target))
+                    if distance_ly <= 5.0:
+                        distance_band = "Near"
+                    elif distance_ly <= 15.0:
+                        distance_band = "Mid"
+                    else:
+                        distance_band = "Far"
+                    self._event(
+                        context,
+                        stage="wormhole_reveal",
+                        subsystem="exploration_handler",
+                        detail={
+                            "encounter_id": str(spec.encounter_id),
+                            "target_system_name": str(target.name),
+                            "distance_band": distance_band,
+                        },
+                    )
+                    return {"resolver": "exploration", "outcome": "wormhole_reveal"}
+
+            # Failure or no eligible targets
+            self._event(
+                context,
+                stage="wormhole_reveal",
+                subsystem="exploration_handler",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "message": "Destination unknown.",
+                },
+            )
+            return {"resolver": "exploration", "outcome": "wormhole_fail"}
+
+        # Other anomalies (spatial_rift, ancient_beacon, quantum_echo)
+        if success:
+            return {"resolver": "exploration", "outcome": "success"}
+        return {"resolver": "exploration", "outcome": "fail"}
         self._event(
             context,
             stage="resolver",
@@ -5015,6 +5150,10 @@ class GameEngine:
             return str(outcome) in {"accept"}
         if resolver == "law":
             return False
+
+        if resolver == "exploration":
+            # Exploration rewards only for "success" outcome on supported anomaly types.
+            return str(outcome) == "success"
 
         payload = getattr(dispatch, "handler_payload", {}) or {}
         npc_outcome = payload.get("npc_outcome")

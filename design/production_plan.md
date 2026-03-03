@@ -63,6 +63,7 @@ All expansion must originate here.
 | Phase 7.5 | 0.10.2 | Game Engine Unification (Authoritative Orchestration Layer) |
 | Phase 7.9 (LOCKED) | 0.11.x | World Generation Unification |
 | **Phase 7.10 (COMPLETED)** | **0.11.3** | **Combat System Unification** |
+| **Phase 7.12 (IN PROGRESS)** | **0.11.4** | **Exploration and Mining** |
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
@@ -871,7 +872,7 @@ Unify world generation systems with deterministic scaling, coordinate uniqueness
 - **Situation modifiers:** Applied to markets correctly, contract-aligned
 - **Structural mutation logic:** Validated (population, government, destruction tags)
 - **Curated naming:** data/names.json with systems (200+), planets (250+), stations (240+)
-- **Destination typing:** planets (2-4), stations (1-2), explorable_stub (0-2), mining_stub (0-2) per system
+- **Destination typing:** planets (2-4), stations (1-2), exploration_site (0-2), resource_field (0-2) per system
 - **CLI improvements:** Galaxy summary, travel header enhancements, destination context block
 
 ### Contract Alignment
@@ -923,6 +924,43 @@ Completion Summary:
 - All tests passing
 - Travel → Encounter → Combat → Reward → Cargo loop fully closed
 
+## Phase 7.12 - Exploration and Mining (IN PROGRESS)
+    
+**Target:** 0.11.6  
+**Contract:** design/exploration_and_mining_contract.md
+    
+### Summary
+- Destination type rename: explorable_stub → exploration_site, mining_stub → resource_field (with legacy loader mapping).
+- Goods: harvestable flag in data/goods.json (ORE, METAL, CHEMICALS except experimental_serums, standard_fuel); mining uses only harvestable flag.
+- Destination schema: optional emoji_id with defaults (exploration_site → location_unknown, resource_field → goods_category_ore); persists in world state and CLI.
+- Player state: exploration_progress, exploration_attempts, mining_attempts (dict[str,int]).
+- Capability gating: ship_has_capability(ship, capability_id); Explore requires capability_unlock_probe, Mine requires capability_unlock_mining.
+- Exploration resolver: 1 day, 1 fuel; deterministic RNG; base success 0.50; returns stage_before/stage_after, rng_roll.
+- Mining resolver: 1 day, 1 fuel; diminishing returns by attempt; harvestable-only SKU pool; capacity check, no partial fill.
+- Local activity encounter mode: exactly one encounter roll after explore/mine; travel_context.mode = "local_activity".
+- CLI: destination listing with emoji glyph; Mine/Explore options when applicable; post-action "Local activity may attract attention..." and encounter resolution.
+ - Exploration handler with probe-scaled investigate for anomaly encounters (spatial_rift, ancient_beacon, quantum_echo, wormhole_anomaly).
+
+### Phase 7.12 Environmental Encounters (IN PROGRESS)
+
+- New environmental encounter subtypes (opportunity, hazard, anomaly) added to the travel encounter system:
+  - Opportunities: derelict_ship (module-biased salvage), derelict_station (cargo-biased salvage), distress_call, asteroid_field.
+  - Hazards (travel-only): ion_storm, debris_storm, comet_passage.
+  - Anomalies (travel + local_activity): spatial_rift, ancient_beacon, quantum_echo, wormhole_anomaly.
+- Hazard ignore behavior:
+  - All environmental encounters MUST expose an ignore option.
+  - For hazards, ignore is interpreted as "go around" and applies a deterministic, TR-scaled time delay via the travel / time engine (no extra encounter rolls during the delay).
+  - For opportunities and anomalies, ignore ends the encounter with no direct mechanical effect.
+- Wormhole teleport rule:
+  - Wormhole anomaly investigate may reveal a destination band; enter performs a deterministic teleport (system relocation) that consumes 1 day and 1 fuel.
+  - Wormhole entry suppresses arrival encounters and authority enforcement for that arrival and creates a persistent unstable_wormhole_exit destination at the target system.
+  - Unstable wormhole exit allows a single return jump to the origin system; after use, both endpoints are removed.
+- Reward profile usage:
+  - All environmental encounter rewards (cargo, data, modules, credits) are routed through encounter reward_profiles per reward_profiles_schema_contract.
+  - Direct deterministic effects are limited to hull damage, time delay, reputation shifts, and wormhole teleportation; no ad hoc cargo / credit grants are permitted.
+
+---
+
 ## Phase 8 - Monetization and Play Store Deployment
 
 **Target:** 1.1.x
@@ -945,8 +983,8 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.11.3
-Phase 7.10 complete.
+Current Development Version: 0.11.5
+Phase 7.12 in progress (Exploration, Mining, Environmental Encounters).
 
 ## Authority Statement
 
