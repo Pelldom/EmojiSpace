@@ -1538,6 +1538,59 @@ def _show_encounter_result(result: Dict[str, Any], encounter_description: str | 
                 print("You escape the pursuit.")
             else:
                 print("Pursuit continues...")
+        elif resolver == "exploration":
+            # Exploration / environmental encounter outcomes (Phase 7.12).
+            # First, surface any mining-blocked messaging for environmental mining subtypes.
+            events = result.get("events", [])
+            mining_blocked = None
+            hazard_event = None
+            mining_detail_event = None
+            for ev in events:
+                if not isinstance(ev, dict):
+                    continue
+                stage = ev.get("stage")
+                detail = ev.get("detail", {}) or {}
+                if stage == "mining_blocked" and mining_blocked is None:
+                    mining_blocked = detail
+                elif stage == "environmental_hazard" and hazard_event is None:
+                    hazard_event = detail
+                elif stage == "encounter_mining" and mining_detail_event is None:
+                    mining_detail_event = detail
+
+            subtype_id = None
+            if mining_blocked and isinstance(mining_blocked, dict):
+                subtype_id = mining_blocked.get("subtype_id")
+            if (subtype_id is None) and hazard_event and isinstance(hazard_event, dict):
+                subtype_id = hazard_event.get("subtype_id")
+            if (subtype_id is None) and mining_detail_event and isinstance(mining_detail_event, dict):
+                subtype_id = mining_detail_event.get("subtype_id")
+
+            env_subtypes = {"asteroid_field", "comet_passage", "debris_storm"}
+
+            if mining_blocked and subtype_id in env_subtypes:
+                print("Deposits detected, but you lack mining equipment.")
+            elif outcome == "mined" and subtype_id in env_subtypes:
+                # Generic mined-result messaging; detailed quantities are visible via logs.
+                print("Your crews conduct quick mining operations and recover materials.")
+
+            # Always show hazard outcome for environmental mining subtypes.
+            if hazard_event and subtype_id in env_subtypes:
+                damage = int(hazard_event.get("damage", 0) or 0)
+                hull_before = hazard_event.get("hull_before")
+                hull_after = hazard_event.get("hull_after")
+                if damage > 0:
+                    if isinstance(hull_before, int) and isinstance(hull_after, int):
+                        print(
+                            f"Environmental hazards damage your hull for {damage} HP "
+                            f"(hull {hull_before} → {hull_after})."
+                        )
+                    else:
+                        print(f"Environmental hazards damage your hull for {damage} HP.")
+                else:
+                    print("You avoid serious damage from environmental hazards.")
+            elif outcome not in {None, ""}:
+                # Non-environmental exploration outcome (e.g., anomalies).
+                print(f"The encounter resolves: {outcome}")
     else:
         # No resolver outcome - encounter ended normally
         if not result.get("hard_stop"):

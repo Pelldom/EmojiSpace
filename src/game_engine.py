@@ -90,6 +90,45 @@ ENGINE_STREAM_NAME = "engine_orchestration"
 WAREHOUSE_CAPACITY_COST_PER_TURN = 2
 
 
+def _scale_mining_quantity_for_modules(base_quantity: int, mining_module_count: int) -> int:
+    """
+    Scale cargo quantity for environmental encounter mining based on mining_module_count.
+
+    Multiplier table:
+    - 1 module: 1.00
+    - 2 modules: 1.60
+    - 3 modules: 1.90
+    - 4+ modules: 2.05 (cap)
+
+    Ensures determinism and that any positive base_quantity yields at least 1 unit.
+    """
+    try:
+        qty = int(base_quantity)
+    except (TypeError, ValueError):
+        qty = 0
+    try:
+        count = int(mining_module_count)
+    except (TypeError, ValueError):
+        count = 0
+
+    if qty <= 0 or count <= 0:
+        return max(0, qty)
+
+    if count == 1:
+        multiplier = 1.0
+    elif count == 2:
+        multiplier = 1.60
+    elif count == 3:
+        multiplier = 1.90
+    else:
+        multiplier = 2.05
+
+    scaled = int(math.floor(qty * multiplier))
+    if qty >= 1 and scaled < 1:
+        scaled = 1
+    return scaled
+
+
 class _SilentLogger:
     def log(self, turn: int, action: str, state_change: str) -> None:
         _ = (turn, action, state_change)
@@ -3990,6 +4029,94 @@ class GameEngine:
                 player_action=player_action,
             )
 
+        self._event(
+            context,
+            stage="resolver",
+            subsystem="resolver_router",
+            detail={"encounter_id": str(spec.encounter_id), "resolver_outcome": _jsonable(resolver_outcome)},
+        )
+
+        qualifies = self._reward_qualifies(dispatch=dispatch, resolver_outcome=resolver_outcome, spec=spec)
+        self._event(
+            context,
+            stage="conditional_rewards",
+            subsystem="reward_gate",
+            detail={"encounter_id": str(spec.encounter_id), "qualifies": bool(qualifies)},
+        )
+        if not qualifies:
+            return
+
+        resolver = str(resolver_outcome.get("resolver", "none"))
+        if resolver == "combat":
+            self._event(
+                context,
+                stage="conditional_rewards",
+                subsystem="reward_gate",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "skipped": True,
+                    "reason": "combat_rewards_handled_by_post_combat",
+                },
+            )
+            return
+
+        reward_payload = materialize_reward(
+            spec,
+            self._system_market_payloads(self.sector.get_system(self.player_state.current_system_id)),
+            str(self.world_seed),
+        )
+
+        # Phase 7.12 Phase 2: scale environmental mining cargo rewards by mining module count.
+        if resolver == "exploration" and str(resolver_outcome.get("outcome")) == "mined":
+            subtype_id = str(getattr(spec, "subtype_id", "") or "")
+            if subtype_id in {"asteroid_field", "comet_passage", "debris_storm"} and reward_payload is not None:
+                reward_kind = getattr(reward_payload, "reward_kind", None)
+                if reward_kind in {"cargo", "mixed"}:
+                    base_quantity = int(getattr(reward_payload, "quantity", 0) or 0)
+                    if base_quantity > 0:
+                        active_ship = self._active_ship()
+                        mining_count = (
+                            ship_get_utility_count(active_ship, "mining_module_count")
+                            if active_ship is not None
+                            else 0
+                        )
+                        scaled_quantity = _scale_mining_quantity_for_modules(base_quantity, mining_count)
+                        reward_payload.quantity = int(scaled_quantity)
+                        log_obj = getattr(reward_payload, "log", None)
+                        if isinstance(log_obj, dict):
+                            log_obj["final_quantity"] = int(scaled_quantity)
+                        self._event(
+                            context,
+                            stage="encounter_mining",
+                            subsystem="exploration_handler",
+                            detail={
+                                "encounter_id": str(getattr(spec, "encounter_id", "")),
+                                "subtype_id": subtype_id,
+                                "mining_module_count": int(mining_count),
+                                "base_quantity": int(base_quantity),
+                                "final_quantity": int(scaled_quantity),
+                            },
+                        )
+
+        applied = apply_materialized_reward(
+            player=self.player_state,
+            reward_payload=reward_payload,
+            context="game_engine",
+            catalog=self.catalog if hasattr(self, "catalog") else None,
+            enforce_capacity=False,
+            stolen_applied=getattr(reward_payload, "stolen_applied", False) if reward_payload else False,
+        )
+        self._event(
+            context,
+            stage="conditional_rewards",
+            subsystem="reward_applicator",
+            detail={
+                "encounter_id": str(spec.encounter_id),
+                "reward_profile_id": str(getattr(spec, "reward_profile_id", "")),
+                "applied": _jsonable(applied),
+            },
+        )
+
     def _resolve_exploration_encounter(
         self,
         *,
@@ -4006,14 +4133,104 @@ class GameEngine:
             return {"resolver": "none", "outcome": None}
 
         subtype_id = str(getattr(spec, "subtype_id", "") or "")
-        supported = {"spatial_rift", "ancient_beacon", "quantum_echo", "wormhole_anomaly"}
-        if subtype_id not in supported:
-            return {"resolver": "none", "outcome": None}
+        anomaly_subtypes = {"spatial_rift", "ancient_beacon", "quantum_echo", "wormhole_anomaly"}
+        environmental_mining_subtypes = {"asteroid_field", "comet_passage", "debris_storm"}
 
-        # Probe-count-based success chance
+        # Shared active ship handle for both anomaly and environmental paths.
         active_ship = self._active_ship()
         from ship_assembler import ship_get_utility_count  # already imported at module level, but safe
 
+        # Phase 7.12 Phase 2: environmental encounter mining (no time/fuel cost).
+        if subtype_id in environmental_mining_subtypes:
+            mining_count = (
+                ship_get_utility_count(active_ship, "mining_module_count") if active_ship is not None else 0
+            )
+            if mining_count <= 0:
+                # Ship lacks mining capability for this atomic encounter mining.
+                self._event(
+                    context,
+                    stage="mining_blocked",
+                    subsystem="exploration_handler",
+                    detail={
+                        "encounter_id": str(spec.encounter_id),
+                        "subtype_id": subtype_id,
+                        "reason": "no_mining_modules",
+                        "mining_module_count": int(mining_count),
+                    },
+                )
+                mining_outcome: dict[str, Any] = {"resolver": "none", "outcome": None}
+            else:
+                # Log mining capability; reward quantity scaling happens during reward application.
+                if mining_count == 1:
+                    module_multiplier = 1.0
+                elif mining_count == 2:
+                    module_multiplier = 1.60
+                elif mining_count == 3:
+                    module_multiplier = 1.90
+                else:
+                    module_multiplier = 2.05
+                self._event(
+                    context,
+                    stage="encounter_mining",
+                    subsystem="exploration_handler",
+                    detail={
+                        "encounter_id": str(spec.encounter_id),
+                        "subtype_id": subtype_id,
+                        "mining_module_count": int(mining_count),
+                        "module_multiplier": float(module_multiplier),
+                    },
+                )
+                mining_outcome = {"resolver": "exploration", "outcome": "mined"}
+
+            # Environmental hazard roll always runs, regardless of mining success.
+            tr_value = int(getattr(spec, "threat_rating_tr", 0) or 0)
+            risk = 0.10 + (tr_value * 0.02)
+            if risk > 0.30:
+                risk = 0.30
+            if risk < 0.0:
+                risk = 0.0
+            hazard_seed = f"{self.world_seed}{spec.encounter_id}hazard"
+            hazard_roll = deterministic_float(hazard_seed)
+
+            hull_before = None
+            hull_after = None
+            damage = 0
+            if active_ship is not None:
+                max_hull = int(active_ship.persistent_state.get("max_hull_integrity", 0) or 0)
+                hull_before = int(
+                    active_ship.persistent_state.get("current_hull_integrity", max_hull) or 0
+                )
+                hull_after = hull_before
+                if hazard_roll < risk and max_hull > 0:
+                    raw_damage = int(round(max_hull * 0.05))
+                    if raw_damage < 1:
+                        raw_damage = 1
+                    damage = raw_damage
+                    hull_after = max(0, hull_before - damage)
+                    active_ship.persistent_state["current_hull_integrity"] = hull_after
+
+            self._event(
+                context,
+                stage="environmental_hazard",
+                subsystem="exploration_handler",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "subtype_id": subtype_id,
+                    "TR": tr_value,
+                    "risk": float(risk),
+                    "roll": float(hazard_roll),
+                    "damage": int(damage),
+                    "hull_before": int(hull_before) if hull_before is not None else None,
+                    "hull_after": int(hull_after) if hull_after is not None else None,
+                },
+            )
+            return mining_outcome
+
+        # Anomaly / exploration path (probe-based investigate).
+        if subtype_id not in anomaly_subtypes:
+            return {"resolver": "none", "outcome": None}
+
+        # Probe-count-based success chance
         probe_count = (
             ship_get_utility_count(active_ship, "probe_module_count") if active_ship is not None else 0
         )
@@ -4092,63 +4309,6 @@ class GameEngine:
         if success:
             return {"resolver": "exploration", "outcome": "success"}
         return {"resolver": "exploration", "outcome": "fail"}
-        self._event(
-            context,
-            stage="resolver",
-            subsystem="resolver_router",
-            detail={"encounter_id": str(spec.encounter_id), "resolver_outcome": _jsonable(resolver_outcome)},
-        )
-
-        qualifies = self._reward_qualifies(dispatch=dispatch, resolver_outcome=resolver_outcome, spec=spec)
-        self._event(
-            context,
-            stage="conditional_rewards",
-            subsystem="reward_gate",
-            detail={"encounter_id": str(spec.encounter_id), "qualifies": bool(qualifies)},
-        )
-        if not qualifies:
-            return
-        
-        # Skip combat rewards here - they are handled by _apply_post_combat_rewards_and_salvage
-        # to allow for loot prompts and capacity checks
-        resolver = str(resolver_outcome.get("resolver", "none"))
-        if resolver == "combat":
-            self._event(
-                context,
-                stage="conditional_rewards",
-                subsystem="reward_gate",
-                detail={
-                    "encounter_id": str(spec.encounter_id),
-                    "skipped": True,
-                    "reason": "combat_rewards_handled_by_post_combat",
-                },
-            )
-            return
-
-        reward_payload = materialize_reward(
-            spec,
-            self._system_market_payloads(self.sector.get_system(self.player_state.current_system_id)),
-            str(self.world_seed),
-        )
-        # For non-combat rewards, apply immediately (no capacity enforcement for now to preserve existing behavior)
-        applied = apply_materialized_reward(
-            player=self.player_state,
-            reward_payload=reward_payload,
-            context="game_engine",
-            catalog=self.catalog if hasattr(self, "catalog") else None,
-            enforce_capacity=False,  # Non-combat rewards don't enforce capacity (preserve existing behavior)
-            stolen_applied=getattr(reward_payload, "stolen_applied", False) if reward_payload else False,
-        )
-        self._event(
-            context,
-            stage="conditional_rewards",
-            subsystem="reward_applicator",
-            detail={
-                "encounter_id": str(spec.encounter_id),
-                "reward_profile_id": str(getattr(spec, "reward_profile_id", "")),
-                "applied": _jsonable(applied),
-            },
-        )
 
     def _resolve_encounter_combat(self, spec: Any) -> Any:
         system = self.sector.get_system(self.player_state.current_system_id)
@@ -5152,8 +5312,8 @@ class GameEngine:
             return False
 
         if resolver == "exploration":
-            # Exploration rewards only for "success" outcome on supported anomaly types.
-            return str(outcome) == "success"
+            # Exploration rewards for success and environmental mining outcomes.
+            return str(outcome) in {"success", "mined"}
 
         payload = getattr(dispatch, "handler_payload", {}) or {}
         npc_outcome = payload.get("npc_outcome")

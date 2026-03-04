@@ -926,7 +926,7 @@ Completion Summary:
 
 ## Phase 7.12 - Exploration and Mining (IN PROGRESS)
     
-**Target:** 0.11.6  
+**Target:** 0.11.7  
 **Contract:** design/exploration_and_mining_contract.md
     
 ### Summary
@@ -943,6 +943,7 @@ Completion Summary:
 
 ### Phase 7.12 Environmental Encounters (IN PROGRESS)
 
+- Environmental encounter mining implemented (no time/fuel cost, module-scaled yield, hazard hull damage).
 - New environmental encounter subtypes (opportunity, hazard, anomaly) added to the travel encounter system:
   - Opportunities: derelict_ship (module-biased salvage), derelict_station (cargo-biased salvage), distress_call, asteroid_field.
   - Hazards (travel-only): ion_storm, debris_storm, comet_passage.
@@ -983,7 +984,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.11.5
+Current Development Version: 0.11.7
 Phase 7.12 in progress (Exploration, Mining, Environmental Encounters).
 
 ## Authority Statement
