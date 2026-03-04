@@ -19,6 +19,7 @@ from interaction_layer import (
     ACTION_RESPOND,
     ACTION_HAIL,
     ACTION_ATTACK,
+    ACTION_INVESTIGATE,
     HANDLER_COMBAT,
     HANDLER_COMBAT_STUB,
     HANDLER_LAW_STUB,
