@@ -625,27 +625,30 @@ class GameEngine:
         
         if current_encounter is not None:
             subtype_id = getattr(current_encounter, "subtype_id", None)
+            encounter_category = str(getattr(current_encounter, "encounter_category", "") or "")
             if subtype_id:
                 encounter_description = self._get_encounter_description(subtype_id)
             
-            # Generate NPC ship info for display (deterministic, same as combat will use)
-            try:
-                from npc_ship_generator import generate_npc_ship
-                system = self.sector.get_system(self.player_state.current_system_id)
-                if system is not None:
-                    encounter_id = str(getattr(current_encounter, "encounter_id", ""))
-                    enemy_ship_dict = generate_npc_ship(
-                        world_seed=self.world_seed,
-                        system_id=self.player_state.current_system_id,
-                        system_population=int(system.population),
-                        encounter_id=encounter_id,
-                        encounter_subtype=str(subtype_id),
-                    )
-                    # Format ship info with only frame (no modules/stats)
-                    npc_ship_info = self._format_ship_info_frame_only(enemy_ship_dict)
-            except Exception:
-                # If ship generation fails, just skip ship info
-                npc_ship_info = None
+            # Phase 7.12: Do not show NPC ship preview for environmental/anomaly encounters.
+            if not encounter_category.startswith("environmental_"):
+                # Generate NPC ship info for display (deterministic, same as combat will use)
+                try:
+                    from npc_ship_generator import generate_npc_ship
+                    system = self.sector.get_system(self.player_state.current_system_id)
+                    if system is not None:
+                        encounter_id = str(getattr(current_encounter, "encounter_id", ""))
+                        enemy_ship_dict = generate_npc_ship(
+                            world_seed=self.world_seed,
+                            system_id=self.player_state.current_system_id,
+                            system_population=int(system.population),
+                            encounter_id=encounter_id,
+                            encounter_subtype=str(subtype_id),
+                        )
+                        # Format ship info with only frame (no modules/stats)
+                        npc_ship_info = self._format_ship_info_frame_only(enemy_ship_dict)
+                except Exception:
+                    # If ship generation fails, just skip ship info
+                    npc_ship_info = None
         
         return {
             "encounter_id": encounter_context.get("encounter_id"),
@@ -3919,6 +3922,7 @@ class GameEngine:
                 ACTION_RESPOND: "Respond",
                 ACTION_HAIL: "Hail",
                 ACTION_ATTACK: "Attack",
+                ACTION_INVESTIGATE: "Investigate",
             }
             label = label_map.get(action_id, action_id.replace("_", " ").title())
             options.append({"id": action_id, "label": label})

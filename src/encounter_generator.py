@@ -39,6 +39,7 @@ class EncounterSpec:
         emoji,
         posture,
         initiative,
+        encounter_category,
         allows_betrayal,
         threat_rating_tr,
         participant_templates,
@@ -52,6 +53,7 @@ class EncounterSpec:
         self.emoji = emoji
         self.posture = posture
         self.initiative = initiative
+        self.encounter_category = encounter_category
         self.allows_betrayal = allows_betrayal
         self.threat_rating_tr = threat_rating_tr
         self.participant_templates = participant_templates
@@ -588,6 +590,7 @@ def generate_encounter(
         emoji=subtype["emoji"],
         posture=subtype["posture"],
         initiative=subtype["initiative"],
+        encounter_category=subtype.get("encounter_category", None),
         allows_betrayal=subtype["allows_betrayal"],
         threat_rating_tr=tr_value,
         participant_templates=subtype["participant_templates"],

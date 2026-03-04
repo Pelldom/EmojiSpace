@@ -18,6 +18,7 @@ ACTION_SURRENDER = "surrender"
 ACTION_COMPLY = "comply"
 ACTION_FLEE = "flee"
 ACTION_INVESTIGATE = "investigate"
+ACTION_MINE = "mine"
 ACTION_END_ENCOUNTER = "end_encounter"
 ACTION_REFUEL = "refuel"
 ACTION_BUY_HULL = "buy_hull"
@@ -50,6 +51,7 @@ VALID_PLAYER_ACTIONS = {
     ACTION_COMPLY,
     ACTION_FLEE,
     ACTION_INVESTIGATE,
+    ACTION_MINE,
     ACTION_END_ENCOUNTER,
     ACTION_REFUEL,
     ACTION_BUY_HULL,
@@ -100,6 +102,11 @@ class InteractionResult:
 
 
 def allowed_actions_initial(spec):
+    # Phase 7.12: Environmental/anomaly encounters should present Investigate/Ignore first.
+    encounter_category = str(getattr(spec, "encounter_category", "") or "")
+    if encounter_category.startswith("environmental_"):
+        return [ACTION_INVESTIGATE, ACTION_IGNORE]
+
     if spec.initiative == "npc":
         return [ACTION_IGNORE, ACTION_RESPOND, ACTION_ATTACK]
     return [ACTION_IGNORE, ACTION_HAIL, ACTION_ATTACK]
