@@ -62,9 +62,11 @@ from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
 try:
-    from playtest_telemetry import log_debug_event
+    from playtest_telemetry import log_debug_event, set_telemetry_context
 except Exception:
     def log_debug_event(_event_type: str, _data: dict[str, Any]) -> None:
+        pass
+    def set_telemetry_context(turn: int | None = None, system_id: str | None = None) -> None:
         pass
 try:
     from encounter_generator import deterministic_float
@@ -286,6 +288,7 @@ class GameEngine:
             turn_after=turn_before,
             active_encounters=list(self._active_encounters),
         )
+        set_telemetry_context(turn=context.turn_before, system_id=self.player_state.current_system_id)
         self._event(context, stage="start", subsystem="engine", detail={"command_type": command_type})
 
         try:

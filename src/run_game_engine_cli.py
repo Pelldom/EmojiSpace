@@ -3208,11 +3208,17 @@ def main() -> None:
     except Exception:
         pass
 
-    # Prepare output path for Markdown
+    # Prepare output path for Markdown and debug telemetry (Stage 2)
     output_dir = Path(__file__).resolve().parents[1] / "tests" / "output"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     markdown_path = output_dir / f"playtest_seed_{seed}_{timestamp}.md"
-    
+    debug_path = output_dir / f"playtest_seed_{seed}_{timestamp}.debug.jsonl"
+    try:
+        from playtest_telemetry import start_debug_telemetry
+        start_debug_telemetry(str(debug_path))
+    except Exception:
+        pass
+
     _configure_cli_test_fuel(engine)
     
     # Set global context for helper functions
@@ -3288,6 +3294,11 @@ def main() -> None:
     try:
         from playtest_telemetry import stop_telemetry
         stop_telemetry()
+    except Exception:
+        pass
+    try:
+        from playtest_telemetry import stop_debug_telemetry
+        stop_debug_telemetry()
     except Exception:
         pass
 
