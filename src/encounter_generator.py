@@ -3,6 +3,12 @@ from typing import Any
 import hashlib
 import json
 
+try:
+    from playtest_telemetry import log_debug_event
+except Exception:
+    def log_debug_event(_event_type: str, _data: dict[str, Any]) -> None:
+        pass
+
 
 ALLOWED_POSTURES = {"neutral", "authority", "hostile", "opportunity"}
 ALLOWED_INITIATIVES = {"player", "npc"}
@@ -599,6 +605,14 @@ def generate_encounter(
         npc_response_profile=subtype["npc_response_profile"],
         selection_log=selection_log,
     )
+    log_debug_event("ENCOUNTER_GENERATED", {
+        "encounter_id": str(encounter_id),
+        "encounter_type": str(subtype["subtype_id"]),
+        "encounter_category": subtype.get("encounter_category"),
+        "resolver": "",
+        "reward_profile": str(reward_profile_id),
+        "seed_key": f"{world_seed}{encounter_id}",
+    })
     return spec
 
 

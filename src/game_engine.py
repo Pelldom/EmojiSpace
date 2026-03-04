@@ -62,6 +62,11 @@ from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
 try:
+    from playtest_telemetry import log_debug_event
+except Exception:
+    def log_debug_event(_event_type: str, _data: dict[str, Any]) -> None:
+        pass
+try:
     from encounter_generator import deterministic_float
 except ModuleNotFoundError:
     from src.encounter_generator import deterministic_float
@@ -753,6 +758,8 @@ class GameEngine:
         inter_system = current_system.system_id != system.system_id
         distance_ly = self._warp_distance_ly(origin=current_system, target=system) if inter_system else 0.0
         target_destination_id = self._resolve_destination_id(system, payload.get("target_destination_id"))
+        origin_system_id = str(self.player_state.current_system_id)
+        origin_destination_id = str(self.player_state.current_destination_id or "")
 
         if (
             target_system_id == self.player_state.current_system_id
@@ -810,6 +817,17 @@ class GameEngine:
                 "fuel_capacity": int(fuel_capacity),
             },
         )
+
+        log_debug_event("TRAVEL_START", {
+            "travel_id": travel_id,
+            "origin_system": origin_system_id,
+            "origin_destination": origin_destination_id,
+            "target_destination": str(target_destination_id),
+            "travel_mode": "inter_system" if inter_system else "in_system",
+            "travel_days": int(days),
+            "fuel_cost": int(required_fuel),
+            "seed": str(self.world_seed),
+        })
 
         self.player_state.current_system_id = target_system_id
         self.player_state.current_destination_id = target_destination_id
@@ -886,12 +904,14 @@ class GameEngine:
         # Initialize pending_travel with cursor-based tracking
         # Store all encounters in remaining_encounters, cursor starts at 0
         # This is the ONLY authoritative queue for travel encounters
+        encounter_ids_list = [str(getattr(e, "encounter_id", "")) for e in original_encounters]
         self._pending_travel = {
             "travel_id": travel_id,
             "target_system_id": target_system_id,
             "target_destination_id": target_destination_id,
             "payload": payload,
             "original_encounter_count": original_encounter_count,
+            "encounter_ids": encounter_ids_list,
             "encounter_cursor": 0,  # Track how many encounters have been processed
             "remaining_encounters": original_encounters.copy(),  # Full list, will be popped from
             "current_encounter": None,
@@ -942,6 +962,11 @@ class GameEngine:
                 remaining = self._pending_travel.get("remaining_encounters", [])
                 if not remaining and not context.hard_stop:
                     # All encounters processed, no hard stop - clear pending travel
+                    log_debug_event("TRAVEL_RESOLVED", {
+                        "travel_id": self._pending_travel.get("travel_id"),
+                        "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                        "encounter_ids": self._pending_travel.get("encounter_ids", []),
+                    })
                     self._pending_travel = None
                 context.active_encounters = [
                     row
@@ -2905,12 +2930,14 @@ class GameEngine:
         if not encounters:
             return
         encounters = sorted(encounters, key=lambda e: str(getattr(e, "encounter_id", "")))
+        encounter_ids_list = [str(getattr(e, "encounter_id", "")) for e in encounters]
         self._pending_travel = {
             "travel_id": travel_id,
             "target_system_id": self.player_state.current_system_id,
             "target_destination_id": self.player_state.current_destination_id,
             "payload": {},
             "original_encounter_count": len(encounters),
+            "encounter_ids": encounter_ids_list,
             "encounter_cursor": 0,
             "remaining_encounters": list(encounters),
             "current_encounter": None,
@@ -3817,13 +3844,36 @@ class GameEngine:
         if stored_encounter_id != encounter_id:
             raise ValueError(f"encounter_decision: encounter_id mismatch. Expected {stored_encounter_id}, got {encounter_id}.")
         
+        active_ship = self._active_ship()
+        probe_module_count = (
+            ship_get_utility_count(active_ship, "probe_module_count") if active_ship is not None else 0
+        )
+        mining_module_count = (
+            ship_get_utility_count(active_ship, "mining_module_count") if active_ship is not None else 0
+        )
+        log_debug_event("ENCOUNTER_DECISION", {
+            "encounter_id": stored_encounter_id,
+            "player_action": str(decision_id),
+            "resolver_called": True,
+            "npc_ship_id": None,
+            "probe_module_count": int(probe_module_count),
+            "mining_module_count": int(mining_module_count),
+        })
+
         try:
             # Resolve the current encounter with the decision
-            self._resolve_encounter(
+            resolver_outcome = self._resolve_encounter(
                 context=context,
                 spec=current_encounter,
                 player_action=str(decision_id),
             )
+            remaining = self._pending_travel.get("remaining_encounters", []) if self._pending_travel else []
+            log_debug_event("ENCOUNTER_RESOLVED", {
+                "encounter_id": stored_encounter_id,
+                "resolver": str(resolver_outcome.get("resolver", "none")),
+                "outcome": resolver_outcome.get("outcome"),
+                "remaining_encounters": len(remaining),
+            })
             # Append events from resolved encounter to travel events
             events_so_far = self._pending_travel.get("events_so_far", [])
             events_so_far.extend(context.events)
@@ -3859,6 +3909,11 @@ class GameEngine:
                 self._resume_travel_encounters_if_any(context)
             else:
                 # No more encounters - clear pending travel
+                log_debug_event("TRAVEL_RESOLVED", {
+                    "travel_id": self._pending_travel.get("travel_id"),
+                    "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                    "encounter_ids": self._pending_travel.get("encounter_ids", []),
+                })
                 self._pending_travel = None
 
     def _resume_travel_encounters_if_any(self, context: EngineContext) -> bool:
@@ -3887,6 +3942,11 @@ class GameEngine:
         remaining_encounters = self._pending_travel.get("remaining_encounters", [])
         if not remaining_encounters:
             # No more encounters - clear pending travel
+            log_debug_event("TRAVEL_RESOLVED", {
+                "travel_id": self._pending_travel.get("travel_id"),
+                "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                "encounter_ids": self._pending_travel.get("encounter_ids", []),
+            })
             self._pending_travel = None
             return False
         
@@ -3951,7 +4011,7 @@ class GameEngine:
         spec: Any,
         player_action: str,
         player_kwargs: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> dict[str, Any]:
         player_kwargs = dict(player_kwargs or {})
         dispatch = dispatch_player_action(
             spec=spec,
@@ -4051,7 +4111,13 @@ class GameEngine:
             detail={"encounter_id": str(spec.encounter_id), "qualifies": bool(qualifies)},
         )
         if not qualifies:
-            return
+            log_debug_event("REWARD_REJECTED", {
+                "encounter_id": str(spec.encounter_id),
+                "resolver": str(resolver_outcome.get("resolver", "none")),
+                "outcome": resolver_outcome.get("outcome"),
+                "reason": "qualifies_false",
+            })
+            return resolver_outcome
 
         resolver = str(resolver_outcome.get("resolver", "none"))
         if resolver == "combat":
@@ -4065,13 +4131,23 @@ class GameEngine:
                     "reason": "combat_rewards_handled_by_post_combat",
                 },
             )
-            return
+            return resolver_outcome
 
+        log_debug_event("REWARD_PROFILE_SELECTED", {
+            "encounter_id": str(spec.encounter_id),
+            "profile_id": str(getattr(spec, "reward_profile_id", "")),
+        })
         reward_payload = materialize_reward(
             spec,
             self._system_market_payloads(self.sector.get_system(self.player_state.current_system_id)),
             str(self.world_seed),
         )
+        if reward_payload is not None:
+            log_debug_event("REWARD_MATERIALIZED", {
+                "encounter_id": str(spec.encounter_id),
+                "goods": str(getattr(reward_payload, "sku_id", "")),
+                "quantity": int(getattr(reward_payload, "quantity", 0) or 0),
+            })
 
         # Phase 7.12 Phase 2: scale environmental mining cargo rewards by mining module count.
         if resolver == "exploration" and str(resolver_outcome.get("outcome")) == "mined":
@@ -4104,7 +4180,18 @@ class GameEngine:
                                 "final_quantity": int(scaled_quantity),
                             },
                         )
+                        log_debug_event("MINING_RESOLVE", {
+                            "encounter_id": str(spec.encounter_id),
+                            "module_count": int(mining_count),
+                            "base_yield": int(base_quantity),
+                            "multiplier": float(resolver_outcome.get("multiplier", 1.0)),
+                            "final_yield": int(scaled_quantity),
+                            "success": True,
+                            "hazard_roll": float(resolver_outcome.get("hazard_roll", 0.0)),
+                            "damage": int(resolver_outcome.get("damage", 0)),
+                        })
 
+        cargo_before = dict(self.player_state.cargo_by_ship.get("active", {}))
         applied = apply_materialized_reward(
             player=self.player_state,
             reward_payload=reward_payload,
@@ -4113,6 +4200,20 @@ class GameEngine:
             enforce_capacity=False,
             stolen_applied=getattr(reward_payload, "stolen_applied", False) if reward_payload else False,
         )
+        cargo_after = dict(self.player_state.cargo_by_ship.get("active", {}))
+        active_ship = self._active_ship()
+        ship_id = str(getattr(active_ship, "ship_id", "active")) if active_ship else "active"
+        log_debug_event("REWARD_GRANTED", {
+            "encounter_id": str(spec.encounter_id),
+            "ship_id": ship_id,
+            "cargo_before": cargo_before,
+            "cargo_after": cargo_after,
+        })
+        log_debug_event("CARGO_UPDATE", {
+            "ship_id": ship_id,
+            "cargo_before": cargo_before,
+            "cargo_after": cargo_after,
+        })
         self._event(
             context,
             stage="conditional_rewards",
@@ -4123,6 +4224,7 @@ class GameEngine:
                 "applied": _jsonable(applied),
             },
         )
+        return resolver_outcome
 
     def _resolve_exploration_encounter(
         self,
@@ -4187,7 +4289,12 @@ class GameEngine:
                         "module_multiplier": float(module_multiplier),
                     },
                 )
-                mining_outcome = {"resolver": "exploration", "outcome": "mined"}
+                mining_outcome = {
+                    "resolver": "exploration",
+                    "outcome": "mined",
+                    "module_count": int(mining_count),
+                    "multiplier": float(module_multiplier),
+                }
 
             # Environmental hazard roll always runs, regardless of mining success.
             tr_value = int(getattr(spec, "threat_rating_tr", 0) or 0)
@@ -4231,6 +4338,8 @@ class GameEngine:
                     "hull_after": int(hull_after) if hull_after is not None else None,
                 },
             )
+            mining_outcome["hazard_roll"] = hazard_roll
+            mining_outcome["damage"] = damage
             return mining_outcome
 
         # Anomaly / exploration path (probe-based investigate).
@@ -4298,6 +4407,14 @@ class GameEngine:
                             "distance_band": distance_band,
                         },
                     )
+                    log_debug_event("EXPLORATION_RESOLVE", {
+                        "encounter_id": str(spec.encounter_id),
+                        "probe_count": int(probe_count),
+                        "chance": float(chance),
+                        "roll": float(roll),
+                        "success": bool(success),
+                        "outcome": "wormhole_reveal",
+                    })
                     return {"resolver": "exploration", "outcome": "wormhole_reveal"}
 
             # Failure or no eligible targets
@@ -4310,9 +4427,26 @@ class GameEngine:
                     "message": "Destination unknown.",
                 },
             )
+            log_debug_event("EXPLORATION_RESOLVE", {
+                "encounter_id": str(spec.encounter_id),
+                "probe_count": int(probe_count),
+                "chance": float(chance),
+                "roll": float(roll),
+                "success": bool(success),
+                "outcome": "wormhole_fail",
+            })
             return {"resolver": "exploration", "outcome": "wormhole_fail"}
 
         # Other anomalies (spatial_rift, ancient_beacon, quantum_echo)
+        outcome = "success" if success else "fail"
+        log_debug_event("EXPLORATION_RESOLVE", {
+            "encounter_id": str(spec.encounter_id),
+            "probe_count": int(probe_count),
+            "chance": float(chance),
+            "roll": float(roll),
+            "success": bool(success),
+            "outcome": outcome,
+        })
         if success:
             return {"resolver": "exploration", "outcome": "success"}
         return {"resolver": "exploration", "outcome": "fail"}

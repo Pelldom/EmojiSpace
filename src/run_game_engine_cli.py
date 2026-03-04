@@ -3199,7 +3199,15 @@ def main() -> None:
     log_path = str((Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{seed}.log"))
     base_logger.configure_file_logging(enabled=True, log_path=log_path, truncate=True)
     _ = engine.execute({"type": "set_logging", "enabled": True, "log_path": log_path, "truncate": True})
-    
+
+    # Aevum-complete telemetry (JSON Lines) for engine debugging
+    try:
+        from playtest_telemetry import start_telemetry
+        telemetry_path = str((Path(__file__).resolve().parents[1] / "logs" / f"gameplay_seed_{seed}_telemetry.jsonl"))
+        start_telemetry(telemetry_path)
+    except Exception:
+        pass
+
     # Prepare output path for Markdown
     output_dir = Path(__file__).resolve().parents[1] / "tests" / "output"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -3276,6 +3284,13 @@ def main() -> None:
             else:
                 print("Invalid menu choice.")
     
+    # Stop telemetry (flush and close JSON Lines log)
+    try:
+        from playtest_telemetry import stop_telemetry
+        stop_telemetry()
+    except Exception:
+        pass
+
     # Write Markdown playtest log at end of session
     try:
         playtest_logger.write_markdown(
