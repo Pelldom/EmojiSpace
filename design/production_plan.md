@@ -926,7 +926,7 @@ Completion Summary:
 
 ## Phase 7.12 - Exploration and Mining (IN PROGRESS)
     
-**Target:** 0.11.10  
+**Target:** 0.11.11  
 **Contract:** design/exploration_and_mining_contract.md
     
 ### Summary
@@ -986,7 +986,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.11.10
+Current Development Version: 0.11.11
 Phase 7.12 in progress (Exploration, Mining, Environmental Encounters).
 
 ## Authority Statement

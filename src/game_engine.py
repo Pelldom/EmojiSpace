@@ -3817,21 +3817,23 @@ class GameEngine:
         if stored_encounter_id != encounter_id:
             raise ValueError(f"encounter_decision: encounter_id mismatch. Expected {stored_encounter_id}, got {encounter_id}.")
         
-        # Resolve the current encounter with the decision
-        self._resolve_encounter(
-            context=context,
-            spec=current_encounter,
-            player_action=str(decision_id),
-        )
-        
-        # Append events from resolved encounter to travel events
-        events_so_far = self._pending_travel.get("events_so_far", [])
-        events_so_far.extend(context.events)
-        context.events = list(events_so_far)
-        self._pending_travel["events_so_far"] = list(events_so_far)
-        
-        # Clear current_encounter after resolution
-        self._pending_travel["current_encounter"] = None
+        try:
+            # Resolve the current encounter with the decision
+            self._resolve_encounter(
+                context=context,
+                spec=current_encounter,
+                player_action=str(decision_id),
+            )
+            # Append events from resolved encounter to travel events
+            events_so_far = self._pending_travel.get("events_so_far", [])
+            events_so_far.extend(context.events)
+            context.events = list(events_so_far)
+            self._pending_travel["events_so_far"] = list(events_so_far)
+        finally:
+            # Always clear current_encounter so Investigate (and any action) consumes the encounter
+            # and the same encounter is not presented again (contract: terminal action).
+            if self._pending_travel is not None:
+                self._pending_travel["current_encounter"] = None
         
         # Explicit resume logic: only resume when encounter is fully resolved
         # Do NOT resume if:
