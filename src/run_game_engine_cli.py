@@ -1614,6 +1614,10 @@ def _resolve_pending_encounter(engine: GameEngine) -> None:
         if encounter_description:
             print(f"Encounter: {encounter_description}")
         
+        encounter_id = pending_info.get("encounter_id")
+        if encounter_id:
+            print(f"Encounter ID: {encounter_id}")
+        
         # Display NPC ship info if available (hull name only for encounters)
         npc_ship_info = pending_info.get("npc_ship_info")
         if npc_ship_info:

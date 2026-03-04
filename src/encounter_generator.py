@@ -624,34 +624,39 @@ def generate_travel_encounters(
         return []
 
     base_chance = 0.8
-    encounters = []
-    i = 0
-    while i < cap:
-        effective_chance = base_chance * (1 - (i / (cap + 1)))
-        seed_string = f"{world_seed}{travel_id}enc_roll_{i}"
+    encounters: list[EncounterSpec] = []
+    encounter_count = 0
+    while encounter_count < cap:
+        # Phase 7.12: encounter loop diminishing and indexing are based on successes, not attempts.
+        effective_chance = base_chance * (1 - (encounter_count / (cap + 1)))
+        seed_string = f"{world_seed}{travel_id}enc_roll_{encounter_count}"
         roll = deterministic_float(seed_string)
 
-        if roll < effective_chance:
-            encounter_id = f"{travel_id}_enc_{i}"
-            spec = generate_encounter(
-                encounter_id=encounter_id,
-                world_seed=world_seed,
-                system_government_id=system_government_id,
-                active_situations=active_situations,
-                travel_context=travel_context,
-                world_state_engine=world_state_engine,
-                current_system_id=current_system_id,
-            )
-            spec.selection_log["travel_roll"] = {
-                "travel_id": travel_id,
-                "population": population,
-                "cap": cap,
-                "encounter_index": i,
-                "effective_chance": effective_chance,
-                "roll": roll,
-            }
-            encounters.append(spec)
-        i += 1
+        if roll >= effective_chance:
+            # Contract: terminate loop immediately on first failed roll.
+            break
+
+        encounter_id = f"{travel_id}_enc_{encounter_count}"
+        spec = generate_encounter(
+            encounter_id=encounter_id,
+            world_seed=world_seed,
+            system_government_id=system_government_id,
+            active_situations=active_situations,
+            travel_context=travel_context,
+            world_state_engine=world_state_engine,
+            current_system_id=current_system_id,
+        )
+        spec.selection_log["travel_roll"] = {
+            "travel_id": travel_id,
+            "population": population,
+            "cap": cap,
+            "encounter_index": encounter_count,
+            "effective_chance": effective_chance,
+            "roll": roll,
+        }
+        encounters.append(spec)
+        encounter_count += 1
+
     return encounters
 
 

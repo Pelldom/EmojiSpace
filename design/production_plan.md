@@ -926,7 +926,7 @@ Completion Summary:
 
 ## Phase 7.12 - Exploration and Mining (IN PROGRESS)
     
-**Target:** 0.11.9  
+**Target:** 0.11.10  
 **Contract:** design/exploration_and_mining_contract.md
     
 ### Summary
@@ -945,6 +945,7 @@ Completion Summary:
 
 - Environmental encounter mining implemented (no time/fuel cost, module-scaled yield, hazard hull damage).
 - Environmental/anomaly encounters show Investigate/Ignore on first decision; CLI no longer previews NPC ship for environmental categories.
+- Fix travel encounter generation loop to terminate on first failed roll (contract-correct); CLI prints encounter_id for encounter debugging.
 - New environmental encounter subtypes (opportunity, hazard, anomaly) added to the travel encounter system:
   - Opportunities: derelict_ship (module-biased salvage), derelict_station (cargo-biased salvage), distress_call, asteroid_field.
   - Hazards (travel-only): ion_storm, debris_storm, comet_passage.
@@ -985,7 +986,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.11.9
+Current Development Version: 0.11.10
 Phase 7.12 in progress (Exploration, Mining, Environmental Encounters).
 
 ## Authority Statement
