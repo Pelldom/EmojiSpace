@@ -4,6 +4,8 @@ JSON Lines format: one JSON object per line. Logging does not affect game logic.
 
 Stage 1: log_debug_event + telemetry file (logs/).
 Stage 2: log_event + debug file (tests/output/) with full payload and context.
+Stage 2b: COMMAND_START/END/ERROR, TRAVEL_*, ENCOUNTER_*, REWARD_* to debug file (Aevum-complete trace).
+All logging is deterministic (no RNG). Payloads are deep-copied; logging never mutates game state.
 """
 from __future__ import annotations
 

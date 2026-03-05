@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import random
+import traceback
 from typing import Any, Literal, Optional, Union
 
 from combat_resolver import resolve_combat
@@ -62,9 +63,11 @@ from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
 from reward_materializer import materialize_reward
 try:
-    from playtest_telemetry import log_debug_event, set_telemetry_context
+    from playtest_telemetry import log_debug_event, log_event, set_telemetry_context
 except Exception:
     def log_debug_event(_event_type: str, _data: dict[str, Any]) -> None:
+        pass
+    def log_event(_event_type: str, _payload: dict[str, Any], _component: str) -> None:
         pass
     def set_telemetry_context(turn: int | None = None, system_id: str | None = None) -> None:
         pass
@@ -256,7 +259,9 @@ class GameEngine:
             command_type, payload, error = self._parse_command(command)
             # Allow quit command even after run ended
             if command_type != "quit":
-                return self._build_step_result(
+                set_telemetry_context(turn=turn_before, system_id=self.player_state.current_system_id)
+                log_event("COMMAND_START", {"command_type": command_type or "unknown", "request": command if isinstance(command, dict) else {}}, "engine")
+                result = self._build_step_result(
                     context=EngineContext(
                         command=command if isinstance(command, dict) else {},
                         command_type=command_type or "unknown",
@@ -267,10 +272,14 @@ class GameEngine:
                     ok=False,
                     error="game_over",
                 )
-        
+                log_event("COMMAND_END", {"command_type": command_type or "unknown", "response": result}, "engine")
+                return result
+
         command_type, payload, error = self._parse_command(command)
+        set_telemetry_context(turn=turn_before, system_id=self.player_state.current_system_id)
+        log_event("COMMAND_START", {"command_type": command_type, "request": command if isinstance(command, dict) else {}}, "engine")
         if error is not None:
-            return self._build_step_result(
+            result = self._build_step_result(
                 context=EngineContext(
                     command=command if isinstance(command, dict) else {},
                     command_type=command_type,
@@ -280,6 +289,8 @@ class GameEngine:
                 ok=False,
                 error=error,
             )
+            log_event("COMMAND_END", {"command_type": command_type, "response": result}, "engine")
+            return result
 
         context = EngineContext(
             command=payload,
@@ -429,26 +440,37 @@ class GameEngine:
             elif command_type == "quit":
                 self._event(context, stage="command", subsystem="engine", detail={"quit": True})
             else:
-                return self._build_step_result(
+                result = self._build_step_result(
                     context=context,
                     ok=False,
                     error=f"unsupported_command_type:{command_type}",
                 )
+                log_event("COMMAND_END", {"command_type": command_type, "response": result}, "engine")
+                return result
         except Exception as exc:  # noqa: BLE001
             context.turn_after = int(get_current_turn())
             self._active_encounters = list(context.active_encounters)
+            log_event("COMMAND_ERROR", {
+                "command_type": context.command_type,
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+            }, "engine")
             return self._build_step_result(context=context, ok=False, error=str(exc))
 
         self._evaluate_hard_stop(context)
         context.turn_after = int(get_current_turn())
         self._active_encounters = list(context.active_encounters)
-        
+
         # Check for claim_mission error (Phase 7.11.1)
         claim_error = context.claim_mission_error
         if claim_error:
-            return self._build_step_result(context=context, ok=False, error=claim_error)
-        
-        return self._build_step_result(context=context, ok=True, error=None)
+            result = self._build_step_result(context=context, ok=False, error=claim_error)
+            log_event("COMMAND_END", {"command_type": command_type, "response": result}, "engine")
+            return result
+
+        result = self._build_step_result(context=context, ok=True, error=None)
+        log_event("COMMAND_END", {"command_type": command_type, "response": result}, "engine")
+        return result
 
     def has_pending_encounter(self) -> bool:
         """Check if there is a pending encounter requiring player input."""
@@ -831,6 +853,15 @@ class GameEngine:
             "fuel_cost": int(required_fuel),
             "seed": str(self.world_seed),
         })
+        log_event("TRAVEL_BEGIN", {
+            "travel_id": travel_id,
+            "origin_system": origin_system_id,
+            "origin_destination": origin_destination_id,
+            "target_destination": str(target_destination_id),
+            "travel_mode": "inter_system" if inter_system else "in_system",
+            "travel_days": int(days),
+            "fuel_cost": int(required_fuel),
+        }, "engine")
 
         self.player_state.current_system_id = target_system_id
         self.player_state.current_destination_id = target_destination_id
@@ -903,6 +934,18 @@ class GameEngine:
             subsystem="encounter_generator",
             detail={"travel_id": travel_id, "encounter_count": original_encounter_count},
         )
+        log_event("ENCOUNTER_QUEUE_CREATED", {
+            "travel_id": travel_id,
+            "encounter_count": original_encounter_count,
+            "encounters": [
+                {
+                    "encounter_id": str(getattr(e, "encounter_id", "")),
+                    "subtype": str(getattr(e, "subtype_id", "")),
+                    "category": getattr(e, "encounter_category", None),
+                }
+                for e in original_encounters
+            ],
+        }, "engine")
 
         # Initialize pending_travel with cursor-based tracking
         # Store all encounters in remaining_encounters, cursor starts at 0
@@ -970,6 +1013,11 @@ class GameEngine:
                         "encounter_count": self._pending_travel.get("original_encounter_count", 0),
                         "encounter_ids": self._pending_travel.get("encounter_ids", []),
                     })
+                    log_event("TRAVEL_END", {
+                        "travel_id": self._pending_travel.get("travel_id"),
+                        "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                        "encounter_ids": self._pending_travel.get("encounter_ids", []),
+                    }, "engine")
                     self._pending_travel = None
                 context.active_encounters = [
                     row
@@ -3862,6 +3910,10 @@ class GameEngine:
             "probe_module_count": int(probe_module_count),
             "mining_module_count": int(mining_module_count),
         })
+        log_event("ENCOUNTER_DECISION", {
+            "encounter_id": stored_encounter_id,
+            "chosen_action": str(decision_id),
+        }, "engine")
 
         try:
             # Resolve the current encounter with the decision
@@ -3877,6 +3929,11 @@ class GameEngine:
                 "outcome": resolver_outcome.get("outcome"),
                 "remaining_encounters": len(remaining),
             })
+            log_event("ENCOUNTER_RESOLVED", {
+                "encounter_id": stored_encounter_id,
+                "resolver": str(resolver_outcome.get("resolver", "none")),
+                "outcome": resolver_outcome.get("outcome"),
+            }, "engine")
             # Append events from resolved encounter to travel events
             events_so_far = self._pending_travel.get("events_so_far", [])
             events_so_far.extend(context.events)
@@ -3917,6 +3974,11 @@ class GameEngine:
                     "encounter_count": self._pending_travel.get("original_encounter_count", 0),
                     "encounter_ids": self._pending_travel.get("encounter_ids", []),
                 })
+                log_event("TRAVEL_END", {
+                    "travel_id": self._pending_travel.get("travel_id"),
+                    "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                    "encounter_ids": self._pending_travel.get("encounter_ids", []),
+                }, "engine")
                 self._pending_travel = None
 
     def _resume_travel_encounters_if_any(self, context: EngineContext) -> bool:
@@ -3950,6 +4012,11 @@ class GameEngine:
                 "encounter_count": self._pending_travel.get("original_encounter_count", 0),
                 "encounter_ids": self._pending_travel.get("encounter_ids", []),
             })
+            log_event("TRAVEL_END", {
+                "travel_id": self._pending_travel.get("travel_id"),
+                "encounter_count": self._pending_travel.get("original_encounter_count", 0),
+                "encounter_ids": self._pending_travel.get("encounter_ids", []),
+            }, "engine")
             self._pending_travel = None
             return False
         
@@ -4000,11 +4067,15 @@ class GameEngine:
             "encounter_id": str(next_encounter.encounter_id),  # Read existing ID, never construct
             "options": options,
         }
-        
+        log_event("ENCOUNTER_PRESENTED", {
+            "encounter_id": str(next_encounter.encounter_id),
+            "allowed_actions": [opt.get("id") for opt in options],
+        }, "engine")
+
         # Set hard_stop to require player input for next encounter
         context.hard_stop = True
         context.hard_stop_reason = "pending_encounter_decision"
-        
+
         return True
 
     def _resolve_encounter(
@@ -4113,6 +4184,11 @@ class GameEngine:
             subsystem="reward_gate",
             detail={"encounter_id": str(spec.encounter_id), "qualifies": bool(qualifies)},
         )
+        log_event("REWARD_EVAL", {
+            "encounter_id": str(spec.encounter_id),
+            "reward_profile_id": str(getattr(spec, "reward_profile_id", "")),
+            "qualifies": bool(qualifies),
+        }, "engine")
         if not qualifies:
             log_debug_event("REWARD_REJECTED", {
                 "encounter_id": str(spec.encounter_id),
@@ -4151,6 +4227,17 @@ class GameEngine:
                 "goods": str(getattr(reward_payload, "sku_id", "")),
                 "quantity": int(getattr(reward_payload, "quantity", 0) or 0),
             })
+            multiplier = 1.0
+            if resolver == "exploration" and str(resolver_outcome.get("outcome")) == "mined":
+                multiplier = float(resolver_outcome.get("multiplier", 1.0))
+            log_event("REWARD_MATERIALIZED", {
+                "encounter_id": str(spec.encounter_id),
+                "sku": str(getattr(reward_payload, "sku_id", "")),
+                "quantity": int(getattr(reward_payload, "quantity", 0) or 0),
+                "kind": str(getattr(reward_payload, "reward_kind", "")),
+                "multiplier": multiplier,
+                "capacity_exceeded": False,
+            }, "engine")
 
         # Phase 7.12 Phase 2: scale environmental mining cargo rewards by mining module count.
         if resolver == "exploration" and str(resolver_outcome.get("outcome")) == "mined":
@@ -4217,6 +4304,14 @@ class GameEngine:
             "cargo_before": cargo_before,
             "cargo_after": cargo_after,
         })
+        cargo_delta = {k: cargo_after.get(k, 0) - cargo_before.get(k, 0) for k in set(cargo_before) | set(cargo_after) if cargo_after.get(k, 0) != cargo_before.get(k, 0)}
+        log_event("REWARD_APPLIED", {
+            "encounter_id": str(spec.encounter_id),
+            "ship_id": ship_id,
+            "applied": applied,
+            "cargo_delta": cargo_delta,
+            "capacity_exceeded": applied.get("error") == "cargo_capacity_exceeded",
+        }, "engine")
         self._event(
             context,
             stage="conditional_rewards",
