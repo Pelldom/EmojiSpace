@@ -88,6 +88,19 @@ def load_reward_profiles():
         if reward_profile_id in by_id:
             raise ValueError(f"Duplicate reward_profile_id in reward_profiles.json: {reward_profile_id}.")
 
+        # Backward-compatibility: normalize legacy profiles that use reward_type instead of reward_kind.
+        # This happens before any validation so that mixed-schema files load without changing behavior
+        # of newer encounter-facing reward profiles.
+        if "reward_kind" not in profile:
+            legacy_type = profile.get("reward_type")
+            if legacy_type in {"credits", "cargo", "mixed", "none"}:
+                profile["reward_kind"] = legacy_type
+            else:
+                profile["reward_kind"] = "none"
+            # Provide safe defaults for legacy profiles
+            profile.setdefault("quantity_band", "low")
+            profile.setdefault("stolen_behavior", "none")
+
         reward_kind = profile.get("reward_kind")
         if reward_kind not in REWARD_KINDS:
             raise ValueError(f"Reward profile {reward_profile_id} has invalid reward_kind.")
