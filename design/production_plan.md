@@ -908,6 +908,33 @@ Combat determinism was changed to stochastic with per-combat RNG seed logging an
 
 ---
 
+## Phase 7.10 – Encounter System Unification (COMPLETED)
+
+Encounter generation and resolution pipeline has been unified and verified through extended playtests.
+
+Systems confirmed operational:
+
+- deterministic travel encounter generation
+- NPC encounter classification (neutral, authority, hostile)
+- environment encounters (exploration, mining, anomaly)
+- reaction_engine integration for posture-driven player responses
+- resolver branching (combat, interaction, environment)
+- combat_resolver integration
+- salvage_resolver integration
+- reward pipeline integration
+- automatic credit rewards
+- cargo reward generation
+- salvage module recovery
+- multi-encounter travel sequencing
+- wormhole anomaly generation
+- encounter state isolation between encounters
+
+Playtest verification confirmed correct execution across multiple long-run seeds.
+
+Remaining UI clarity improvements will be handled in the later **Polish Phase**.
+
+---
+
 ## Phase 7.10 – Combat System Unification (COMPLETED)
 
 Completion Summary:
@@ -986,7 +1013,7 @@ Prepare commercial packaging and monetization with strict isolation from simulat
 
 ---
 
-Current Development Version: 0.11.11
+Current Development Version: **0.11.3**
 Phase 7.12 in progress (Exploration, Mining, Environmental Encounters).
 
 ## Authority Statement
