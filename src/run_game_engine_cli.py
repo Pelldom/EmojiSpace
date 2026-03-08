@@ -1195,9 +1195,15 @@ def _show_financial(engine: GameEngine) -> None:
             capacity = rental.get("capacity", 0)
             cost = rental.get("cost_per_turn", 0)
             expiration = rental.get("expiration_day", "N/A")
-            # Part 1: Display destination name instead of ID
             dest_name = _get_destination_name(engine, destination_id)
-            print(f"  {idx}) Location: {dest_name}, Capacity: {capacity}, Cost/turn: {cost}, Expiration: {expiration}")
+            dest_obj = _get_destination_object(engine, destination_id) if destination_id != "N/A" else None
+            visible = destination_id in _visited_destination_ids(engine) if destination_id != "N/A" else False
+            display = _format_name_with_profile(
+                dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                dest_name,
+                visible,
+            )
+            print(f"  {idx}) Location: {display}, Capacity: {capacity}, Cost/turn: {cost}, Expiration: {expiration}")
     
     # Insurance stub
     print("\nINSURANCE:")
@@ -1271,9 +1277,15 @@ def _cancel_warehouse_rental(engine: GameEngine) -> None:
             _game_over_loop(engine, result)
             return
         if result.get("ok"):
-            # Part 1: Display destination name instead of ID
             dest_name = _get_destination_name(engine, destination_id)
-            print(f"Warehouse rental at {dest_name} cancelled.")
+            dest_obj = _get_destination_object(engine, destination_id)
+            visible = destination_id in _visited_destination_ids(engine)
+            dest_display = _format_name_with_profile(
+                dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                dest_name,
+                visible,
+            )
+            print(f"Warehouse rental at {dest_display} cancelled.")
         else:
             error = result.get("error", "unknown_error")
             print(f"Failed to cancel warehouse rental: {error}")
@@ -2380,9 +2392,12 @@ def _travel_menu(engine: GameEngine) -> None:
                     print(base)
                     continue
                 live_situations = _active_system_situations(engine=engine, system_id=system_id)
-                # Part 1: Show destination names instead of count
-                destination_names = [d.display_name for d in sorted(system.destinations, key=lambda d: d.destination_id)]
-                destinations_str = ", ".join(destination_names) if destination_names else "none"
+                # Part 1: Show destination names with emoji profiles
+                dest_displays = []
+                for d in sorted(system.destinations, key=lambda x: x.destination_id):
+                    vis = d.destination_id in _visited_destination_ids(engine)
+                    dest_displays.append(_format_name_with_profile(d, d.display_name, vis))
+                destinations_str = ", ".join(dest_displays) if dest_displays else "none"
                 print(
                     f"{base}\n"
                     f"    Government: {getattr(system, 'government_id', 'Unknown')}, "
@@ -2410,7 +2425,9 @@ def _travel_menu(engine: GameEngine) -> None:
             
             # Show travel start message
             target_name = target_system.name if hasattr(target_system, "name") else target_system.system_id
-            print(f"\nTraveling to {target_system.system_id} ({target_name})...")
+            target_visible = target_system.system_id in _visited_system_ids(engine)
+            target_display = _format_name_with_profile(target_system, target_name, target_visible)
+            print(f"\nTraveling to {target_system.system_id} ({target_display})...")
             
             result = engine.execute(payload)
             
@@ -2422,7 +2439,7 @@ def _travel_menu(engine: GameEngine) -> None:
             
             # Show travel completion if no hard stops
             if not result.get("hard_stop"):
-                print(f"Arrived at {target_system.system_id} ({target_name})")
+                print(f"Arrived at {target_system.system_id} ({target_display})")
             
             # Handle hard_stop responses (pending encounters or combat)
             # Per interaction_layer_contract.md: all encounters must be resolved before travel continues
@@ -2573,7 +2590,9 @@ def _travel_menu(engine: GameEngine) -> None:
             
             _format_result(result, "location_action")
             if result.get("ok") is True and result.get("player", {}).get("system_id") == target_system.system_id:
-                print(f"You have arrived in {target_system.name}.")
+                sys_visible = target_system.system_id in _visited_system_ids(engine)
+                system_display = _format_name_with_profile(target_system, target_system.name, sys_visible)
+                print(f"You have arrived in {system_display}.")
                 _print_current_system_destinations(engine)
             return
         elif mode == "2":
@@ -3121,11 +3140,19 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                             print(f"MISSION: {title}")
                             print(f"{'='*60}")
                             
-                            # Provider Name (Part 2)
+                            # Provider Name (Part 2) with emoji profile
                             provider_npc_id = mission_dict.get("mission_giver_npc_id")
                             if provider_npc_id:
                                 provider_name = _get_npc_name(engine, provider_npc_id)
-                                print(f"Provider: {provider_name}")
+                                provider_npc = None
+                                try:
+                                    nr = getattr(engine, "_npc_registry", None)
+                                    if nr:
+                                        provider_npc = nr.get_npc(provider_npc_id)
+                                except Exception:  # noqa: BLE001
+                                    pass
+                                provider_display = _format_name_with_profile(provider_npc, provider_name, True) if provider_npc is not None else provider_name
+                                print(f"Provider: {provider_display}")
                             
                             # Mission Description (Part 2 & 5)
                             description = mission_dict.get("description") or mission_dict.get("text", "")
@@ -3137,19 +3164,40 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                             mission_tier = mission_dict.get("mission_tier", 0)
                             print(f"Type: {mission_type} (Tier {mission_tier})")
                             
-                            # Destination Name (Part 1)
+                            # Destination Name (Part 1) with emoji profiles
                             target_destination_id = mission_dict.get("target_destination_id")
                             target_system_id = mission_dict.get("target_system_id")
                             if target_destination_id:
                                 dest_name = _get_destination_name(engine, target_destination_id)
+                                dest_obj = _get_destination_object(engine, target_destination_id)
+                                dest_visible = target_destination_id in _visited_destination_ids(engine)
+                                dest_display = _format_name_with_profile(
+                                    dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                    dest_name,
+                                    dest_visible,
+                                )
                                 if target_system_id:
                                     system_name = _get_system_name(engine, target_system_id)
-                                    print(f"Destination: {dest_name} ({system_name})")
+                                    system_obj = engine.sector.get_system(target_system_id)
+                                    sys_visible = target_system_id in _visited_system_ids(engine)
+                                    system_display = _format_name_with_profile(
+                                        system_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                        system_name,
+                                        sys_visible,
+                                    )
+                                    print(f"Destination: {dest_display} ({system_display})")
                                 else:
-                                    print(f"Destination: {dest_name}")
+                                    print(f"Destination: {dest_display}")
                             elif target_system_id:
                                 system_name = _get_system_name(engine, target_system_id)
-                                print(f"Target System: {system_name}")
+                                system_obj = engine.sector.get_system(target_system_id)
+                                sys_visible = target_system_id in _visited_system_ids(engine)
+                                system_display = _format_name_with_profile(
+                                    system_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                    system_name,
+                                    sys_visible,
+                                )
+                                print(f"Target System: {system_display}")
                             
                             # Objectives (Part 2 & 3) - from mission entity, NO RECALCULATION
                             objective_lines = _format_mission_objectives(engine, mission_dict)
@@ -3329,7 +3377,15 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                                 provider_npc_id = mission_dict.get("mission_giver_npc_id")
                                 if provider_npc_id:
                                     provider_name = _get_npc_name(engine, provider_npc_id)
-                                    print(f"Provider: {provider_name}")
+                                    provider_npc = None
+                                    try:
+                                        nr = getattr(engine, "_npc_registry", None)
+                                        if nr:
+                                            provider_npc = nr.get_npc(provider_npc_id)
+                                    except Exception:  # noqa: BLE001
+                                        pass
+                                    provider_display = _format_name_with_profile(provider_npc, provider_name, True) if provider_npc is not None else provider_name
+                                    print(f"Provider: {provider_display}")
                                 
                                 description = mission_dict.get("description") or mission_dict.get("text", "")
                                 if description:
@@ -3343,14 +3399,35 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                                 target_system_id = mission_dict.get("target_system_id")
                                 if target_destination_id:
                                     dest_name = _get_destination_name(engine, target_destination_id)
+                                    dest_obj = _get_destination_object(engine, target_destination_id)
+                                    dest_visible = target_destination_id in _visited_destination_ids(engine)
+                                    dest_display = _format_name_with_profile(
+                                        dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                        dest_name,
+                                        dest_visible,
+                                    )
                                     if target_system_id:
                                         system_name = _get_system_name(engine, target_system_id)
-                                        print(f"Destination: {dest_name} ({system_name})")
+                                        system_obj = engine.sector.get_system(target_system_id)
+                                        sys_visible = target_system_id in _visited_system_ids(engine)
+                                        system_display = _format_name_with_profile(
+                                            system_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                            system_name,
+                                            sys_visible,
+                                        )
+                                        print(f"Destination: {dest_display} ({system_display})")
                                     else:
-                                        print(f"Destination: {dest_name}")
+                                        print(f"Destination: {dest_display}")
                                 elif target_system_id:
                                     system_name = _get_system_name(engine, target_system_id)
-                                    print(f"Target System: {system_name}")
+                                    system_obj = engine.sector.get_system(target_system_id)
+                                    sys_visible = target_system_id in _visited_system_ids(engine)
+                                    system_display = _format_name_with_profile(
+                                        system_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                        system_name,
+                                        sys_visible,
+                                    )
+                                    print(f"Target System: {system_display}")
                                 
                                 # Objectives from mission entity - NO RECALCULATION
                                 objective_lines = _format_mission_objectives(engine, mission_dict)
@@ -3477,7 +3554,9 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
     while True:
         profile = _build_warehouse_profile(engine)
         _print_warehouse_profile(profile)
-        print("LOCATION: warehouse")
+        location_entity = SimpleNamespace(emoji_id="location_warehouse", tier=None, tags=[])
+        location_display = _format_name_with_profile(location_entity, "Warehouse", True)
+        print(f"LOCATION: {location_display}")
         print("1) Rent space")
         print("2) Deposit cargo")
         print("3) Withdraw cargo")
@@ -3870,10 +3949,7 @@ def _print_current_system_destinations(engine: GameEngine) -> None:
             destination.display_name,
             visible,
         )
-        emoji_id = getattr(destination, "emoji_id", "") or ""
-        glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
-        prefix = f"{glyph} " if glyph else ""
-        print(f"  {index}) {prefix}{destination.destination_id} {display_name} ({destination.destination_type})")
+        print(f"  {index}) {destination.destination_id} {display_name} ({destination.destination_type})")
 
 
 def _configure_cli_test_fuel(engine: GameEngine) -> None:
@@ -3915,11 +3991,24 @@ def _print_destination_context(engine: GameEngine) -> None:
     system_visited = ctx.get('system_government', '') != '' or ctx.get('primary_economy') is not None
     
     print("-" * 40)
-    emoji_id = ctx.get("emoji_id", "") or ""
-    glyph = _emoji_glyph_for_id(emoji_id) if emoji_id else ""
-    prefix = f"{glyph} " if glyph else ""
-    print(f"Destination: {prefix}{ctx.get('destination_name', 'Unknown')} ({ctx.get('destination_type', 'unknown')})")
-    print(f"System: {ctx.get('system_name', 'Unknown')}", end="")
+    dest_id = ctx.get("destination_id")
+    system_id = ctx.get("system_id")
+    dest_obj = _get_destination_object(engine, dest_id) if dest_id else None
+    system_obj = engine.sector.get_system(system_id) if system_id else None
+    dest_visible = dest_id in _visited_destination_ids(engine) if dest_id else False
+    sys_visible = system_id in _visited_system_ids(engine) if system_id else False
+    dest_display = _format_name_with_profile(
+        dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+        ctx.get('destination_name', 'Unknown'),
+        dest_visible,
+    )
+    system_display = _format_name_with_profile(
+        system_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+        ctx.get('system_name', 'Unknown'),
+        sys_visible,
+    )
+    print(f"Destination: {dest_display} ({ctx.get('destination_type', 'unknown')})")
+    print(f"System: {system_display}", end="")
     
     system_government = ctx.get('system_government', '')
     if system_government:
