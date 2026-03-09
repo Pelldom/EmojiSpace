@@ -109,6 +109,21 @@ def _suppress_logger_console():
 # NAME RESOLUTION HELPERS (Part 1: Display Names, Not IDs)
 # ============================================================================
 
+def _destination_display_entity(destination: object) -> object:
+    """Use destination as entity; when emoji_id is empty use location_{destination_type} from emoji.json."""
+    eid = (getattr(destination, "emoji_id", None) or "").strip()
+    if eid:
+        return destination
+    dtype = (getattr(destination, "destination_type", None) or "").strip()
+    if not dtype:
+        return destination
+    return SimpleNamespace(
+        emoji_id=f"location_{dtype}",
+        tier=getattr(destination, "tier", None),
+        tags=getattr(destination, "tags", None) or [],
+    )
+
+
 def _format_name_with_profile(entity: object, name: str, visible: bool) -> str:
     """
     Return name only, or 'name  profile' when visible and profile available.
@@ -620,14 +635,20 @@ def _prompt_admin_override() -> dict | None:
     if not hulls_list:
         raise ValueError("No hulls found in hulls.json")
     
-    # Print indexed hull list
+    # Print indexed hull list (entity names via emoji profile)
     print("\nAvailable Hulls:")
     for idx, hull in enumerate(hulls_list, start=1):
         name = hull.get("name", "Unknown")
         hull_id = hull.get("hull_id", "unknown")
         tier = hull.get("tier", "?")
         frame = hull.get("frame", "?")
-        print(f"  [{idx}] {name} | {hull_id} | tier {tier} | {frame}")
+        hull_entity = SimpleNamespace(
+            emoji_id=hull.get("emoji_id"),
+            tier=hull.get("tier"),
+            tags=hull.get("tags") or [],
+        )
+        display = _format_name_with_profile(hull_entity, name, True)
+        print(f"  [{idx}] {display} | {hull_id} | tier {tier} | {frame}")
     
     # Prompt for hull selection
     while True:
@@ -698,7 +719,13 @@ def _prompt_admin_override() -> dict | None:
             for mod_idx, module in enumerate(available_modules, start=1):
                 module_name = module.get("name", "Unknown")
                 module_id = module.get("module_id", "unknown")
-                print(f"  [{mod_idx}] {module_name} ({module_id})")
+                mod_entity = SimpleNamespace(
+                    emoji_id=module.get("emoji_id"),
+                    tier=module.get("tier"),
+                    tags=module.get("tags") or [],
+                )
+                display = _format_name_with_profile(mod_entity, module_name, True)
+                print(f"  [{mod_idx}] {display} ({module_id})")
         
         # Prompt for module selection
         while True:
@@ -844,11 +871,8 @@ def _show_player_info(engine: GameEngine) -> None:
                     target_name = _get_system_name(engine, target_dest_id)
                     target_obj = engine.sector.get_system(target_dest_id)
                     target_visible = target_dest_id in _visited_system_ids(engine)
-                target_display = _format_name_with_profile(
-                    target_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
-                    target_name,
-                    target_visible,
-                )
+                entity = (_destination_display_entity(target_obj) if target_obj and mission.get("target_destination_id") else target_obj) or SimpleNamespace(emoji_id=None, tier=None, tags=[])
+                target_display = _format_name_with_profile(entity, target_name, target_visible)
             else:
                 target_display = "N/A"
             mission_display = _format_name_with_profile(mission, str(mission_type), True)
@@ -877,7 +901,7 @@ def _show_player_info(engine: GameEngine) -> None:
             dest_obj = _get_destination_object(engine, destination_id) if destination_id else None
             visible = destination_id in _visited_destination_ids(engine) if destination_id else False
             dest_display = _format_name_with_profile(
-                dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                 dest_name,
                 visible,
             )
@@ -1199,7 +1223,7 @@ def _show_financial(engine: GameEngine) -> None:
             dest_obj = _get_destination_object(engine, destination_id) if destination_id != "N/A" else None
             visible = destination_id in _visited_destination_ids(engine) if destination_id != "N/A" else False
             display = _format_name_with_profile(
-                dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                 dest_name,
                 visible,
             )
@@ -1251,7 +1275,7 @@ def _cancel_warehouse_rental(engine: GameEngine) -> None:
         dest_obj = _get_destination_object(engine, destination_id) if destination_id != "N/A" else None
         visible = destination_id in _visited_destination_ids(engine) if destination_id != "N/A" else False
         display = _format_name_with_profile(
-            dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+            _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
             dest_name,
             visible,
         )
@@ -1281,7 +1305,7 @@ def _cancel_warehouse_rental(engine: GameEngine) -> None:
             dest_obj = _get_destination_object(engine, destination_id)
             visible = destination_id in _visited_destination_ids(engine)
             dest_display = _format_name_with_profile(
-                dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                 dest_name,
                 visible,
             )
@@ -1325,7 +1349,7 @@ def _show_missions(engine: GameEngine) -> None:
                 dest_obj = _get_destination_object(engine, target_destination_id)
                 dest_visible = target_destination_id in _visited_destination_ids(engine)
                 dest_display = _format_name_with_profile(
-                    dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                    _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                     dest_name,
                     dest_visible,
                 )
@@ -1378,7 +1402,8 @@ def _show_missions(engine: GameEngine) -> None:
             collection_format = mission.get("collection_format", "Auto")
             
             print(f"\n  Mission {idx}: {title_display}")
-            print(f"    Type: {mission_type} (Tier {mission_tier})")
+            type_display = _format_name_with_profile(mission, str(mission_type), True)
+            print(f"    Type: {type_display} (Tier {mission_tier})")
             print(f"    Target: {target_display}")
             print(f"    Objectives: {objective_text}")
             print(f"    Rewards: {reward_text}")
@@ -1629,7 +1654,7 @@ def _show_system_info(engine: GameEngine) -> None:
             dest_displays = []
             for destination in sorted(system.destinations, key=lambda d: d.destination_id):
                 visible = destination.destination_id in _visited_destination_ids(engine)
-                dest_displays.append(_format_name_with_profile(destination, destination.display_name, visible))
+                dest_displays.append(_format_name_with_profile(_destination_display_entity(destination), destination.display_name, visible))
             print(f"  Destinations: {', '.join(dest_displays) if dest_displays else 'none'}")
     else:
         print("  Active situations: Unknown")
@@ -1668,7 +1693,7 @@ def _show_destination_info(engine: GameEngine) -> None:
     destination_name = _get_destination_name(engine, destination_id)
     destination_object = _get_destination_object(engine, destination_id)
     display_name = _format_name_with_profile(
-        destination_object or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+        _destination_display_entity(destination_object) if destination_object else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
         destination_name,
         destination_visited,
     )
@@ -2350,13 +2375,15 @@ def _travel_menu(engine: GameEngine) -> None:
         current_destination_id = engine.player_state.current_destination_id
         current_destination_name = current_destination.display_name if current_destination else "Unknown"
         display_name = _format_name_with_profile(
-            current_destination or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+            _destination_display_entity(current_destination) if current_destination else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
             current_destination_name,
             True,
         )
-        # Part 1: Display names instead of IDs
+        # Part 1: Display names with emoji profile
         system_name = _get_system_name(engine, current_system.system_id)
-        print(f"Current system: {system_name}")
+        system_visible = current_system.system_id in _visited_system_ids(engine)
+        system_display = _format_name_with_profile(current_system, system_name, system_visible)
+        print(f"Current system: {system_display}")
         print(f"Current destination: {display_name}")
         print("\n0) Back")
         print("1) Inter-system warp")
@@ -2396,7 +2423,7 @@ def _travel_menu(engine: GameEngine) -> None:
                 dest_displays = []
                 for d in sorted(system.destinations, key=lambda x: x.destination_id):
                     vis = d.destination_id in _visited_destination_ids(engine)
-                    dest_displays.append(_format_name_with_profile(d, d.display_name, vis))
+                    dest_displays.append(_format_name_with_profile(_destination_display_entity(d), d.display_name, vis))
                 destinations_str = ", ".join(dest_displays) if dest_displays else "none"
                 print(
                     f"{base}\n"
@@ -2603,7 +2630,7 @@ def _travel_menu(engine: GameEngine) -> None:
             for index, destination in enumerate(destinations, start=1):
                 visible = destination.destination_id in _visited_destination_ids(engine)
                 display_name = _format_name_with_profile(
-                    destination,
+                    _destination_display_entity(destination),
                     destination.display_name,
                     visible,
                 )
@@ -2842,7 +2869,7 @@ def _location_entry_menu(engine: GameEngine) -> None:
         if result.get("ok") is False:
             print("Unable to enter location.")
             continue
-        print(f"Entered location: {engine.player_state.current_location_id}")
+        print(f"Entered location: {_format_current_location_display(engine)}")
 
         location_type = str(getattr(selected_location, "location_type", "") or "")
         if location_type == "market":
@@ -2878,13 +2905,13 @@ def _location_actions_menu(engine: GameEngine) -> None:
     while True:
         list_result = engine.execute({"type": "list_location_actions"})
         actions = _extract_actions_from_step_result(list_result)
-        print(f"LOCATION: {engine.player_state.current_location_id}")
+        print(f"LOCATION: {_format_current_location_display(engine)}")
         if not actions:
             print("No actions available at this location.")
             print("1) Return to Destination")
             if input("Select action index: ").strip() == "1":
                 _return_to_destination(engine)
-                print(f"Returned to destination: {engine.player_state.current_location_id}")
+                print(f"Returned to destination: {_format_current_destination_display(engine)}")
                 return
             print("Invalid action index.")
             continue
@@ -2902,7 +2929,7 @@ def _location_actions_menu(engine: GameEngine) -> None:
             continue
         if selected == return_index:
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         if selected < 1 or selected > len(actions):
             print("Invalid action index.")
@@ -2947,6 +2974,34 @@ def _current_location_type(engine: GameEngine) -> str | None:
     return None
 
 
+def _format_current_location_display(engine: GameEngine) -> str:
+    """Return current location name with emoji profile. Use for all LOCATION/SHIPDOCK headers."""
+    location_id = str(engine.player_state.current_location_id or "")
+    location_type = _current_location_type(engine) or ""
+    name = location_id or location_type or "Unknown"
+    location_entity = SimpleNamespace(
+        emoji_id=f"location_{location_type}" if location_type else None,
+        tier=None,
+        tags=[],
+    )
+    return _format_name_with_profile(location_entity, name, True)
+
+
+def _format_current_destination_display(engine: GameEngine) -> str:
+    """Return current destination name with emoji profile. Use for 'Returned to destination' etc."""
+    dest_id = engine.player_state.current_destination_id
+    if not dest_id:
+        return str(engine.player_state.current_location_id or "destination")
+    dest_name = _get_destination_name(engine, dest_id)
+    dest_obj = _get_destination_object(engine, dest_id)
+    visible = dest_id in _visited_destination_ids(engine)
+    return _format_name_with_profile(
+        _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+        dest_name,
+        visible,
+    )
+
+
 def _npc_first_location_menu(engine: GameEngine) -> None:
     while True:
         list_result = engine.execute({"type": "list_location_npcs"})
@@ -2958,7 +3013,7 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
         location_type = _current_location_type(engine)
         is_administration = location_type == "administration"
         
-        print(f"LOCATION: {engine.player_state.current_location_id}")
+        print(f"LOCATION: {_format_current_location_display(engine)}")
         
         # Get location actions for administration (filtered to admin_mission_board only)
         location_actions: list[dict[str, object]] = []
@@ -2972,7 +3027,7 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
             print("0) Return to destination")
             if input("Select option: ").strip() == "0":
                 _return_to_destination(engine)
-                print(f"Returned to destination: {engine.player_state.current_location_id}")
+                print(f"Returned to destination: {_format_current_destination_display(engine)}")
                 return
             print("Invalid selection.")
             continue
@@ -3007,7 +3062,7 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
         raw_choice = input("Select option: ").strip()
         if raw_choice == "0":
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         try:
             selected = int(raw_choice)
@@ -3084,7 +3139,8 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                             reward_text = ", ".join(reward_lines)
                         else:
                             reward_text = "No rewards"
-                        print(f"  {index}) {mission_type} (Tier {mission_tier}) – {reward_text}")
+                        mission_display = _format_name_with_profile(mission, str(mission_type), True)
+                        print(f"  {index}) {mission_display} (Tier {mission_tier}) – {reward_text}")
                     print()
                     # Prompt for selection
                     raw_choice = input("Select mission index to discuss (0 to cancel): ").strip()
@@ -3159,10 +3215,11 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                             if description:
                                 print(f"\n{description}\n")
                             
-                            # Mission Type and Tier
+                            # Mission Type and Tier (with emoji profile)
                             mission_type = mission_dict.get("mission_type", "Unknown")
                             mission_tier = mission_dict.get("mission_tier", 0)
-                            print(f"Type: {mission_type} (Tier {mission_tier})")
+                            type_display = _format_name_with_profile(mission_dict, str(mission_type), True)
+                            print(f"Type: {type_display} (Tier {mission_tier})")
                             
                             # Destination Name (Part 1) with emoji profiles
                             target_destination_id = mission_dict.get("target_destination_id")
@@ -3172,7 +3229,7 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                                 dest_obj = _get_destination_object(engine, target_destination_id)
                                 dest_visible = target_destination_id in _visited_destination_ids(engine)
                                 dest_display = _format_name_with_profile(
-                                    dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                    _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                                     dest_name,
                                     dest_visible,
                                 )
@@ -3272,8 +3329,10 @@ def _npc_first_location_menu(engine: GameEngine) -> None:
                         print("Available Missions:")
                         for mission in missions:
                             if isinstance(mission, dict):
+                                mt = mission.get("mission_type", "Unknown")
+                                type_display = _format_name_with_profile(mission, str(mt), True)
                                 print(f"  Mission ID: {mission.get('mission_id')}")
-                                print(f"  Type: {mission.get('mission_type')}")
+                                print(f"  Type: {type_display}")
                                 print(f"  Tier: {mission.get('mission_tier')}")
                                 print(f"  Rewards: {mission.get('rewards')}")
                                 print()
@@ -3393,7 +3452,8 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                                 
                                 mission_type = mission_dict.get("mission_type", "Unknown")
                                 mission_tier = mission_dict.get("mission_tier", 0)
-                                print(f"Type: {mission_type} (Tier {mission_tier})")
+                                type_display = _format_name_with_profile(mission_dict, str(mission_type), True)
+                                print(f"Type: {type_display} (Tier {mission_tier})")
                                 
                                 target_destination_id = mission_dict.get("target_destination_id")
                                 target_system_id = mission_dict.get("target_system_id")
@@ -3402,7 +3462,7 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                                     dest_obj = _get_destination_object(engine, target_destination_id)
                                     dest_visible = target_destination_id in _visited_destination_ids(engine)
                                     dest_display = _format_name_with_profile(
-                                        dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+                                        _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
                                         dest_name,
                                         dest_visible,
                                     )
@@ -3473,8 +3533,10 @@ def _npc_interactions_menu(engine: GameEngine, *, npc_id: str) -> None:
                 print("Available Missions:")
                 for mission in missions:
                     if isinstance(mission, dict):
+                        mt = mission.get("mission_type", "Unknown")
+                        type_display = _format_name_with_profile(mission, str(mt), True)
                         print(f"  Mission ID: {mission.get('mission_id')}")
-                        print(f"  Type: {mission.get('mission_type')}")
+                        print(f"  Type: {type_display}")
                         print(f"  Tier: {mission.get('mission_tier')}")
                         reward_text = _format_reward_summary(mission.get("reward_summary", []))
                         print(f"  Rewards: {reward_text}")
@@ -3514,7 +3576,7 @@ def _market_location_menu(engine: GameEngine) -> None:
             continue
         if raw_action == "3":
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         print("Invalid action index.")
 
@@ -3545,18 +3607,17 @@ def _datanet_location_menu(engine: GameEngine) -> None:
             continue
         if raw_action == "3":
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         print("Invalid action index.")
 
 
 def _warehouse_location_menu(engine: GameEngine) -> None:
+    """Warehouse is a normal location: use same display rule as all locations."""
     while True:
         profile = _build_warehouse_profile(engine)
         _print_warehouse_profile(profile)
-        location_entity = SimpleNamespace(emoji_id="location_warehouse", tier=None, tags=[])
-        location_display = _format_name_with_profile(location_entity, "Warehouse", True)
-        print(f"LOCATION: {location_display}")
+        print(f"LOCATION: {_format_current_location_display(engine)}")
         print("1) Rent space")
         print("2) Deposit cargo")
         print("3) Withdraw cargo")
@@ -3637,7 +3698,7 @@ def _warehouse_location_menu(engine: GameEngine) -> None:
             continue
         if raw_action == "4":
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         print("Invalid action index.")
 
@@ -3945,7 +4006,7 @@ def _print_current_system_destinations(engine: GameEngine) -> None:
     for index, destination in enumerate(destinations, start=1):
         visible = destination.destination_id in _visited_destination_ids(engine)
         display_name = _format_name_with_profile(
-            destination,
+            _destination_display_entity(destination),
             destination.display_name,
             visible,
         )
@@ -3998,7 +4059,7 @@ def _print_destination_context(engine: GameEngine) -> None:
     dest_visible = dest_id in _visited_destination_ids(engine) if dest_id else False
     sys_visible = system_id in _visited_system_ids(engine) if system_id else False
     dest_display = _format_name_with_profile(
-        dest_obj or SimpleNamespace(emoji_id=None, tier=None, tags=[]),
+        _destination_display_entity(dest_obj) if dest_obj else SimpleNamespace(emoji_id=None, tier=None, tags=[]),
         ctx.get('destination_name', 'Unknown'),
         dest_visible,
     )
@@ -4092,7 +4153,7 @@ def _galaxy_summary(engine: GameEngine) -> None:
             secondary_str = ", ".join(dest.secondary_economy_ids) if dest.secondary_economy_ids else "-"
             primary_str = dest.primary_economy_id if dest.primary_economy_id else "None"
             visible = dest.destination_id in _visited_destination_ids(engine)
-            dest_display = _format_name_with_profile(dest, dest.display_name, visible)
+            dest_display = _format_name_with_profile(_destination_display_entity(dest), dest.display_name, visible)
             print(f"    {dest.destination_id} - {dest_display} ({dest.destination_type})")
             print(f"      Population: {dest.population}")
             print(f"      Primary Economy: {primary_str}")
@@ -4263,7 +4324,7 @@ def _market_sell_menu(engine: GameEngine) -> None:
 def _shipdock_menu(engine: GameEngine) -> None:
     """Shipdock location menu with numbered lists for all actions."""
     while True:
-        print(f"SHIPDOCK: {engine.player_state.current_location_id}")
+        print(f"SHIPDOCK: {_format_current_location_display(engine)}")
         print("1) Buy Hull")
         print("2) Buy Module")
         print("3) Sell Hull")
@@ -4274,7 +4335,7 @@ def _shipdock_menu(engine: GameEngine) -> None:
         raw_choice = input("Select action: ").strip()
         if raw_choice == "6":
             _return_to_destination(engine)
-            print(f"Returned to destination: {engine.player_state.current_location_id}")
+            print(f"Returned to destination: {_format_current_destination_display(engine)}")
             return
         elif raw_choice == "1":
             _shipdock_buy_hull(engine)
