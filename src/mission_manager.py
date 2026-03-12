@@ -9,6 +9,12 @@ except ModuleNotFoundError:
 from mission_entity import MissionEntity, MissionOutcome, MissionState
 from player_state import PlayerState
 from reward_applicator import apply_mission_rewards, _is_data_cargo
+from mission_objective_evaluator import (
+    evaluate_objective,
+    convert_mission_objectives_to_canonical,
+    MissionEventContext,
+)
+from reward_service import payout as reward_payout
 import math
 import json
 import random
@@ -80,6 +86,13 @@ class MissionManager:
             return {}
 
     def offer(self, mission: MissionEntity, logger=None, turn: int = 0) -> None:
+        # Validate reward_profile_id (Commit 4)
+        if not mission.reward_profile_id:
+            raise ValueError(
+                f"Mission {mission.mission_id} cannot be offered: missing reward_profile_id. "
+                "All missions must have a reward_profile_id set."
+            )
+        
         self.missions[mission.mission_id] = mission
         if mission.mission_id not in self.offered:
             self.offered.append(mission.mission_id)
@@ -403,24 +416,20 @@ def evaluate_active_missions(
                 # Skip further evaluation for this mission (already failed)
                 continue
         
-        # Evaluate delivery missions
-        if mission.mission_type == "delivery":
-            completed = _evaluate_delivery_mission(
-                mission=mission,
-                mission_manager=mission_manager,
-                player_state=player_state,
-                current_system_id=current_system_id,
-                current_destination_id=current_destination_id,
-                logger=logger,
-                turn=turn,
-            )
-            if completed:
-                result["completed_mission_ids"].append(mission_id)
-                if logger is not None:
-                    result["logs"].append(f"mission_id={mission_id} outcome=completed")
-        
-        # Other mission types (bounty, etc.) - not implemented yet
-        # Will be added in future phases
+        # Objective-driven evaluation (replaces mission_type branching)
+        completed = _evaluate_mission_by_objectives(
+            mission=mission,
+            player_state=player_state,
+            current_system_id=current_system_id,
+            current_destination_id=current_destination_id,
+            event_context=event_context,
+            logger=logger,
+            turn=turn,
+        )
+        if completed:
+            result["completed_mission_ids"].append(mission_id)
+            if logger is not None:
+                result["logs"].append(f"mission_id={mission_id} outcome=completed")
     
     # Auto payout for completed missions (Phase 7.11.3)
     # Check all missions (not just active) for auto payout
@@ -445,122 +454,62 @@ def evaluate_active_missions(
         if mission.mission_state == MissionState.RESOLVED and mission.outcome == MissionOutcome.COMPLETED:
             # Guard against double payout: only pay when reward_status is 'ungranted'
             if mission.payout_policy == "auto" and mission.reward_status == "ungranted":
-                # Calculate reward using unified authority
+                # Use unified reward service for payout (Commit 4)
                 try:
-                    reward = _calculate_mission_reward(mission, reward_profiles, catalogs, world_seed)
-                    reward_type = reward.get("type")
+                    # Get system markets for cargo selection
+                    system_markets = []
+                    try:
+                        from game_engine import GameEngine
+                        # Try to get markets from sector if available
+                        # For now, pass empty list - materialize_reward will handle it
+                    except Exception:
+                        pass
                     
-                    # Apply reward based on type
-                    applied = False
+                    # Get ship for capacity checking
+                    ship = None
+                    physical_cargo_capacity = None
+                    data_cargo_capacity = None
+                    try:
+                        # Try to get active ship for capacity
+                        if hasattr(player_state, "active_ship_id") and player_state.active_ship_id:
+                            # Ship capacity would be retrieved here if available
+                            pass
+                    except Exception:
+                        pass
                     
-                    if reward_type == "credits":
-                        amount = reward.get("amount", 0)
-                        player_state.credits += amount
-                        applied = True
-                        
-                        if logger is not None:
-                            logger.log(
-                                turn=turn,
-                                action="mission_reward_granted",
-                                state_change=(
-                                    f"mission_id={mission_id} payout_policy=auto "
-                                    f"credits={amount} new_balance={player_state.credits}"
-                                ),
-                            )
-                            result["logs"].append(f"mission_id={mission_id} reward_granted credits={amount}")
+                    bundle = reward_payout(
+                        mission=mission,
+                        player_state=player_state,
+                        system_markets=system_markets,
+                        world_seed=world_seed,
+                        catalog=catalogs.get("data_catalog"),
+                        physical_cargo_capacity=physical_cargo_capacity,
+                        data_cargo_capacity=data_cargo_capacity,
+                        enforce_capacity=False,  # Don't enforce for auto-payout
+                        logger=logger,
+                        turn=turn,
+                    )
                     
-                    elif reward_type == "goods":
-                        sku_id = reward.get("sku_id")
-                        quantity = reward.get("quantity", 0)
-                        
-                        # Check cargo capacity
-                        if _check_cargo_capacity(player_state, sku_id, quantity, catalogs.get("data_catalog")):
-                            # Add to cargo
-                            player_state.cargo_by_ship.setdefault("active", {})
-                            current_qty = player_state.cargo_by_ship["active"].get(sku_id, 0)
-                            player_state.cargo_by_ship["active"][sku_id] = current_qty + quantity
-                            applied = True
-                            
-                            if logger is not None:
-                                logger.log(
-                                    turn=turn,
-                                    action="mission_reward_granted",
-                                    state_change=(
-                                        f"mission_id={mission_id} payout_policy=auto "
-                                        f"goods={sku_id} quantity={quantity}"
-                                    ),
-                                )
-                                result["logs"].append(f"mission_id={mission_id} reward_granted goods={sku_id} quantity={quantity}")
-                        else:
-                            # Insufficient capacity - skip reward
-                            if logger is not None:
-                                logger.log(
-                                    turn=turn,
-                                    action="mission_reward_error",
-                                    state_change=f"mission_id={mission_id} error=insufficient_cargo_capacity",
-                                )
+                    # Mark reward as granted
+                    mission.reward_status = "granted"
+                    mission.reward_granted_turn = turn
                     
-                    elif reward_type == "module":
-                        module_id = reward.get("module_id")
-                        
-                        # Add to salvage_modules
-                        if not hasattr(player_state, "salvage_modules"):
-                            player_state.salvage_modules = []
-                        if not isinstance(player_state.salvage_modules, list):
-                            player_state.salvage_modules = []
-                        
-                        module_dict = {"module_id": module_id, "secondary_tags": []}
-                        player_state.salvage_modules.append(module_dict)
-                        applied = True
-                        
-                        if logger is not None:
-                            logger.log(
-                                turn=turn,
-                                action="mission_reward_granted",
-                                state_change=(
-                                    f"mission_id={mission_id} payout_policy=auto "
-                                    f"module={module_id}"
-                                ),
-                            )
-                            result["logs"].append(f"mission_id={mission_id} reward_granted module={module_id}")
+                    if logger is not None:
+                        reward_lines = bundle.to_reward_summary_lines()
+                        logger.log(
+                            turn=turn,
+                            action="mission_reward_granted",
+                            state_change=(
+                                f"mission_id={mission_id} payout_policy=auto "
+                                f"rewards={', '.join(reward_lines)}"
+                            ),
+                        )
+                        result["logs"].append(f"mission_id={mission_id} reward_granted {', '.join(reward_lines)}")
                     
-                    elif reward_type == "hull_voucher":
-                        hull_id = reward.get("hull_id")
-                        voucher_sku = f"hull_voucher_{hull_id}"
-                        
-                        # Check data cargo capacity (vouchers are data cargo)
-                        if _check_data_cargo_capacity(player_state, 1):
-                            # Add voucher as data cargo
-                            player_state.cargo_by_ship.setdefault("active", {})
-                            current_qty = player_state.cargo_by_ship["active"].get(voucher_sku, 0)
-                            player_state.cargo_by_ship["active"][voucher_sku] = current_qty + 1
-                            applied = True
-                            
-                            if logger is not None:
-                                logger.log(
-                                    turn=turn,
-                                    action="mission_reward_granted",
-                                    state_change=(
-                                        f"mission_id={mission_id} payout_policy=auto "
-                                        f"hull_voucher={hull_id}"
-                                    ),
-                                )
-                                result["logs"].append(f"mission_id={mission_id} reward_granted hull_voucher={hull_id}")
-                        else:
-                            # Insufficient capacity - skip reward
-                            if logger is not None:
-                                logger.log(
-                                    turn=turn,
-                                    action="mission_reward_error",
-                                    state_change=f"mission_id={mission_id} error=insufficient_data_cargo_capacity",
-                                )
+                    # Skip old reward application code
+                    continue
                     
-                    # Only update reward_status if reward was successfully applied
-                    if applied:
-                        mission.reward_status = "granted"
-                        mission.reward_granted_turn = turn
-                    
-                except ValueError as e:
+                except (ValueError, Exception) as e:
                     # Log error but don't fail evaluation
                     if logger is not None:
                         logger.log(
@@ -1048,50 +997,71 @@ def _check_data_cargo_capacity(
     return current_data + quantity <= 100
 
 
-def _evaluate_delivery_mission(
+def _evaluate_mission_by_objectives(
     *,
     mission: MissionEntity,
-    mission_manager: "MissionManager",
     player_state: PlayerState,
     current_system_id: str,
     current_destination_id: str | None,
+    event_context: Dict[str, Any],
     logger=None,
     turn: int = 0,
 ) -> bool:
     """
-    Evaluate a single delivery mission for completion.
+    Evaluate mission completion by checking all objectives.
     
-    Completion condition:
-    - mission.target.target_type == "destination"
-    - current_destination_id == mission.target.target_id
+    This replaces mission_type-specific evaluation with objective-driven evaluation.
+    All missions complete when all their objectives are complete.
     
     Returns:
         True if mission was completed, False otherwise
     """
-    # Read target from structured schema
-    target = mission.target
-    if not isinstance(target, dict):
+    # Convert mission objectives to canonical Objective objects
+    objectives = convert_mission_objectives_to_canonical(mission)
+    
+    # If no objectives, mission cannot complete (safety check)
+    if not objectives:
         return False
     
-    target_type = target.get("target_type")
-    target_id = target.get("target_id")
+    # Build event context for objective evaluators
+    event_type = event_context.get("event", "unknown")
+    context = MissionEventContext(
+        event_type=event_type,
+        current_system_id=current_system_id,
+        current_destination_id=current_destination_id,
+        current_location_id=getattr(player_state, "current_location_id", None),
+        cargo_snapshot=dict(player_state.cargo_by_ship.get("active", {})),
+        combat_result=event_context.get("combat_result"),
+    )
     
-    # Validate target structure
-    if target_type != "destination":
-        return False
+    # Evaluate each objective
+    all_complete = True
+    for objective in objectives:
+        was_complete = objective.is_complete
+        evaluate_objective(objective, context, player_state)
+        
+        # Log objective state changes
+        if logger is not None and not was_complete and objective.is_complete:
+            logger.log(
+                turn=turn,
+                action="mission_objective_completed",
+                state_change=(
+                    f"mission_id={mission.mission_id} objective_id={objective.objective_id} "
+                    f"objective_type={objective.objective_type} target_id={objective.target_id}"
+                ),
+            )
+        
+        if not objective.is_complete:
+            all_complete = False
     
-    if not isinstance(target_id, str) or not target_id:
-        return False
-    
-    # Check completion condition
-    if current_destination_id == target_id:
-        # Mission completed - transition to resolved
+    # If all objectives are complete, mark mission as completed
+    if all_complete:
         old_state = str(mission.mission_state)
         
         mission.mission_state = MissionState.RESOLVED
         mission.outcome = MissionOutcome.COMPLETED
         
-        # Set resolved_turn in persistent_state (minimal metadata without breaking schema)
+        # Set resolved_turn in persistent_state
         mission.persistent_state["resolved_turn"] = turn
         
         # Remove from active missions
@@ -1108,7 +1078,7 @@ def _evaluate_delivery_mission(
                 action="mission_state_transition",
                 state_change=(
                     f"mission_id={mission.mission_id} from={old_state} to=resolved "
-                    f"outcome=completed target_id={target_id} current_destination_id={current_destination_id}"
+                    f"outcome=completed objective_count={len(objectives)}"
                 ),
             )
             
@@ -1116,8 +1086,8 @@ def _evaluate_delivery_mission(
                 turn=turn,
                 action="mission_eval:completed",
                 state_change=(
-                    f"mission_id={mission.mission_id} mission_type=delivery "
-                    f"target_id={target_id} current_destination_id={current_destination_id}"
+                    f"mission_id={mission.mission_id} mission_type={mission.mission_type} "
+                    f"event={event_type} objectives_completed={len(objectives)}"
                 ),
             )
         

@@ -20,6 +20,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_energy",
+      "tags": ["combat:weapon_energy"],
       "numeric_bonus": {
         "weapon": 1
       },
@@ -55,6 +56,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_energy",
+      "tags": ["combat:weapon_energy"],
       "numeric_bonus": {
         "weapon": 2
       },
@@ -90,6 +92,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_kinetic",
+      "tags": ["combat:weapon_kinetic"],
       "numeric_bonus": {
         "weapon": 1
       },
@@ -125,6 +128,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_kinetic",
+      "tags": ["combat:weapon_kinetic"],
       "numeric_bonus": {
         "weapon": 2
       },
@@ -160,6 +164,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_disruptive",
+      "tags": ["combat:weapon_disruptive"],
       "numeric_bonus": {
         "weapon": 1
       },
@@ -195,6 +200,7 @@
       ],
       "slot_type": "weapon",
       "primary_tag": "combat:weapon_disruptive",
+      "tags": ["combat:weapon_disruptive"],
       "numeric_bonus": {
         "weapon": 2
       },
@@ -230,6 +236,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_shielded",
+      "tags": ["combat:defense_shielded"],
       "numeric_bonus": {
         "defense": 1
       },
@@ -265,6 +272,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_shielded",
+      "tags": ["combat:defense_shielded"],
       "numeric_bonus": {
         "defense": 2
       },
@@ -300,6 +308,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_armored",
+      "tags": ["combat:defense_armored"],
       "numeric_bonus": {
         "defense": 1
       },
@@ -335,6 +344,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_armored",
+      "tags": ["combat:defense_armored"],
       "numeric_bonus": {
         "defense": 2
       },
@@ -370,6 +380,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_adaptive",
+      "tags": ["combat:defense_adaptive"],
       "numeric_bonus": {
         "defense": 1
       },
@@ -405,6 +416,7 @@
       ],
       "slot_type": "defense",
       "primary_tag": "combat:defense_adaptive",
+      "tags": ["combat:defense_adaptive"],
       "numeric_bonus": {
         "defense": 2
       },
@@ -440,6 +452,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_engine_boost",
+      "tags": ["combat:utility_engine_boost"],
       "numeric_bonus": {
         "engine": 1
       },
@@ -475,6 +488,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_engine_boost",
+      "tags": ["combat:utility_engine_boost"],
       "numeric_bonus": {
         "engine": 2
       },
@@ -510,6 +524,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_targeting",
+      "tags": ["combat:utility_targeting"],
       "numeric_bonus": {
         "weapon": 1
       },
@@ -545,6 +560,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_targeting",
+      "tags": ["combat:utility_targeting"],
       "numeric_bonus": {
         "weapon": 2
       },
@@ -580,6 +596,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_repair_system",
+      "tags": ["combat:utility_repair_system"],
       "numeric_bonus": {
         "defense": 1
       },
@@ -615,6 +632,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_repair_system",
+      "tags": ["combat:utility_repair_system"],
       "numeric_bonus": {
         "defense": 2
       },
@@ -650,6 +668,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_signal_scrambler",
+      "tags": ["combat:utility_signal_scrambler"],
       "numeric_bonus": {
         "defense": 1
       },
@@ -685,6 +704,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_signal_scrambler",
+      "tags": ["combat:utility_signal_scrambler"],
       "numeric_bonus": {
         "defense": 2
       },
@@ -720,6 +740,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_overcharger",
+      "tags": ["combat:utility_overcharger"],
       "numeric_bonus": {
         "weapon": 1
       },
@@ -755,6 +776,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "combat:utility_overcharger",
+      "tags": ["combat:utility_overcharger"],
       "numeric_bonus": {
         "weapon": 2
       },
@@ -790,6 +812,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_extra_cargo",
+      "tags": ["ship:utility_extra_cargo"],
       "base_price_credits": 1200,
       "rarity_weight": 100,
       "rarity_tier": "common",
@@ -822,6 +845,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_data_array",
+      "tags": ["ship:utility_data_array"],
       "base_price_credits": 1300,
       "rarity_weight": 95,
       "rarity_tier": "common",
@@ -854,6 +878,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_smuggler_hold",
+      "tags": ["ship:utility_smuggler_hold"],
       "base_price_credits": 2100,
       "rarity_weight": 70,
       "rarity_tier": "uncommon",
@@ -886,6 +911,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_mining_equipment",
+      "tags": ["ship:utility_mining_equipment"],
       "base_price_credits": 2400,
       "rarity_weight": 75,
       "rarity_tier": "uncommon",
@@ -918,6 +944,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_probe_array",
+      "tags": ["ship:utility_probe_array"],
       "base_price_credits": 1700,
       "rarity_weight": 85,
       "rarity_tier": "common",
@@ -950,6 +977,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_interdiction",
+      "tags": ["ship:utility_interdiction"],
       "base_price_credits": 2600,
       "rarity_weight": 55,
       "rarity_tier": "uncommon",
@@ -973,6 +1001,7 @@
       ],
       "slot_type": "utility",
       "primary_tag": "ship:utility_extra_fuel",
+      "tags": ["ship:utility_extra_fuel"],
       "base_price_credits": 1900,
       "rarity_weight": 110,
       "rarity_tier": "common",

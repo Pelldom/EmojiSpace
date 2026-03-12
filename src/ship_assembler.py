@@ -275,6 +275,8 @@ def assemble_ship(
         "smuggler_flag": False,
         "unlock_mining": False,
         "unlock_probe": False,
+        "mining_module_count": 0,
+        "probe_module_count": 0,
     }
     fuel_bonus = 0
 
@@ -304,8 +306,10 @@ def assemble_ship(
             ship_utility_effects["smuggler_flag"] = True
         elif entry["primary_tag"] == "ship:utility_mining_equipment":
             ship_utility_effects["unlock_mining"] = True
+            ship_utility_effects["mining_module_count"] += 1
         elif entry["primary_tag"] == "ship:utility_probe_array":
             ship_utility_effects["unlock_probe"] = True
+            ship_utility_effects["probe_module_count"] += 1
         elif entry["primary_tag"] == "ship:utility_extra_fuel":
             fuel_bonus += 5
 
@@ -400,3 +404,61 @@ def assemble_ship(
         red,
     )
     return result
+
+
+CAPABILITY_UNLOCK_PROBE = "capability_unlock_probe"
+CAPABILITY_UNLOCK_MINING = "capability_unlock_mining"
+
+
+def ship_has_capability(ship: Any, capability_id: str) -> bool:
+    """Return True if the ship has the given capability (Phase 7.12). Uses tag-based gating via ship_utility_effects."""
+    hull_id = getattr(ship, "model_id", None) or (ship.get("hull_id") if isinstance(ship, dict) else None)
+    module_instances = (
+        getattr(ship, "persistent_state", {}).get("module_instances", [])
+        if not isinstance(ship, dict)
+        else ship.get("module_instances", [])
+    )
+    if not hull_id or not isinstance(module_instances, list):
+        return False
+    degradation = (
+        getattr(ship, "persistent_state", {}).get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+        if not isinstance(ship, dict)
+        else ship.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+    )
+    if not isinstance(degradation, dict):
+        degradation = {"weapon": 0, "defense": 0, "engine": 0}
+    assembled = assemble_ship(hull_id, module_instances, degradation)
+    utility = assembled.get("ship_utility_effects") or {}
+    if capability_id == CAPABILITY_UNLOCK_PROBE:
+        return bool(utility.get("unlock_probe", False))
+    if capability_id == CAPABILITY_UNLOCK_MINING:
+        return bool(utility.get("unlock_mining", False))
+    return False
+
+
+def ship_get_utility_count(ship: Any, key: str) -> int:
+    """
+    Return integer utility count from ship_utility_effects (e.g. 'mining_module_count', 'probe_module_count').
+    Uses the same assemble_ship path as ship_has_capability.
+    """
+    hull_id = getattr(ship, "model_id", None) or (ship.get("hull_id") if isinstance(ship, dict) else None)
+    module_instances = (
+        getattr(ship, "persistent_state", {}).get("module_instances", [])
+        if not isinstance(ship, dict)
+        else ship.get("module_instances", [])
+    )
+    if not hull_id or not isinstance(module_instances, list):
+        return 0
+    degradation = (
+        getattr(ship, "persistent_state", {}).get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+        if not isinstance(ship, dict)
+        else ship.get("degradation_state", {"weapon": 0, "defense": 0, "engine": 0})
+    )
+    if not isinstance(degradation, dict):
+        degradation = {"weapon": 0, "defense": 0, "engine": 0}
+    assembled = assemble_ship(hull_id, module_instances, degradation)
+    utility = assembled.get("ship_utility_effects") or {}
+    try:
+        return int(utility.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0

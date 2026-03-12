@@ -50,7 +50,7 @@ Every entity MUST define:
 - entity_id (string, unique, immutable)
 - entity_type (enum)
 - name (string)
-- emoji (string)
+- emoji_id (string, reference to data/emoji.json)
 - system_id (string)
 - location_id (string or null)
 - roles (list of role identifiers)
@@ -78,18 +78,19 @@ No other entity types are permitted in Phase 3.
 
 ----------------------------------------------------------------
 
-## 5. Entity Emoji
+## 5. Entity Primary Emoji (emoji_id)
 
-Every entity MUST define exactly one emoji.
+Every entity MUST define exactly one primary emoji, stored as emoji_id.
 
 Rules:
-- Emoji is a symbolic identifier, not presentation logic
-- Emoji is owned by the entity, not the UI
-- Emoji is immutable after entity creation
-- Emoji selection rules are defined elsewhere
-- Emoji has no intrinsic meaning without interpretation
+- emoji_id is a string reference to an entry in data/emoji.json.
+- Glyphs must NEVER appear in entity schema; glyph resolution occurs only through emoji.json.
+- emoji_id is owned by the entity, not the UI.
+- emoji_id is immutable after entity creation.
+- emoji_id selection rules are defined elsewhere (e.g. emoji_profile_contract.md).
+- emoji_id has no intrinsic meaning without interpretation.
 
-UI systems must consume, not assign, emoji.
+UI systems must consume (resolve emoji_id via emoji.json), not assign, primary emoji.
 
 ----------------------------------------------------------------
 

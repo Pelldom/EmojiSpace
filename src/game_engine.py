@@ -58,6 +58,12 @@ from npc_entity import NPCEntity, NPCPersistenceTier
 from npc_placement import resolve_npcs_for_location
 from npc_registry import NPCRegistry
 from player_state import PlayerState
+from knowledge_state import (
+    initialize_player_knowledge,
+    mark_destination_visited,
+    mark_system_destinations_local_visible,
+    mark_system_visited,
+)
 from pursuit_resolver import resolve_pursuit
 from reaction_engine import get_npc_outcome
 from reward_applicator import apply_materialized_reward
@@ -225,6 +231,18 @@ class GameEngine:
             "starting_system_marked_visited": bool(start_system_marked),
             "starting_destination_marked_visited": bool(start_destination_marked),
         }
+        # Initialize knowledge-state snapshots for the new game (all systems detected).
+        initialize_player_knowledge(self.player_state, self.sector, current_turn=0)
+        # Upgrade starting system and its destinations according to the knowledge contract.
+        starting_system = self.sector.systems[0]
+        mark_system_visited(self.player_state, starting_system, current_turn=0)
+        mark_system_destinations_local_visible(self.player_state, starting_system, current_turn=0)
+        if isinstance(self.player_state.current_destination_id, str) and self.player_state.current_destination_id:
+            dest_id = self.player_state.current_destination_id
+            for destination in getattr(starting_system, "destinations", []) or []:
+                if getattr(destination, "destination_id", None) == dest_id:
+                    mark_destination_visited(self.player_state, starting_system.system_id, destination, current_turn=0)
+                    break
         self.fleet_by_id = self._build_default_fleet(starting_ship_override=starting_ship_override)
 
         self.time_engine = TimeEngine(
@@ -486,22 +504,32 @@ class GameEngine:
     
     def resolve_pending_loot(self, take_all: bool) -> dict[str, Any]:
         """
-        Resolve pending loot bundle.
+        Resolve pending loot bundle (Phase 7.10: credits already applied on combat victory).
+        
+        Only cargo and salvaged modules are pending; this method applies them if take_all
+        or records decline. "Loot declined" is only when player actually declines optional loot.
         
         Args:
-            take_all: If True, apply all loot. If False, discard all loot.
+            take_all: If True, apply all pending cargo and salvage. If False, decline (discard).
         
         Returns:
-            dict with "ok" and optional "error" keys
+            dict with "ok", optional "error", and summary of applied/declined
         """
         if not self._pending_loot:
             return {"ok": False, "error": "no_pending_loot"}
         
         loot_bundle = self._pending_loot
+        from time_engine import get_current_turn
+        _ctx = EngineContext(
+            command={"type": "resolve_pending_loot"},
+            command_type="resolve_pending_loot",
+            turn_before=int(get_current_turn()),
+            turn_after=int(get_current_turn()),
+        )
         
         if take_all:
-            # Apply credits immediately
-            credits = loot_bundle.get("credits", 0)
+            # Apply credits immediately (coerce None so comparisons are safe)
+            credits = loot_bundle.get("credits") or 0
             if credits > 0:
                 self.player_state.credits = max(0, int(self.player_state.credits) + int(credits))
             
@@ -509,7 +537,7 @@ class GameEngine:
             reward_payload = loot_bundle.get("reward_payload")
             if reward_payload:
                 sku_id = getattr(reward_payload, "sku_id", None)
-                quantity = getattr(reward_payload, "quantity", 0)
+                quantity = getattr(reward_payload, "quantity", None) or 0
                 if sku_id and quantity > 0:
                     # Get ship capacities
                     try:
@@ -537,8 +565,9 @@ class GameEngine:
                         # Cargo could not be applied due to capacity
                         pass
             
-            # Apply salvage modules (convert to physical cargo: 1 module = 1 physical cargo unit)
-            salvage_modules = loot_bundle.get("salvage_modules", [])
+            # Salvaged modules occupy cargo space the same as goods (Phase 7.10): 1 module = 1 physical cargo unit.
+            # Stored in cargo_by_ship under module_id so capacity is enforced and shipdock can consume from cargo.
+            salvage_modules = loot_bundle.get("salvage_modules") or []
             if salvage_modules:
                 # Get ship capacity
                 try:
@@ -600,7 +629,7 @@ class GameEngine:
                     # Log salvage application event for diagnostics
                     try:
                         self._event(
-                            context,
+                            _ctx,
                             stage="salvage_applied",
                             subsystem="reward_application",
                             detail={
@@ -612,8 +641,21 @@ class GameEngine:
                             },
                         )
                     except Exception:
-                        # Logging must never break loot application
                         pass
+        else:
+            # take_all=False: player declined optional loot (cargo/salvage); credits were already applied
+            self._event(
+                _ctx,
+                stage="post_combat",
+                subsystem="loot_applicator",
+                detail={
+                    "encounter_id": loot_bundle.get("encounter_id", ""),
+                    "loot_declined": True,
+                    "credits_already_applied": True,
+                    "cargo_declined": bool(loot_bundle.get("cargo_sku") and int(loot_bundle.get("cargo_quantity", 0) or 0)),
+                    "salvage_declined": len(loot_bundle.get("salvage_modules") or []) > 0,
+                },
+            )
         
         # Clear pending loot
         self._pending_loot = None
@@ -869,6 +911,17 @@ class GameEngine:
         self.player_state.visited_system_ids.add(target_system_id)
         if isinstance(target_destination_id, str):
             self.player_state.visited_destination_ids.add(target_destination_id)
+        # Knowledge-state updates: mark system visited, destinations locally visible,
+        # and destination visited (if any).
+        target_system = self.sector.get_system(target_system_id)
+        if target_system is not None:
+            mark_system_visited(self.player_state, target_system, current_turn=context.turn_before)
+            mark_system_destinations_local_visible(self.player_state, target_system, current_turn=context.turn_before)
+            if isinstance(target_destination_id, str):
+                for destination in getattr(target_system, "destinations", []) or []:
+                    if getattr(destination, "destination_id", None) == target_destination_id:
+                        mark_destination_visited(self.player_state, target_system_id, destination, current_turn=context.turn_before)
+                        break
         active_ship.current_system_id = target_system_id
         active_ship.current_destination_id = target_destination_id
         active_ship.destination_id = target_destination_id
@@ -973,32 +1026,31 @@ class GameEngine:
             self._resume_travel_encounters_if_any(context)
         else:
             # Explicit action provided - resolve encounters automatically
-            # Loop using ONLY pending_travel["remaining_encounters"] as authoritative queue
+            # Per Phase 7.10 audit: keep events_so_far for internal history only;
+            # result["events"] must contain only the current encounter's events (no contamination).
             while self._pending_travel is not None and self._pending_travel.get("remaining_encounters") and not context.hard_stop:
                 # Pop next encounter from authoritative queue
                 next_encounter = self._pending_travel["remaining_encounters"].pop(0)
                 self._pending_travel["current_encounter"] = next_encounter
                 self._pending_travel["encounter_cursor"] = self._pending_travel.get("encounter_cursor", 0) + 1
-                
+                # Isolate events for this encounter only (StepResult will see only these)
+                context.events = []
                 # Resolve the encounter
                 self._resolve_encounter(
                     context=context,
                     spec=next_encounter,
                     player_action=str(encounter_action),
                 )
-                
-                # Append events from resolved encounter to travel events
+                # Append this encounter's events to travel history only; do not merge back into context
+                events_this_step = list(context.events)
                 events_so_far = self._pending_travel.get("events_so_far", [])
-                events_so_far.extend(context.events)
-                context.events = list(events_so_far)
+                events_so_far.extend(events_this_step)
                 self._pending_travel["events_so_far"] = list(events_so_far)
-                
+                # context.events remains events_this_step so StepResult gets current encounter only
                 # Clear current_encounter after resolution
                 self._pending_travel["current_encounter"] = None
-                
                 # Evaluate hard stop (combat, loot, game_over, etc)
                 self._evaluate_hard_stop(context)
-                
                 # If hard stop is active, preserve pending_travel state and stop
                 if context.hard_stop:
                     break
@@ -3916,6 +3968,8 @@ class GameEngine:
         }, "engine")
 
         try:
+            # Per Phase 7.10 audit: isolate events for this encounter so StepResult has no cross-encounter contamination
+            context.events = []
             # Resolve the current encounter with the decision
             resolver_outcome = self._resolve_encounter(
                 context=context,
@@ -3934,11 +3988,12 @@ class GameEngine:
                 "resolver": str(resolver_outcome.get("resolver", "none")),
                 "outcome": resolver_outcome.get("outcome"),
             }, "engine")
-            # Append events from resolved encounter to travel events
+            # Append this encounter's events to travel history only; do not merge prior events into context
+            events_this_step = list(context.events)
             events_so_far = self._pending_travel.get("events_so_far", [])
-            events_so_far.extend(context.events)
-            context.events = list(events_so_far)
+            events_so_far.extend(events_this_step)
             self._pending_travel["events_so_far"] = list(events_so_far)
+            # context.events stays as events_this_step so _build_step_result returns current encounter only
         finally:
             # Always clear current_encounter so Investigate (and any action) consumes the encounter
             # and the same encounter is not presented again (contract: terminal action).
@@ -4086,7 +4141,14 @@ class GameEngine:
         player_action: str,
         player_kwargs: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """
+        Top-level encounter resolver (Phase 7.10). Branches by category:
+        - NPC encounters: posture-aware reaction/combat/pursuit/law via _resolve_npc_encounter.
+        - Environmental encounters: investigate/ignore only via _resolve_environmental_encounter.
+        """
         player_kwargs = dict(player_kwargs or {})
+        encounter_category = str(getattr(spec, "encounter_category", "") or "")
+        subtype_id = str(getattr(spec, "subtype_id", "") or "")
         dispatch = dispatch_player_action(
             spec=spec,
             player_action=player_action,
@@ -4095,18 +4157,70 @@ class GameEngine:
             reputation_band=int(self.player_state.reputation_by_system.get(self.player_state.current_system_id, 50)),
             notoriety_band=int(self.player_state.progression_tracks.get("notoriety", 0)),
         )
+        handler = str(dispatch.next_handler)
         self._event(
             context,
             stage="interaction_dispatch",
             subsystem="interaction_layer",
             detail={
                 "encounter_id": str(spec.encounter_id),
+                "encounter_category": encounter_category or None,
+                "subtype_id": subtype_id or None,
                 "action_id": player_action,
-                "next_handler": str(dispatch.next_handler),
+                "next_handler": handler,
                 "handler_payload": _jsonable(dispatch.handler_payload),
             },
         )
 
+        if handler == HANDLER_EXPLORATION_STUB:
+            resolver_outcome = self._resolve_environmental_encounter(
+                context=context,
+                spec=spec,
+                player_action=player_action,
+            )
+        else:
+            resolver_outcome = self._resolve_npc_encounter(
+                context=context,
+                spec=spec,
+                player_action=player_action,
+                player_kwargs=player_kwargs,
+                dispatch=dispatch,
+            )
+
+        self._event(
+            context,
+            stage="resolver",
+            subsystem="resolver_router",
+            detail={
+                "encounter_id": str(spec.encounter_id),
+                "encounter_category": encounter_category or None,
+                "subtype_id": subtype_id or None,
+                "resolver": str(resolver_outcome.get("resolver", "none")),
+                "outcome": resolver_outcome.get("outcome"),
+                "combat_started": (
+                    resolver_outcome.get("resolver") == "combat"
+                    and resolver_outcome.get("status") == "combat_started"
+                ),
+                "resolver_outcome": _jsonable(resolver_outcome),
+            },
+        )
+        return self._resolve_encounter_rewards(
+            context=context,
+            spec=spec,
+            dispatch=dispatch,
+            resolver_outcome=resolver_outcome,
+        )
+
+    def _resolve_npc_encounter(
+        self,
+        *,
+        context: EngineContext,
+        spec: Any,
+        player_action: str,
+        player_kwargs: dict[str, Any],
+        dispatch: Any,
+    ) -> dict[str, Any]:
+        """NPC encounter path: reaction_engine posture/response, combat, pursuit, law (Phase 7.10)."""
         resolver_outcome: dict[str, Any] = {"resolver": "none", "outcome": None}
         handler = str(dispatch.next_handler)
         if handler == HANDLER_REACTION:
@@ -4163,21 +4277,36 @@ class GameEngine:
                 option_name=str(option),
             )
             resolver_outcome = {"resolver": "law", "outcome": law_outcome}
-        elif handler == HANDLER_EXPLORATION_STUB:
-            resolver_outcome = self._resolve_exploration_encounter(
-                context=context,
-                spec=spec,
-                player_action=player_action,
-            )
+        return resolver_outcome
 
-        self._event(
-            context,
-            stage="resolver",
-            subsystem="resolver_router",
-            detail={"encounter_id": str(spec.encounter_id), "resolver_outcome": _jsonable(resolver_outcome)},
+    def _resolve_environmental_encounter(
+        self,
+        *,
+        context: EngineContext,
+        spec: Any,
+        player_action: str,
+    ) -> dict[str, Any]:
+        """Environmental encounter path: investigate/ignore only; branches by subtype (Phase 7.10)."""
+        return self._resolve_exploration_encounter(
+            context=context,
+            spec=spec,
+            player_action=player_action,
         )
 
-        qualifies = self._reward_qualifies(dispatch=dispatch, resolver_outcome=resolver_outcome, spec=spec)
+    def _resolve_encounter_rewards(
+        self,
+        *,
+        context: EngineContext,
+        spec: Any,
+        dispatch: Any,
+        resolver_outcome: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply reward gate and materialize/apply rewards for non-combat resolvers (Phase 7.10)."""
+        qualifies = self._reward_qualifies(
+            dispatch=dispatch,
+            resolver_outcome=resolver_outcome,
+            spec=spec,
+        )
         self._event(
             context,
             stage="conditional_rewards",
@@ -4394,6 +4523,40 @@ class GameEngine:
                     "multiplier": float(module_multiplier),
                 }
 
+                # Resolve actual mined SKU/quantity via mining_resolver so materialize_reward uses it.
+                if active_ship is not None and getattr(self, "catalog", None) is not None:
+                    from mining_resolver import resolve_mining
+                    cargo = dict(self.player_state.cargo_by_ship.get(getattr(active_ship, "ship_id", "active"), {}))
+                    physical_capacity = int(active_ship.get_effective_physical_capacity()) if hasattr(active_ship, "get_effective_physical_capacity") else (int(getattr(active_ship, "physical_cargo_capacity", 0)) or 0)
+                    tr_band = int(getattr(spec, "threat_rating_tr", 0) or 0)
+                    mining_result, _ = resolve_mining(
+                        world_seed=str(self.world_seed),
+                        destination_id=str(spec.encounter_id),
+                        player_id=str(self.player_state.player_id),
+                        mining_attempts={},
+                        player_ship_TR_band=tr_band,
+                        catalog=self.catalog,
+                        current_cargo=cargo,
+                        physical_cargo_capacity=physical_capacity,
+                        increment_on_failure=True,
+                    )
+                    if mining_result.sku:
+                        spec.sku_id = mining_result.sku
+                        spec.quantity = mining_result.quantity
+                    self._event(
+                        context,
+                        stage="encounter_mining_reward_spec",
+                        subsystem="exploration_handler",
+                        detail={
+                            "encounter_id": str(spec.encounter_id),
+                            "subtype_id": subtype_id,
+                            "sku_id": mining_result.sku,
+                            "quantity": mining_result.quantity,
+                            "success": mining_result.success,
+                            "message": mining_result.message,
+                        },
+                    )
+
             # Environmental hazard roll always runs, regardless of mining success.
             tr_value = int(getattr(spec, "threat_rating_tr", 0) or 0)
             risk = 0.10 + (tr_value * 0.02)
@@ -4439,6 +4602,88 @@ class GameEngine:
             mining_outcome["hazard_roll"] = hazard_roll
             mining_outcome["damage"] = damage
             return mining_outcome
+
+        # Environmental opportunity: derelict_ship, derelict_station, distress_call (Phase 7.10 audit)
+        environmental_opportunity_subtypes = {"derelict_ship", "derelict_station", "distress_call"}
+        if subtype_id in environmental_opportunity_subtypes:
+            probe_count = (
+                ship_get_utility_count(active_ship, "probe_module_count") if active_ship is not None else 0
+            )
+            base = 0.35
+            per_module = 0.12
+            chance = base + per_module * probe_count
+            if chance > 1.0:
+                chance = 1.0
+            seed_string = f"{self.world_seed}{spec.encounter_id}explore_opportunity"
+            roll = deterministic_float(seed_string)
+            success = roll < chance
+            self._event(
+                context,
+                stage="exploration_investigate",
+                subsystem="exploration_handler",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "subtype_id": subtype_id,
+                    "family": "environmental_opportunity",
+                    "probe_module_count": int(probe_count),
+                    "chance": float(chance),
+                    "roll": float(roll),
+                    "success": bool(success),
+                },
+            )
+            outcome = "success" if success else "fail"
+            return {"resolver": "exploration", "outcome": outcome}
+
+        # Environmental hazard: ion_storm (Phase 7.10 audit)
+        if subtype_id == "ion_storm":
+            probe_count = (
+                ship_get_utility_count(active_ship, "probe_module_count") if active_ship is not None else 0
+            )
+            base = 0.30
+            per_module = 0.10
+            chance = base + per_module * probe_count
+            if chance > 1.0:
+                chance = 1.0
+            seed_string = f"{self.world_seed}{spec.encounter_id}ion_storm"
+            roll = deterministic_float(seed_string)
+            success = roll < chance
+            tr_value = int(getattr(spec, "threat_rating_tr", 0) or 0)
+            risk = 0.08 + (tr_value * 0.02)
+            if risk > 0.25:
+                risk = 0.25
+            hazard_seed = f"{self.world_seed}{spec.encounter_id}ion_hazard"
+            hazard_roll = deterministic_float(hazard_seed)
+            damage = 0
+            hull_before = None
+            hull_after = None
+            if active_ship is not None and hazard_roll < risk:
+                max_hull = int(active_ship.persistent_state.get("max_hull_integrity", 0) or 0)
+                if max_hull > 0:
+                    hull_before = int(active_ship.persistent_state.get("current_hull_integrity", max_hull) or 0)
+                    damage = max(1, int(round(max_hull * 0.03)))
+                    hull_after = max(0, hull_before - damage)
+                    active_ship.persistent_state["current_hull_integrity"] = hull_after
+            self._event(
+                context,
+                stage="environmental_hazard",
+                subsystem="exploration_handler",
+                detail={
+                    "encounter_id": str(spec.encounter_id),
+                    "subtype_id": subtype_id,
+                    "family": "environmental_hazard",
+                    "probe_module_count": int(probe_count),
+                    "chance": float(chance),
+                    "roll": float(roll),
+                    "success": bool(success),
+                    "risk": float(risk),
+                    "hazard_roll": float(hazard_roll),
+                    "damage": int(damage),
+                    "hull_before": hull_before,
+                    "hull_after": hull_after,
+                },
+            )
+            outcome = "success" if success else "fail"
+            return {"resolver": "exploration", "outcome": outcome, "damage": damage}
 
         # Anomaly / exploration path (probe-based investigate).
         if subtype_id not in anomaly_subtypes:
@@ -5364,21 +5609,14 @@ class GameEngine:
             )
 
             # Decide whether post-combat rewards handler should run (engine layer only)
+            # Loot is only offered on victory (destroyed enemy) or enemy surrender; not on escape.
             apply_rewards = False
-            if combat_result.outcome in {"destroyed", "surrender", "escape"}:
-                # Player victory or successful escape by player can qualify
-                if combat_result.outcome == "destroyed" and combat_result.winner == "player":
+            if combat_result.outcome == "destroyed" and combat_result.winner == "player":
+                apply_rewards = True
+            elif combat_result.outcome == "surrender":
+                surrendered_by = getattr(combat_result, "surrendered_by", None)
+                if surrendered_by == "enemy":
                     apply_rewards = True
-                elif combat_result.outcome == "surrender":
-                    # Only apply if enemy surrendered (player did not surrender)
-                    surrendered_by = getattr(combat_result, "surrendered_by", None)
-                    if surrendered_by == "enemy":
-                        apply_rewards = True
-                elif combat_result.outcome == "escape":
-                    # Treat player escape as escape_success; enemy escape should not trigger rewards
-                    escaped_by = round_summary.get("escaped_by")
-                    if escaped_by == "player":
-                        apply_rewards = True
 
             # Log combat action result BEFORE invoking reward handler
             # This ensures layering: combat_action log precedes reward_handler:post_combat
@@ -5408,7 +5646,7 @@ class GameEngine:
                 
                 # Evaluate active missions after combat (event-driven)
                 combat_result_dict = {
-                    "outcome": "victory" if combat_result.player_won else "defeat",
+                    "outcome": "victory" if combat_result.winner == "player" else "defeat",
                     "destroyed_npcs": getattr(combat_result, "destroyed_ship_ids", []),
                 }
                 on_combat_resolved(
@@ -5567,13 +5805,11 @@ class GameEngine:
         encounter_id: str,
     ) -> None:
         """
-        Post-combat reward and salvage handler.
+        Post-combat reward and salvage handler (Phase 7.10 contract).
         
-        This function:
-        - Materializes rewards from encounter reward_profile_id
-        - Combines rewards with salvage modules into a loot bundle
-        - Stores the bundle in context for player prompt (deferred application)
-        - Does NOT apply rewards immediately (player must accept via prompt)
+        - Credits: applied immediately on combat victory.
+        - Cargo and salvaged modules: pending until player accept/leave via resolve_pending_loot.
+        - Pending loot is not created if _pending_loot is already set (block overwrite).
         """
         # Defensive guard: only run for terminal combat outcomes
         outcome = getattr(combat_result, "outcome", None)
@@ -5587,66 +5823,95 @@ class GameEngine:
         spec = self._pending_combat.get("spec")
         if spec is None:
             return
-        
-        # Only materialize if encounter has a reward profile
-        reward_profile_id = getattr(spec, "reward_profile_id", None)
-        if reward_profile_id is None:
-            # No reward profile, but salvage may still be available
+
+        # Per Phase 7.10: block new pending loot until previous is resolved (prevent overwrite)
+        if self._pending_loot is not None:
+            log_debug_event("POST_COMBAT_LOOT_BLOCKED", {
+                "encounter_id": encounter_id,
+                "reason": "pending_loot_already_set",
+            })
             self._event(
                 context,
                 stage="post_combat",
                 subsystem="reward_handler",
                 detail={
                     "encounter_id": encounter_id,
-                    "reward_profile_id": None,
-                    "salvage_count": len(getattr(combat_result, "salvage_modules", [])),
-                    "loot_bundle_created": False,
+                    "credits_applied_immediately": 0,
+                    "cargo_pending": False,
+                    "salvage_pending": False,
+                    "loot_blocked": True,
+                    "reason": "previous_loot_unresolved",
                 },
             )
             return
         
-        # Materialize reward (deterministic, uses existing seed strategy)
+        # Only materialize if encounter has a reward profile (for cargo/credits amount)
+        reward_profile_id = getattr(spec, "reward_profile_id", None)
         from reward_materializer import materialize_reward
-        
         system = self.sector.get_system(self.player_state.current_system_id)
         if system is None:
             return
         
-        reward_payload = materialize_reward(
-            spec,
-            self._system_market_payloads(system),
-            str(self.world_seed),
+        reward_payload = None
+        credits_to_apply = 0
+        if reward_profile_id:
+            reward_payload = materialize_reward(
+                spec,
+                self._system_market_payloads(system),
+                str(self.world_seed),
+            )
+            credits_to_apply = int(getattr(reward_payload, "credits", 0) or 0)
+        
+        # Apply credits immediately (Phase 7.10: credits on victory, no loot prompt for credits)
+        if credits_to_apply > 0:
+            self.player_state.credits = max(0, int(self.player_state.credits) + credits_to_apply)
+        self._event(
+            context,
+            stage="post_combat",
+            subsystem="reward_handler",
+            detail={
+                "encounter_id": encounter_id,
+                "reward_profile_id": str(reward_profile_id or ""),
+                "credits_applied_immediately": credits_to_apply,
+                "cargo_pending": bool(
+                    reward_payload
+                    and getattr(reward_payload, "sku_id", None)
+                    and int(getattr(reward_payload, "quantity", 0) or 0) > 0
+                ),
+                "salvage_pending": len(getattr(combat_result, "salvage_modules", [])) > 0,
+                "loot_bundle_created": False,
+            },
         )
         
-        # Get salvage modules from combat result
         salvage_modules = list(getattr(combat_result, "salvage_modules", []))
+        has_cargo = (
+            reward_payload
+            and getattr(reward_payload, "sku_id", None)
+            and int(getattr(reward_payload, "quantity", 0) or 0) > 0
+        )
+        if not has_cargo and not salvage_modules:
+            # Nothing optional to offer; no pending loot, no hard_stop for loot
+            return
         
-        # Create loot bundle (deferred application - player must accept)
+        # Build pending loot only for cargo + salvage (player accept/leave)
         loot_bundle = {
             "encounter_id": encounter_id,
             "reward_payload": reward_payload,
             "salvage_modules": salvage_modules,
-            "credits": getattr(reward_payload, "credits", 0) if reward_payload else 0,
-            "cargo": None,
+            "credits": 0,  # Already applied; not part of pending
             "cargo_quantity": 0,
             "cargo_sku": None,
             "stolen_applied": False,
         }
-        
         if reward_payload:
             loot_bundle["cargo_sku"] = getattr(reward_payload, "sku_id", None)
-            loot_bundle["cargo_quantity"] = getattr(reward_payload, "quantity", 0)
-            loot_bundle["stolen_applied"] = getattr(reward_payload, "stolen_applied", False)
+            loot_bundle["cargo_quantity"] = int(getattr(reward_payload, "quantity", 0) or 0)
+            loot_bundle["stolen_applied"] = bool(getattr(reward_payload, "stolen_applied", False))
         
-        # Store loot bundle in context for CLI prompt (deferred application)
         if not hasattr(context, "pending_loot"):
             context.pending_loot = None
         context.pending_loot = loot_bundle
-        
-        # Also store in engine state for CLI access
         self._pending_loot = loot_bundle
-        
-        # Set hard_stop to require loot decision
         context.hard_stop = True
         context.hard_stop_reason = "pending_loot_decision"
         
@@ -5656,12 +5921,10 @@ class GameEngine:
             subsystem="reward_handler",
             detail={
                 "encounter_id": encounter_id,
-                "reward_profile_id": str(reward_profile_id),
-                "credits": loot_bundle["credits"],
-                "cargo_sku": loot_bundle["cargo_sku"],
-                "cargo_quantity": loot_bundle["cargo_quantity"],
-                "salvage_count": len(salvage_modules),
-                "stolen_applied": loot_bundle["stolen_applied"],
+                "reward_profile_id": str(reward_profile_id or ""),
+                "credits_applied_immediately": credits_to_apply,
+                "cargo_pending": has_cargo,
+                "salvage_pending": len(salvage_modules) > 0,
                 "loot_bundle_created": True,
             },
         )
@@ -5938,7 +6201,22 @@ class GameEngine:
                     "player_hull_max": player_state.hull_max if player_state else 0,
                     "enemy_hull_max": enemy_state.hull_max if enemy_state else 0,
                 }
-        
+        # Per Phase 7.10 audit: surface pending_encounter for CLI/UI when hard_stop is pending_encounter_decision
+        if context.hard_stop and context.hard_stop_reason == "pending_encounter_decision":
+            pending_enc = self.get_pending_encounter_info()
+            if pending_enc is not None:
+                result["pending_encounter"] = pending_enc
+        # Surface pending_loot for pending_loot_decision (consistent with pending_combat / pending_encounter)
+        if context.hard_stop and context.hard_stop_reason == "pending_loot_decision" and self._pending_loot is not None:
+            loot = self._pending_loot
+            result["pending_loot"] = {
+                "encounter_id": loot.get("encounter_id", ""),
+                "credits": int(loot.get("credits", 0) or 0),
+                "cargo_sku": loot.get("cargo_sku"),
+                "cargo_quantity": int(loot.get("cargo_quantity", 0) or 0),
+                "salvage_count": len(loot.get("salvage_modules") or []),
+                "stolen_applied": bool(loot.get("stolen_applied", False)),
+            }
         return result
 
     def _event(self, context: EngineContext, *, stage: str, subsystem: str, detail: dict[str, Any]) -> None:

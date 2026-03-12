@@ -1,0 +1,233 @@
+{
+  "version": "0.1.0",
+  "reward_matrices": [
+    {
+      "mission_category": "delivery",
+      "tier": 1,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_goods_legal_only",
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_goods_luxury",
+        "mission_goods_weaponized",
+        "mission_module_generic",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_module_engine",
+        "mission_module_illegal",
+        "mission_module_alien_tagged"
+      ]
+    },
+    {
+      "mission_category": "delivery",
+      "tier": 2,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_goods_legal_only",
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_goods_luxury",
+        "mission_goods_weaponized",
+        "mission_module_generic",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_module_engine",
+        "mission_module_illegal",
+        "mission_module_alien_tagged"
+      ]
+    },
+    {
+      "mission_category": "delivery",
+      "tier": 3,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_goods_legal_only",
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_goods_luxury",
+        "mission_goods_weaponized",
+        "mission_module_generic",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_module_engine",
+        "mission_module_illegal",
+        "mission_module_alien_tagged"
+      ]
+    },
+    {
+      "mission_category": "delivery",
+      "tier": 4,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_goods_legal_only",
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_goods_luxury",
+        "mission_goods_weaponized",
+        "mission_module_generic",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_module_engine",
+        "mission_module_illegal",
+        "mission_module_alien_tagged",
+        "mission_hull_voucher_generic"
+      ]
+    },
+    {
+      "mission_category": "bounty",
+      "tier": 2,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "bounty",
+      "tier": 3,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "bounty",
+      "tier": 4,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_weapon",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "patrol",
+      "tier": 2,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "patrol",
+      "tier": 3,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "patrol",
+      "tier": 4,
+      "allowed_source_types": ["administration"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_module_defense",
+        "mission_hull_voucher_xb",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "smuggling",
+      "tier": 2,
+      "allowed_source_types": ["bar"],
+      "reward_profile_ids": [
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_module_illegal",
+        "mission_hull_voucher_xa"
+      ]
+    },
+    {
+      "mission_category": "smuggling",
+      "tier": 3,
+      "allowed_source_types": ["bar"],
+      "reward_profile_ids": [
+        "mission_goods_illegal_only",
+        "mission_goods_contraband_only",
+        "mission_module_illegal",
+        "mission_hull_voucher_xa"
+      ]
+    },
+    {
+      "mission_category": "exploration",
+      "tier": 1,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_module_generic",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "exploration",
+      "tier": 2,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_module_generic",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "exploration",
+      "tier": 3,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_module_generic",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "exploration",
+      "tier": 4,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_module_generic",
+        "mission_hull_voucher_xc"
+      ]
+    },
+    {
+      "mission_category": "exploration",
+      "tier": 5,
+      "allowed_source_types": ["bar", "administration", "datanet"],
+      "reward_profile_ids": [
+        "mission_credits_500",
+        "mission_goods_generic",
+        "mission_module_generic",
+        "mission_hull_voucher_xc"
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,26 @@
+{
+  "max_turn_seen": 100,
+  "missions": {
+    "accepted_by_reward_profile": {
+      "mission_delivery": 2
+    },
+    "accepted_by_tier": {
+      "2": 2
+    },
+    "accepted_by_type": {
+      "delivery": 2
+    },
+    "completed_by_reward_profile": {},
+    "completed_by_tier": {},
+    "completed_by_type": {},
+    "discovered_by_location": {
+      "administration": 1,
+      "bar": 4
+    },
+    "discovered_by_type": {
+      "delivery": 5
+    }
+  },
+  "requested_turns": 100,
+  "seed": 12345
+}

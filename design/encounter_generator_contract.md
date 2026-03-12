@@ -13,6 +13,12 @@ effective_weight =
     + situation_bias (if applicable)
     + authority_enforcement_bonus (if applicable)
 
+Notes:
+
+- encounter_category (if present) is documentation-only.
+- Environmental encounters (opportunity, hazard, anomaly) MAY use encounter_category
+  for grouping and logging, but weighting math is unchanged.
+
 ------------------------------------------------------------
 Authority Enforcement Bonus
 ------------------------------------------------------------

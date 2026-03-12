@@ -542,7 +542,7 @@ Notes:
 
 Definition:
 - event_family_id groups related event variants.
-- Variants may share identical display_name and emoji.
+- Variants may share identical display_name and emoji_id.
 
 Rules:
 - Escalation between family variants must use scheduled_events.

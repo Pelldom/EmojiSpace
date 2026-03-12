@@ -305,6 +305,41 @@
     "description": "Military-class ship."
   },
   {
+    "tag_id": "ship:utility_data_array",
+    "emoji_id": "ship_utility_data_array",
+    "description": "Digital cargo storage array module."
+  },
+  {
+    "tag_id": "ship:utility_extra_cargo",
+    "emoji_id": "ship_utility_extra_cargo",
+    "description": "Expanded cargo capacity module."
+  },
+  {
+    "tag_id": "ship:utility_extra_fuel",
+    "emoji_id": "ship_utility_extra_fuel",
+    "description": "Extended fuel capacity module."
+  },
+  {
+    "tag_id": "ship:utility_interdiction",
+    "emoji_id": "ship_utility_interdiction",
+    "description": "Ship interdiction module."
+  },
+  {
+    "tag_id": "ship:utility_mining_equipment",
+    "emoji_id": "ship_utility_mining_equipment",
+    "description": "Mining equipment module."
+  },
+  {
+    "tag_id": "ship:utility_probe_array",
+    "emoji_id": "ship_utility_probe_array",
+    "description": "Long range probe launcher module."
+  },
+  {
+    "tag_id": "ship:utility_smuggler_hold",
+    "emoji_id": "ship_utility_smuggler_hold",
+    "description": "Concealed cargo smuggling compartment module."
+  },
+  {
     "tag_id": "stolen",
     "emoji_id": "goods_stolen",
     "description": "Stolen goods."

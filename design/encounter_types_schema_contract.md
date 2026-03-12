@@ -13,7 +13,7 @@ Required Fields Per Encounter Type Object
 ------------------------------------------------------------
 
 - subtype_id: string (unique, ASCII)
-- emoji: string (placeholder allowed)
+- emoji_id: string (reference to data/emoji.json; placeholder allowed)
 - posture: "neutral" | "authority" | "hostile" | "opportunity"
 - initiative: "player" | "npc"
 - allows_betrayal: boolean

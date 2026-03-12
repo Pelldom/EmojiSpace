@@ -138,8 +138,234 @@
         { "template_id": "derelict_hull", "role": "primary", "min_count": 1, "max_count": 1 }
       ],
       "default_flags": ["salvage_possible", "anomaly_discovery_possible"],
+      "encounter_category": "environmental_opportunity",
       "reward_profiles": [
+        { "reward_profile_id": "derelict_salvage", "weight": 2 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "derelict_station",
+      "emoji": "derelict_station_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 5,
+      "allowed_TR_range": { "min": 1, "max": 4 },
+      "participant_templates": [
+        { "template_id": "derelict_station", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["salvage_possible", "anomaly_discovery_possible"],
+      "encounter_category": "environmental_opportunity",
+      "reward_profiles": [
+        { "reward_profile_id": "cargo_cache", "weight": 3 },
         { "reward_profile_id": "derelict_salvage", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "distress_call",
+      "emoji": "distress_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 6,
+      "allowed_TR_range": { "min": 1, "max": 4 },
+      "participant_templates": [
+        { "template_id": "civilian_trader", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["civilian_target", "mission_possible"],
+      "encounter_category": "environmental_opportunity",
+      "reward_profiles": [
+        { "reward_profile_id": "cargo_cache", "weight": 2 },
+        { "reward_profile_id": "bounty_credit", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "asteroid_field",
+      "emoji": "asteroid_field_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 6,
+      "allowed_TR_range": { "min": 1, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_asteroid_field", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_opportunity",
+      "reward_profiles": [
+        { "reward_profile_id": "mining_asteroid_small", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "ion_storm",
+      "emoji": "ion_storm_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 5,
+      "allowed_TR_range": { "min": 2, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_ion_storm", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": [],
+      "encounter_category": "environmental_hazard",
+      "reward_profiles": [
+        { "reward_profile_id": "data_cache_small", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "debris_storm",
+      "emoji": "debris_storm_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 5,
+      "allowed_TR_range": { "min": 2, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_debris_storm", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["salvage_possible"],
+      "encounter_category": "environmental_hazard",
+      "reward_profiles": [
+        { "reward_profile_id": "mining_asteroid_small", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "comet_passage",
+      "emoji": "comet_passage_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 3,
+      "allowed_TR_range": { "min": 2, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_comet", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_hazard",
+      "reward_profiles": [
+        { "reward_profile_id": "mining_comet_high", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "spatial_rift",
+      "emoji": "spatial_rift_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 4,
+      "allowed_TR_range": { "min": 1, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_spatial_rift", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_anomaly",
+      "reward_profiles": [
+        { "reward_profile_id": "data_cache_small", "weight": 2 },
+        { "reward_profile_id": "rare_cargo_small", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "ancient_beacon",
+      "emoji": "ancient_beacon_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 4,
+      "allowed_TR_range": { "min": 1, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_ancient_beacon", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_anomaly",
+      "reward_profiles": [
+        { "reward_profile_id": "data_cache_small", "weight": 1 },
+        { "reward_profile_id": "rare_cargo_medium", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "quantum_echo",
+      "emoji": "quantum_echo_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 4,
+      "allowed_TR_range": { "min": 1, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_quantum_echo", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_anomaly",
+      "reward_profiles": [
+        { "reward_profile_id": "data_cache_small", "weight": 1 },
+        { "reward_profile_id": "rare_cargo_small", "weight": 1 }
+      ],
+      "npc_response_profile": {
+        "on_ignore": { "ignore": 5 },
+        "on_respond": { "ignore": 5 }
+      }
+    },
+
+    {
+      "subtype_id": "wormhole_anomaly",
+      "emoji": "wormhole_placeholder",
+      "posture": "opportunity",
+      "initiative": "npc",
+      "allows_betrayal": false,
+      "base_weight": 2,
+      "allowed_TR_range": { "min": 1, "max": 5 },
+      "participant_templates": [
+        { "template_id": "environment_wormhole", "role": "primary", "min_count": 1, "max_count": 1 }
+      ],
+      "default_flags": ["anomaly_discovery_possible"],
+      "encounter_category": "environmental_anomaly",
+      "reward_profiles": [
+        { "reward_profile_id": "data_cache_small", "weight": 1 }
       ],
       "npc_response_profile": {
         "on_ignore": { "ignore": 5 },

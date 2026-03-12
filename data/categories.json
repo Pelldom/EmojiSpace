@@ -3,47 +3,47 @@
   "description": "Frozen goods categories for EmojiSpace. Categories are broad economic groupings and do not affect legality directly.",
   "categories": {
     "FOOD": {
-      "emoji": "Ì†ºÌΩû",
+      "emoji_id": "goods_category_food",
       "description": "Consumable goods required for sustenance"
     },
     "ORE": {
-      "emoji": "‚õèÔ∏è",
+      "emoji_id": "goods_category_ore",
       "description": "Raw and unrefined natural resources"
     },
     "METAL": {
-      "emoji": "Ì†æÌ∫®",
+      "emoji_id": "goods_category_metal",
       "description": "Refined ores, alloys, and processed metals"
     },
     "MEDICINE": {
-      "emoji": "Ì†ΩÌ≤ä",
+      "emoji_id": "goods_category_medicine",
       "description": "Medical supplies and health-related goods"
     },
     "PARTS": {
-      "emoji": "Ì†ΩÌ¥©",
+      "emoji_id": "goods_category_parts",
       "description": "General-purpose components, including mechanical and cybernetic parts"
     },
     "ENERGY": {
-      "emoji": "‚ö°",
+      "emoji_id": "goods_category_energy",
       "description": "Fuel, power, and energy storage goods"
     },
     "DATA": {
-      "emoji": "Ì†ΩÌ≥°",
+      "emoji_id": "goods_category_data",
       "description": "Information, records, and digital commodities"
     },
     "WEAPONS": {
-      "emoji": "Ì†ΩÌ¥´",
+      "emoji_id": "goods_category_weapons",
       "description": "Goods designed for combat or violence"
     },
     "LUXURY": {
-      "emoji": "Ì†ΩÌ≤é",
+      "emoji_id": "goods_category_luxury",
       "description": "High-value non-essential goods"
     },
     "CHEMICALS": {
-      "emoji": "Ì†æÌ∑™",
+      "emoji_id": "goods_category_chemicals",
       "description": "Chemical, synthetic, or hazardous substances"
     },
     "MACHINERY": {
-      "emoji": "Ì†ºÌø≠",
+      "emoji_id": "goods_category_machinery",
       "description": "Heavy industrial and strategic equipment"
     }
   }

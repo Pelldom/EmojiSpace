@@ -36,6 +36,7 @@ Each mission MUST have:
 - mission_id (unique identifier)
 - mission_type (e.g. delivery, bounty, exploration, smuggling)
 - mission_tier (integer 1 through 5)
+- emoji_id (string, reference to data/emoji.json for primary mission identity; e.g. mission_delivery, mission_bounty)
 - persistence_scope (ephemeral | persistent | systemic)
 - mission_state
 

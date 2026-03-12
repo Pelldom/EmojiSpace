@@ -88,18 +88,9 @@ def load_reward_profiles():
         if reward_profile_id in by_id:
             raise ValueError(f"Duplicate reward_profile_id in reward_profiles.json: {reward_profile_id}.")
 
-        # Backward-compatibility: normalize legacy profiles that use reward_type instead of reward_kind.
-        # This happens before any validation so that mixed-schema files load without changing behavior
-        # of newer encounter-facing reward profiles.
-        if "reward_kind" not in profile:
-            legacy_type = profile.get("reward_type")
-            if legacy_type in {"credits", "cargo", "mixed", "none"}:
-                profile["reward_kind"] = legacy_type
-            else:
-                profile["reward_kind"] = "none"
-            # Provide safe defaults for legacy profiles
-            profile.setdefault("quantity_band", "low")
-            profile.setdefault("stolen_behavior", "none")
+        # Only load encounter reward profiles; mission profiles are used by reward_service only.
+        if reward_profile_id.startswith("mission_"):
+            continue
 
         reward_kind = profile.get("reward_kind")
         if reward_kind not in REWARD_KINDS:
@@ -237,6 +228,25 @@ def materialize_reward(
     if spec.reward_profile_id not in profiles:
         raise ValueError(f"Unknown reward_profile_id: {spec.reward_profile_id}")
     profile = profiles[spec.reward_profile_id]
+
+    # Use pre-determined reward when spec already has sku_id/quantity (e.g. from mining_resolver).
+    if hasattr(spec, "sku_id") and spec.sku_id:
+        quantity = int(getattr(spec, "quantity", 0) or 0)
+        return RewardResult(
+            encounter_id=spec.encounter_id,
+            reward_profile_id=spec.reward_profile_id,
+            reward_kind="cargo",
+            sku_id=spec.sku_id,
+            quantity=quantity,
+            credits=0,
+            stolen_applied=False,
+            log={
+                "source": "pre_determined_reward",
+                "selected_sku": spec.sku_id,
+                "final_quantity": quantity,
+            },
+        )
+
     reward_kind = profile["reward_kind"]
     seed_string = f"{world_seed}{spec.encounter_id}{spec.reward_profile_id}"
 

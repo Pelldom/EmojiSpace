@@ -20,6 +20,7 @@ class Good:
     base_price: int
     tags: List[str]
     possible_tag: str | None
+    harvestable: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,7 @@ def _load_goods(path: Path, tags: Dict[str, Tag], categories: Dict[str, str]) ->
             raise ValueError(
                 f"Good {entry['sku']} has possible_tag outside allowed list: {possible_tag}"
             )
+        harvestable = bool(entry.get("harvestable", False))
         goods.append(
             Good(
                 sku=entry["sku"],
@@ -141,6 +143,7 @@ def _load_goods(path: Path, tags: Dict[str, Tag], categories: Dict[str, str]) ->
                 base_price=entry["base_price"],
                 tags=list(entry.get("tags", [])),
                 possible_tag=possible_tag,
+                harvestable=harvestable,
             )
         )
     if not goods:

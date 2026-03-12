@@ -158,7 +158,7 @@ def destination_generation_tests(collector: ResultCollector) -> None:
             for destination in system.destinations:
                 assert destination.destination_id
                 assert destination.system_id == system.system_id
-                assert destination.destination_type in {"planet", "station", "asteroid_field", "contact"}
+                assert destination.destination_type in {"planet", "station", "asteroid_field", "contact", "exploration_site", "resource_field"}
 
     def test_destination_determinism() -> None:
         catalog = load_data_catalog()

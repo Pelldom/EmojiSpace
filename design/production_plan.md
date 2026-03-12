@@ -67,6 +67,8 @@ All expansion must originate here.
 | Phase 7 | 1.1.x | UI Framework (Android + Emoji Integration) |
 | Phase 8 | 1.2.x | Monetization and Play Store Deployment |
 
+**Recent (0.11.17):** Module definitions normalized for Emoji Profile pipeline: optional `tags` field added to modules.json (with loader validation); CLI proof screens (Player / Ship Info, Ships And Modules) now pass module tags to the builder so installed modules display with tag-driven emoji.
+
 ---
 
 ## Phase 0 - Skeleton & Scaffolding (COMPLETED)
@@ -764,6 +766,24 @@ For future addtion of adventure packages, or theme packs and general additions t
   - new/expanded encounters
   - new/expanded Situations
   - new/expanded Events
+---
+
+## Phase 7.14 - Emoji Profile System
+
+**Target:** (aligned with Phase 7)
+**Contract:** design/emoji_profile_contract.md (v0.9.1 LOCKED)
+
+### Clarification (formalization)
+
+Emoji Profile System provides:
+
+- **Deterministic composite identity** for presentation only.
+- **Primary emoji** from entity.emoji_id (reference to data/emoji.json).
+- **Tier emoji** from Roman numeral registry (roman_i through roman_x); resolved via emoji.json.
+- **Secondary emojis** from entity tags via tags.json (tag_id -> emoji_id) then emoji.json.
+- **Glyphs** resolved only through emoji.json; no raw glyphs in entity schema.
+- **Presentation-only metadata**: used by CLI, logs, UI, narrative text; must never affect gameplay logic, simulation, entity state, or resolver decisions.
+
 ---
 
 ## Phase 7.5 - Game Engine Unification (IN PROGRESS)

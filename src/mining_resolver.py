@@ -1,4 +1,4 @@
-"""Mining resolution (Phase 7.12). Deterministic, consumes 1 day and 1 fuel. Uses harvestable flag only."""
+"""Mining resolution (Phase 7.12). Deterministic, consumes 1 day and 1 fuel. Uses harvestable flag and category weighting."""
 from __future__ import annotations
 
 import hashlib
@@ -6,6 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+
+# Category weights for mining: ORE most common, METAL least common. Only these categories are mined.
+MINING_CATEGORY_WEIGHTS = {
+    "ORE": 10,
+    "CHEMICALS": 6,
+    "ENERGY": 3,
+    "METAL": 1,
+}
 
 # Extended depletion model: 0->1.0, 1->0.8, 2->0.6, 3->0.4, 4->0.2, 5->0.1, 6+->0.05
 YIELD_MULTIPLIER_TABLE = {
@@ -27,6 +35,7 @@ class MiningResult:
     multiplier: float
     success: bool  # True if yielded and stored
     message: str  # Error message if success False
+    category: str | None = None  # Good category when sku is set (for logging)
 
 
 def _deterministic_int_mod(seed_string: str, modulus: int) -> int:
@@ -44,15 +53,30 @@ def _yield_multiplier(attempt_index: int) -> float:
     return MULTIPLIER_FLOOR  # 6 and above
 
 
-def _harvestable_sku_pool(catalog: Any) -> list[str]:
-    """Build sorted list of SKUs where harvestable==true. Mining relies ONLY on harvestable flag."""
-    pool: list[str] = []
+def _harvestable_weighted_sku_pool(catalog: Any) -> list[tuple[str, str]]:
+    """
+    Build weighted pool of (sku, category) for harvestable goods with known category weights.
+    Each good is appended weight times so selection is deterministic and category-biased.
+    """
+    weighted_pool: list[tuple[str, str]] = []
     goods = getattr(catalog, "goods", [])
     for good in goods:
-        if getattr(good, "harvestable", False):
-            pool.append(good.sku)
-    pool.sort(key=lambda s: (s,))  # ASCII sort
-    return pool
+        if not getattr(good, "harvestable", False):
+            continue
+        category = getattr(good, "category", None)
+        if category is None:
+            continue
+        weight = MINING_CATEGORY_WEIGHTS.get(category)
+        if weight is None:
+            continue
+        sku = getattr(good, "sku", None)
+        if not sku:
+            continue
+        for _ in range(weight):
+            weighted_pool.append((sku, category))
+    # Deterministic order: sort by (sku, category) so same catalog => same pool order
+    weighted_pool.sort(key=lambda p: (p[0], p[1]))
+    return weighted_pool
 
 
 def resolve_mining(
@@ -95,29 +119,20 @@ def resolve_mining(
                 multiplier=multiplier,
                 success=False,
                 message="no_yield",
+                category=None,
             ),
             attempts,
         )
 
-    pool = _harvestable_sku_pool(catalog)
-    if not pool:
+    weighted_pool = _harvestable_weighted_sku_pool(catalog)
+    if not weighted_pool:
         if not increment_on_failure:
             attempts[destination_id] = attempt_index_before
-        return (
-            MiningResult(
-                sku=None,
-                quantity=0,
-                attempt_number=attempt_count + 1,
-                multiplier=multiplier,
-                success=False,
-                message="no_harvestable_goods",
-            ),
-            attempts,
-        )
+        raise RuntimeError("Mining resolver: no harvestable SKUs found")
 
     seed_string = f"{world_seed}{destination_id}{player_id}mining_sku"
-    index = _deterministic_int_mod(seed_string, len(pool))
-    sku = pool[index]
+    index = _deterministic_int_mod(seed_string, len(weighted_pool))
+    sku, category = weighted_pool[index]
 
     current_used = sum(int(v) for v in (current_cargo or {}).values())
     if current_used + effective_quantity > physical_cargo_capacity:
@@ -131,6 +146,7 @@ def resolve_mining(
                 multiplier=multiplier,
                 success=False,
                 message="insufficient_cargo_capacity",
+                category=category,
             ),
             attempts,
         )
@@ -143,6 +159,7 @@ def resolve_mining(
             multiplier=multiplier,
             success=True,
             message="ok",
+            category=category,
         ),
         attempts,
     )

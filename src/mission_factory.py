@@ -1,6 +1,9 @@
 import hashlib
+import json
 import math
+import os
 import random
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mission_entity import MissionEntity, MissionPersistenceScope, MissionState
@@ -109,14 +112,71 @@ def _log_creation(
     )
 
 
-# Registry of mission creators by type (Phase 7.11.2 - implemented types only).
+# Registry of mission creators by type (Phase 7.11.4 - all types implemented).
 # This is used by generation code to determine which mission types are
 # actually creatable. If a mission type is present in the mission registry
 # but missing from this mapping, it must be excluded from generation.
-CREATOR_BY_TYPE: Dict[str, Any] = {
-    "delivery": "create_delivery_mission",  # Marker only; creation is routed explicitly.
-    # Future types (e.g., bounty) should be added here when their creators exist.
-}
+# Functions are defined below, so this dict is populated at module load time.
+CREATOR_BY_TYPE: Dict[str, Any] = {}
+
+# Cached reward distribution data
+_REWARD_DISTRIBUTIONS_CACHE: Dict[str, Any] | None = None
+
+
+def _load_reward_distributions() -> Dict[str, Any]:
+    """Load mission reward distributions from JSON (cached)."""
+    global _REWARD_DISTRIBUTIONS_CACHE
+    if _REWARD_DISTRIBUTIONS_CACHE is not None:
+        return _REWARD_DISTRIBUTIONS_CACHE
+    
+    # Find data directory relative to src
+    src_dir = Path(__file__).parent
+    data_dir = src_dir.parent / "data"
+    dist_file = data_dir / "mission_reward_distributions.json"
+    
+    if not dist_file.exists():
+        # Fallback: return empty structure
+        _REWARD_DISTRIBUTIONS_CACHE = {"reward_matrices": []}
+        return _REWARD_DISTRIBUTIONS_CACHE
+    
+    with dist_file.open("r", encoding="utf-8") as f:
+        _REWARD_DISTRIBUTIONS_CACHE = json.load(f)
+    return _REWARD_DISTRIBUTIONS_CACHE
+
+
+def _select_reward_profile_id(
+    *,
+    mission_type_id: str,
+    tier: int,
+    source_type: str,
+    rng: random.Random,
+) -> str:
+    """
+    Select a reward_profile_id from mission_reward_distributions.json.
+    
+    Falls back to "mission_credits_500" if no match found.
+    """
+    distributions = _load_reward_distributions()
+    matrices = distributions.get("reward_matrices", [])
+    
+    # Find matching matrix entry
+    candidates = []
+    for matrix in matrices:
+        category = str(matrix.get("mission_category", "") or "")
+        matrix_tier = int(matrix.get("tier", 0) or 0)
+        allowed_sources = matrix.get("allowed_source_types", [])
+        
+        if category == mission_type_id and matrix_tier == tier:
+            if source_type in allowed_sources:
+                profile_ids = matrix.get("reward_profile_ids", [])
+                if profile_ids:
+                    candidates.extend(profile_ids)
+    
+    if not candidates:
+        # Fallback to credits
+        return "mission_credits_500"
+    
+    return rng.choice(candidates)
 
 
 def create_delivery_mission(
@@ -210,8 +270,13 @@ def create_delivery_mission(
     else:
         distance_ly = 0  # Same-system travel
     
-    # C. Reward Profile
-    reward_profile_id = "mission_delivery"
+    # C. Reward Profile (Phase 7.11.4 - select from distributions)
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="delivery",
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
     
     # D. Cargo Payload (deterministic, tier-scaled)
     cargo_payload = _generate_cargo_payload(mission_tier, catalog, rng)
@@ -351,3 +416,459 @@ def _generate_cargo_payload(tier: int, catalog: Any, rng: random.Random) -> Dict
         "good_id": good_id,
         "quantity": quantity,
     }
+
+
+def create_bounty_mission(
+    *,
+    source_type: str,
+    source_id: str,
+    origin_system_id: str,
+    origin_destination_id: str | None,
+    origin_location_id: str | None,
+    mission_tier: int,
+    galaxy: Galaxy,
+    catalog: Any,
+    rng: random.Random,
+    logger=None,
+    turn: int = 0,
+) -> MissionEntity:
+    """Create a bounty mission (Phase 7.11.4)."""
+    _validate_inputs(source_type, source_id, origin_system_id, "bounty", mission_tier)
+    
+    # Select target system (similar to delivery)
+    origin_system = galaxy.get_system(origin_system_id)
+    if origin_system is None:
+        raise ValueError(f"Origin system not found: {origin_system_id}")
+    
+    # Inter-system target selection
+    target_system = _select_inter_system_target(origin_system, galaxy, rng)
+    if target_system is None:
+        target_system_id = origin_system_id
+        target_destination = _select_destination_in_system(origin_system, rng)
+    else:
+        target_system_id = target_system.system_id
+        target_destination = _select_destination_in_system(target_system, rng)
+    
+    target_destination_id = target_destination.destination_id
+    distance_ly = _calculate_distance_ly(origin_system, galaxy.get_system(target_system_id))
+    
+    # Reward profile selection
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="bounty",
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
+    
+    # Objectives: ship_destroyed
+    objectives = [
+        {
+            "objective_id": "OBJ-1",
+            "objective_type": "ship_destroyed",
+            "status": "pending",
+            "parameters": {}
+        }
+    ]
+    
+    mission_id = _deterministic_mission_id(
+        source_type=source_type,
+        source_id=source_id,
+        system_id=origin_system_id,
+        destination_id=target_destination_id,
+        mission_type="bounty",
+        mission_tier=mission_tier,
+    )
+    
+    mission = MissionEntity(
+        mission_id=mission_id,
+        mission_type="bounty",
+        mission_tier=mission_tier,
+        persistence_scope=MissionPersistenceScope.EPHEMERAL,
+        mission_state=MissionState.OFFERED,
+        system_id=origin_system_id,
+        origin_location_id=origin_location_id,
+        destination_location_id=None,
+        objectives=objectives,
+        source={"source_type": source_type, "source_id": source_id},
+        origin={"system_id": origin_system_id, "destination_id": origin_destination_id or ""},
+        target={"target_type": "destination", "target_id": target_destination_id, "system_id": target_system_id},
+        distance_ly=int(math.ceil(distance_ly)),
+        reward_profile_id=reward_profile_id,
+        payout_policy="auto",
+        claim_scope="none",
+        reward_status="ungranted",
+        reward_granted_turn=None,
+    )
+    
+    _log_creation(logger, turn, mission_id, source_type, source_id, origin_system_id, target_destination_id)
+    return mission
+
+
+def create_patrol_mission(
+    *,
+    source_type: str,
+    source_id: str,
+    origin_system_id: str,
+    origin_destination_id: str | None,
+    origin_location_id: str | None,
+    mission_tier: int,
+    galaxy: Galaxy,
+    catalog: Any,
+    rng: random.Random,
+    logger=None,
+    turn: int = 0,
+) -> MissionEntity:
+    """Create a patrol mission (Phase 7.11.4)."""
+    _validate_inputs(source_type, source_id, origin_system_id, "patrol", mission_tier)
+    
+    origin_system = galaxy.get_system(origin_system_id)
+    if origin_system is None:
+        raise ValueError(f"Origin system not found: {origin_system_id}")
+    
+    # Same-system patrol
+    target_system_id = origin_system_id
+    alternative_destinations = [
+        d for d in origin_system.destinations
+        if d.destination_id != origin_destination_id
+    ]
+    if not alternative_destinations:
+        target_destination = _select_destination_in_system(origin_system, rng)
+    else:
+        target_destination = rng.choice(alternative_destinations)
+    
+    target_destination_id = target_destination.destination_id
+    distance_ly = 0
+    
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="patrol",
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
+    
+    objectives = [
+        {
+            "objective_id": "OBJ-1",
+            "objective_type": "inspection_completed",
+            "status": "pending",
+            "parameters": {}
+        }
+    ]
+    
+    mission_id = _deterministic_mission_id(
+        source_type=source_type,
+        source_id=source_id,
+        system_id=origin_system_id,
+        destination_id=target_destination_id,
+        mission_type="patrol",
+        mission_tier=mission_tier,
+    )
+    
+    mission = MissionEntity(
+        mission_id=mission_id,
+        mission_type="patrol",
+        mission_tier=mission_tier,
+        persistence_scope=MissionPersistenceScope.EPHEMERAL,
+        mission_state=MissionState.OFFERED,
+        system_id=origin_system_id,
+        origin_location_id=origin_location_id,
+        destination_location_id=None,
+        objectives=objectives,
+        source={"source_type": source_type, "source_id": source_id},
+        origin={"system_id": origin_system_id, "destination_id": origin_destination_id or ""},
+        target={"target_type": "destination", "target_id": target_destination_id, "system_id": target_system_id},
+        distance_ly=distance_ly,
+        reward_profile_id=reward_profile_id,
+        payout_policy="auto",
+        claim_scope="none",
+        reward_status="ungranted",
+        reward_granted_turn=None,
+    )
+    
+    _log_creation(logger, turn, mission_id, source_type, source_id, origin_system_id, target_destination_id)
+    return mission
+
+
+def create_smuggling_mission(
+    *,
+    source_type: str,
+    source_id: str,
+    origin_system_id: str,
+    origin_destination_id: str | None,
+    origin_location_id: str | None,
+    mission_tier: int,
+    galaxy: Galaxy,
+    catalog: Any,
+    rng: random.Random,
+    logger=None,
+    turn: int = 0,
+) -> MissionEntity:
+    """Create a smuggling mission (Phase 7.11.4)."""
+    _validate_inputs(source_type, source_id, origin_system_id, "smuggling", mission_tier)
+    
+    origin_system = galaxy.get_system(origin_system_id)
+    if origin_system is None:
+        raise ValueError(f"Origin system not found: {origin_system_id}")
+    
+    # Inter-system target (80% like delivery)
+    is_inter_system = rng.random() < 0.8
+    if is_inter_system:
+        target_system = _select_inter_system_target(origin_system, galaxy, rng)
+        if target_system is None:
+            target_system_id = origin_system_id
+        else:
+            target_system_id = target_system.system_id
+        target_destination = _select_destination_in_system(galaxy.get_system(target_system_id), rng)
+    else:
+        target_system_id = origin_system_id
+        alternative_destinations = [
+            d for d in origin_system.destinations
+            if d.destination_id != origin_destination_id
+        ]
+        if not alternative_destinations:
+            target_system = _select_inter_system_target(origin_system, galaxy, rng)
+            if target_system is None:
+                raise ValueError("No valid target destination available")
+            target_system_id = target_system.system_id
+            target_destination = _select_destination_in_system(target_system, rng)
+        else:
+            target_destination = rng.choice(alternative_destinations)
+    
+    target_destination_id = target_destination.destination_id
+    distance_ly = _calculate_distance_ly(origin_system, galaxy.get_system(target_system_id)) if is_inter_system else 0
+    
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="smuggling",
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
+    
+    # Cargo payload for smuggling
+    cargo_payload = _generate_cargo_payload(mission_tier, catalog, rng)
+    
+    objectives = [
+        {
+            "objective_id": "OBJ-1",
+            "objective_type": "cargo_delivered",
+            "status": "pending",
+            "parameters": {
+                "goods": [cargo_payload]
+            }
+        }
+    ]
+    
+    mission_id = _deterministic_mission_id(
+        source_type=source_type,
+        source_id=source_id,
+        system_id=origin_system_id,
+        destination_id=target_destination_id,
+        mission_type="smuggling",
+        mission_tier=mission_tier,
+    )
+    
+    mission = MissionEntity(
+        mission_id=mission_id,
+        mission_type="smuggling",
+        mission_tier=mission_tier,
+        persistence_scope=MissionPersistenceScope.EPHEMERAL,
+        mission_state=MissionState.OFFERED,
+        system_id=origin_system_id,
+        origin_location_id=origin_location_id,
+        destination_location_id=None,
+        objectives=objectives,
+        source={"source_type": source_type, "source_id": source_id},
+        origin={"system_id": origin_system_id, "destination_id": origin_destination_id or ""},
+        target={"target_type": "destination", "target_id": target_destination_id, "system_id": target_system_id},
+        distance_ly=int(math.ceil(distance_ly)),
+        reward_profile_id=reward_profile_id,
+        payout_policy="auto",
+        claim_scope="none",
+        reward_status="ungranted",
+        reward_granted_turn=None,
+    )
+    
+    _log_creation(logger, turn, mission_id, source_type, source_id, origin_system_id, target_destination_id)
+    return mission
+
+
+def create_exploration_mission(
+    *,
+    source_type: str,
+    source_id: str,
+    origin_system_id: str,
+    origin_destination_id: str | None,
+    origin_location_id: str | None,
+    mission_tier: int,
+    galaxy: Galaxy,
+    catalog: Any,
+    rng: random.Random,
+    logger=None,
+    turn: int = 0,
+) -> MissionEntity:
+    """Create an exploration mission (Phase 7.11.4)."""
+    _validate_inputs(source_type, source_id, origin_system_id, "exploration", mission_tier)
+    
+    origin_system = galaxy.get_system(origin_system_id)
+    if origin_system is None:
+        raise ValueError(f"Origin system not found: {origin_system_id}")
+    
+    # Inter-system exploration target
+    target_system = _select_inter_system_target(origin_system, galaxy, rng)
+    if target_system is None:
+        target_system_id = origin_system_id
+    else:
+        target_system_id = target_system.system_id
+    
+    target_destination = _select_destination_in_system(galaxy.get_system(target_system_id), rng)
+    target_destination_id = target_destination.destination_id
+    distance_ly = _calculate_distance_ly(origin_system, galaxy.get_system(target_system_id))
+    
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="exploration",
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
+    
+    objectives = [
+        {
+            "objective_id": "OBJ-1",
+            "objective_type": "destination_visited",
+            "status": "pending",
+            "parameters": {
+                "destination_id": target_destination_id,
+                "system_id": target_system_id
+            }
+        }
+    ]
+    
+    mission_id = _deterministic_mission_id(
+        source_type=source_type,
+        source_id=source_id,
+        system_id=origin_system_id,
+        destination_id=target_destination_id,
+        mission_type="exploration",
+        mission_tier=mission_tier,
+    )
+    
+    mission = MissionEntity(
+        mission_id=mission_id,
+        mission_type="exploration",
+        mission_tier=mission_tier,
+        persistence_scope=MissionPersistenceScope.EPHEMERAL,
+        mission_state=MissionState.OFFERED,
+        system_id=origin_system_id,
+        origin_location_id=origin_location_id,
+        destination_location_id=None,
+        objectives=objectives,
+        source={"source_type": source_type, "source_id": source_id},
+        origin={"system_id": origin_system_id, "destination_id": origin_destination_id or ""},
+        target={"target_type": "destination", "target_id": target_destination_id, "system_id": target_system_id},
+        distance_ly=int(math.ceil(distance_ly)),
+        reward_profile_id=reward_profile_id,
+        payout_policy="auto",
+        claim_scope="none",
+        reward_status="ungranted",
+        reward_granted_turn=None,
+    )
+    
+    _log_creation(logger, turn, mission_id, source_type, source_id, origin_system_id, target_destination_id)
+    return mission
+
+
+def create_retrieval_mission(
+    *,
+    source_type: str,
+    source_id: str,
+    origin_system_id: str,
+    origin_destination_id: str | None,
+    origin_location_id: str | None,
+    mission_tier: int,
+    galaxy: Galaxy,
+    catalog: Any,
+    rng: random.Random,
+    logger=None,
+    turn: int = 0,
+) -> MissionEntity:
+    """Create a retrieval mission (Phase 7.11.4)."""
+    _validate_inputs(source_type, source_id, origin_system_id, "retrieval", mission_tier)
+    
+    origin_system = galaxy.get_system(origin_system_id)
+    if origin_system is None:
+        raise ValueError(f"Origin system not found: {origin_system_id}")
+    
+    # Inter-system target
+    target_system = _select_inter_system_target(origin_system, galaxy, rng)
+    if target_system is None:
+        target_system_id = origin_system_id
+    else:
+        target_system_id = target_system.system_id
+    
+    target_destination = _select_destination_in_system(galaxy.get_system(target_system_id), rng)
+    target_destination_id = target_destination.destination_id
+    distance_ly = _calculate_distance_ly(origin_system, galaxy.get_system(target_system_id))
+    
+    # Use delivery reward distribution for retrieval
+    reward_profile_id = _select_reward_profile_id(
+        mission_type_id="delivery",  # Retrieval uses delivery reward profiles
+        tier=mission_tier,
+        source_type=source_type,
+        rng=rng,
+    )
+    
+    # Cargo payload
+    cargo_payload = _generate_cargo_payload(mission_tier, catalog, rng)
+    
+    objectives = [
+        {
+            "objective_id": "OBJ-1",
+            "objective_type": "cargo_acquired",
+            "status": "pending",
+            "parameters": {
+                "goods": [cargo_payload]
+            }
+        }
+    ]
+    
+    mission_id = _deterministic_mission_id(
+        source_type=source_type,
+        source_id=source_id,
+        system_id=origin_system_id,
+        destination_id=target_destination_id,
+        mission_type="retrieval",
+        mission_tier=mission_tier,
+    )
+    
+    mission = MissionEntity(
+        mission_id=mission_id,
+        mission_type="retrieval",
+        mission_tier=mission_tier,
+        persistence_scope=MissionPersistenceScope.EPHEMERAL,
+        mission_state=MissionState.OFFERED,
+        system_id=origin_system_id,
+        origin_location_id=origin_location_id,
+        destination_location_id=None,
+        objectives=objectives,
+        source={"source_type": source_type, "source_id": source_id},
+        origin={"system_id": origin_system_id, "destination_id": origin_destination_id or ""},
+        target={"target_type": "destination", "target_id": target_destination_id, "system_id": target_system_id},
+        distance_ly=int(math.ceil(distance_ly)),
+        reward_profile_id=reward_profile_id,
+        payout_policy="auto",
+        claim_scope="none",
+        reward_status="ungranted",
+        reward_granted_turn=None,
+    )
+    
+    _log_creation(logger, turn, mission_id, source_type, source_id, origin_system_id, target_destination_id)
+    return mission
+
+
+# Register all creators after they're defined
+CREATOR_BY_TYPE["delivery"] = create_delivery_mission
+CREATOR_BY_TYPE["bounty"] = create_bounty_mission
+CREATOR_BY_TYPE["patrol"] = create_patrol_mission
+CREATOR_BY_TYPE["smuggling"] = create_smuggling_mission
+CREATOR_BY_TYPE["exploration"] = create_exploration_mission
+CREATOR_BY_TYPE["retrieval"] = create_retrieval_mission

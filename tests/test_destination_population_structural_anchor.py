@@ -23,7 +23,7 @@ def test_every_system_has_max_population_destination() -> None:
         
         populated_destinations = [
             d for d in system.destinations
-            if d.population >= 1 and d.destination_type not in {"explorable_stub", "mining_stub"}
+            if d.population >= 1 and d.destination_type not in {"exploration_site", "resource_field"}
         ]
         
         if not populated_destinations:
@@ -66,7 +66,7 @@ def test_destination_population_uniform_distribution() -> None:
         
         populated_destinations = [
             d for d in system.destinations
-            if d.population >= 1 and d.destination_type not in {"explorable_stub", "mining_stub"}
+            if d.population >= 1 and d.destination_type not in {"exploration_site", "resource_field"}
         ]
         
         if len(populated_destinations) <= 1:
@@ -146,29 +146,29 @@ def test_deterministic_population_assignment() -> None:
     print("✓ Population assignment is deterministic")
 
 
-def test_stub_destinations_remain_zero_population() -> None:
-    """Test that stub destinations (mining_stub, explorable_stub) remain population 0."""
+def test_non_inhabited_destinations_remain_zero_population() -> None:
+    """Test that exploration_site and resource_field destinations remain population 0."""
     engine = GameEngine(world_seed=12345, config={"system_count": 50})
     
-    stub_destinations_with_pop = []
+    non_inhabited_with_pop = []
     
     for system in engine.sector.systems:
         for dest in system.destinations:
-            if dest.destination_type in {"explorable_stub", "mining_stub"}:
+            if dest.destination_type in {"exploration_site", "resource_field"}:
                 if dest.population != 0:
-                    stub_destinations_with_pop.append({
+                    non_inhabited_with_pop.append({
                         "system_id": system.system_id,
                         "destination_id": dest.destination_id,
                         "destination_type": dest.destination_type,
                         "population": dest.population,
                     })
     
-    assert len(stub_destinations_with_pop) == 0, (
-        f"Found {len(stub_destinations_with_pop)} stub destinations with non-zero population:\n"
+    assert len(non_inhabited_with_pop) == 0, (
+        f"Found {len(non_inhabited_with_pop)} non-inhabited destinations with non-zero population:\n"
         + "\n".join(
             f"  {s['destination_id']} ({s['destination_type']}): pop={s['population']}"
-            for s in stub_destinations_with_pop
+            for s in non_inhabited_with_pop
         )
     )
     
-    print("✓ All stub destinations have population 0")
+    print("✓ All exploration_site and resource_field destinations have population 0")

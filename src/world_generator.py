@@ -22,6 +22,15 @@ class Location:
     notes: str | None = None
 
 
+def _default_emoji_id_for_destination_type(destination_type: str) -> str:
+    """Default emoji_id when not provided (Phase 7.12). Do not validate against emoji.json."""
+    if destination_type == "exploration_site":
+        return "location_unknown"
+    if destination_type == "resource_field":
+        return "goods_category_ore"
+    return ""
+
+
 @dataclass(frozen=True)
 class Destination:
     destination_id: str
@@ -34,6 +43,7 @@ class Destination:
     locations: List[Location]
     market: Market | None
     tags: List[str] = field(default_factory=list)
+    emoji_id: str = field(default="")
 
 
 @dataclass(frozen=True)
@@ -361,6 +371,24 @@ class WorldGenerator:
         return updated
 
 
+# Legacy destination_type mapping for save/load migration (Phase 7.12)
+_LEGACY_DESTINATION_TYPE_MAP = {
+    "explorable_stub": "exploration_site",
+    "mining_stub": "resource_field",
+}
+_MIGRATION_LOGGED: set[str] = set()
+
+
+def normalize_destination_type(destination_type: str, logger: Logger | None = None) -> str:
+    """Map legacy destination_type values to current names. Log migration once per value."""
+    out = _LEGACY_DESTINATION_TYPE_MAP.get(destination_type, destination_type)
+    if out != destination_type and destination_type not in _MIGRATION_LOGGED:
+        _MIGRATION_LOGGED.add(destination_type)
+        if logger:
+            logger.log(turn=0, action="destination_type_migration", state_change=f"{destination_type} -> {out}")
+    return out
+
+
 def _load_location_availability() -> Dict[str, dict]:
     path = Path(__file__).resolve().parents[1] / "data" / "location_availability.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -613,12 +641,13 @@ def _generate_destinations(
         )
         destinations.append(destination)
     
-    # Generate explorable stubs (no population, no markets)
+    # Generate exploration sites (no population, no markets)
     for i in range(explorable_count):
         destination_id = f"{system_id}-DST-{destination_index:02d}"
         destination_index += 1
-        display_name = f"Explorable Site {i + 1}"
-        destination_type = "explorable_stub"
+        display_name = f"Exploration Site {i + 1}"
+        destination_type = "exploration_site"
+        emoji_id = _default_emoji_id_for_destination_type(destination_type)
         destination = Destination(
             destination_id=destination_id,
             system_id=system_id,
@@ -629,15 +658,17 @@ def _generate_destinations(
             secondary_economy_ids=[],
             locations=[],
             market=None,
+            emoji_id=emoji_id,
         )
         destinations.append(destination)
     
-    # Generate mining stubs (no population, no markets)
+    # Generate resource fields (no population, no markets)
     for i in range(mining_count):
         destination_id = f"{system_id}-DST-{destination_index:02d}"
         destination_index += 1
-        display_name = f"Mining Site {i + 1}"
-        destination_type = "mining_stub"
+        display_name = f"Resource Field {i + 1}"
+        destination_type = "resource_field"
+        emoji_id = _default_emoji_id_for_destination_type(destination_type)
         destination = Destination(
             destination_id=destination_id,
             system_id=system_id,
@@ -648,6 +679,7 @@ def _generate_destinations(
             secondary_economy_ids=[],
             locations=[],
             market=None,
+            emoji_id=emoji_id,
         )
         destinations.append(destination)
 
@@ -803,6 +835,7 @@ def _assign_locations_and_markets(
                 locations=list(destination.locations),
                 market=market,
                 tags=list(destination.tags),
+                emoji_id=getattr(destination, "emoji_id", "") or "",
             )
         )
     return updated_destinations
@@ -916,7 +949,7 @@ def _destination_population(
     destination_type: str,
     system_population: int,
 ) -> int:
-    if destination_type in {"asteroid_field", "contact", "explorable_stub", "mining_stub"}:
+    if destination_type in {"asteroid_field", "contact", "exploration_site", "resource_field"}:
         return 0
     if system_population <= 1:
         return max(system_population, 1)
@@ -951,7 +984,7 @@ def _ensure_max_population_destination(
     # Identify populated destinations (exclude stubs)
     populated_destinations = [
         d for d in destinations
-        if d.population >= 1 and d.destination_type not in {"explorable_stub", "mining_stub", "asteroid_field", "contact"}
+        if d.population >= 1 and d.destination_type not in {"exploration_site", "resource_field", "asteroid_field", "contact"}
     ]
     
     if not populated_destinations:
@@ -996,6 +1029,7 @@ def _ensure_max_population_destination(
                     secondary_economy_ids=secondary_economy_ids,
                     locations=[],
                     market=None,
+                    emoji_id=getattr(dest, "emoji_id", "") or "",
                 )
                 has_shipdock = destination_has_shipdock_service(temp_dest)
                 market = market_creator.create_market(
@@ -1018,6 +1052,7 @@ def _ensure_max_population_destination(
                     locations=dest.locations,
                     market=market,
                     tags=dest.tags,
+                    emoji_id=getattr(dest, "emoji_id", "") or "",
                 )
                 updated_destinations.append(updated_dest)
             else:
@@ -1047,6 +1082,7 @@ def _ensure_max_population_destination(
                     secondary_economy_ids=secondary_economy_ids,
                     locations=[],
                     market=None,
+                    emoji_id=getattr(dest, "emoji_id", "") or "",
                 )
                 has_shipdock = destination_has_shipdock_service(temp_dest)
                 market = market_creator.create_market(
@@ -1069,6 +1105,7 @@ def _ensure_max_population_destination(
                     locations=dest.locations,
                     market=market,
                     tags=dest.tags,
+                    emoji_id=getattr(dest, "emoji_id", "") or "",
                 )
                 updated_destinations.append(updated_dest)
             else:

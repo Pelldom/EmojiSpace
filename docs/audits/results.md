@@ -1,212 +1,132 @@
-Verdict
-Overall purge status: PASS
-All legacy mission types (escort, recovery) have been removed from generation; only structured delivery missions can be generated through the new registry + factory path. One residual defensive fallback (mission_type_id = ... or "delivery") remains in GameEngine._ensure_location_mission_offers(), but it does not reintroduce legacy types and is never exercised under the current registry.
-PART 1 — Hardcoded Type Sweep
-Search scope: src/
-1.1 "escort" matches
-Result: No matches in src/
-Classification: N/A
-Conclusion: Escort is not referenced anywhere in the source tree.
-1.2 "recovery" matches
-src/world_state_engine.py 169: "recovery_only": bool(entry.get("recovery_only", False)), 933: and not bool(item.get("recovery_only"))
-File: src/world_state_engine.py
-Context: Situation/event flags (recovery_only) for world state, not mission types.
-Classification: D) Harmless string (world state flag, non-mission)
-Conclusion: Not a mission type; safe.
-1.3 "bounty" matches
-src/game_engine.py 4179: # Bounty missions can be evaluated here if needed, but all evaluation goes through evaluate_active_missions() 5082: "bounty_hunter": "Bounty Hunter",src/mission_factory.py 118: # Future types (e.g., bounty) should be added here when their creators exist.src/mission_registry.py 22: # ... (e.g., bounty) can be added... 33: #     mission_type_id="bounty", ...src/mission_manager.py 377: # Other mission types (bounty, etc.) - not implemented yetsrc/integration_test.py 443–466: test code creating a bounty missionsrc/npc_ship_generator.py 26: "bounty_hunter": {"MIL": 80, "CIV": 20},
-Classification:
-Comments / docs / tests: D) Harmless strings
-npc_ship_generator role label "bounty_hunter": independent of mission generation.
-Conclusion: Bounty is not part of the active mission generation path; only referenced in comments, tests, and NPC roles.
-1.4 _mission_candidates matches
-Result: No matches in src/
-Conclusion: _mission_candidates() has been removed; it no longer exists.
-1.5 create_mission( matches
-src/mission_factory.py 10:def create_mission(...)src/cli_test.py, src/integration_test.py 93, 254, 352, 362, 378, 410, 461: test/CLI helper calls
-File: src/mission_factory.py
-Context: Generic mission creation function (now only used by tests/CLI helpers, not by GameEngine).
-Classification: A) Generation logic, but not reached from the runtime mission offering path.
-No references in game_engine.py or other runtime generation code.
-Conclusion: create_mission() exists, but no production path uses it for mission offering; it cannot generate escort/recovery anymore.
-1.6 mission_type = matches
-All in src/ are either:
-Factory assignment (structured, non-legacy):
-  src/mission_factory.py   36: mission_type=mission_type,  256: mission_type="delivery",  267: mission_type="delivery",
-Display / logging:
-run_game_engine_cli.py reads mission.get("mission_type", ...).
-mission_manager.py logs mission.mission_type.
-Tests/validators set mission_type="delivery" or "bounty" in test code only.
-Classification:
-Factory assignments for delivery: A) generation logic (intended, structured).
-CLI/tests: B) display logic / D) test-only.
-1.7 mission_type_id = matches
-src/game_engine.py 1585: mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"src/mission_registry.py 26, 33: mission_type_id="delivery" (registry entries only)src/mission_generator.py 42, 66: loop variables inside weighting logic
-The key one (generation):
-File: src/game_engine.py, _ensure_location_mission_offers()
-Line: ~1585
-Context:
-    mission_type, _ = select_weighted_mission_type(...)    mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
-Classification: A) generation logic
-Note: This is a defensive fallback to "delivery" if the weighted selector returns None or a falsy value. Given:
-implemented_candidates is non-empty
-select_weighted_mission_type only returns a type from candidates (or None if all weights 0)
-Registry currently only includes "delivery"
-this fallback is effectively unused, but it does exist in code.
-Others:
-In registry + mission_generator: D) internal helper / schema, no hardcoded mission types beyond "delivery" in the registry.
-1.8 mission_type == matches
-src/mission_manager.py 362: if mission.mission_type == "delivery":
-File: src/mission_manager.py
-Context: Evaluation logic for mission completion (delivery only).
-Classification: Evaluation logic, not generation.
-Conclusion: Safe; only checks delivery missions.
-1.9 mission_type in [ matches
-Result: No matches in src/
-Conclusion: No multi-type hardcoded lists remain.
-1.10 fallback matches
-Mission-related occurrences:
-In mission_factory.py:
-Comments about target selection fallback:
-Fallback to same-system if no reachable systems.
-Fallback to inter-system if no alternative destination.
-Classification: Deterministic routing for target selection, not mission type selection.
-In other files: law, market, reaction, etc.
-All non-mission-type related.
-Explicit check: No "fallback" around mission_type selection except the mission_type_id = ... or "delivery" assignment already discussed above (which doesn't contain the word fallback).
-1.11 default_mission matches
-Result: No matches in src/
-Conclusion: No default_mission code exists.
-1.12 mission_contact_seed matches
-src/game_engine.py 1618: mission.mission_contact_seed = f"...|{mission.mission_id}|contact" 1640–1699, 5884–5893, 6208–6235: NPC lookup / elevation logicsrc/mission_core.py 77–82: derive NPC-MSN id for Bar mission giverssrc/mission_entity.py 65, 206: field definition + serialization
-Classification: B) Bar NPC presentation logic
-Conclusion: Only used to:
-Create Tier 1 Bar mission_giver NPCs
-Map NPC-MSN IDs back to missions
-No mission-type-specific branching (so escort/recovery are not specially handled)
-PART 2 — mission_generator.py Integrity Check
-File: src/mission_generator.py
-Defines its own mission type list?
-No. It only operates on eligible_missions passed in from the caller.
-Contains hardcoded mission types?
-No. The only use of mission_type_id is via _mission_type_id(mission) which reads from the candidate dict in game_engine / registry.
-Only performs weighted selection from provided candidates?
-Yes. Selection is:
-Build base weights from mission["base_weight"]
-Apply modifiers
-Call _weighted_pick(weighted_items, rng)
-Fallback to "delivery" internally?
-No. If total weight <= 0, _weighted_pick returns None. No type string constants are used inside the file.
-References escort or recovery?
-None. Grep finds no mentions.
-Conclusion: mission_generator.py is now a pure weighted-selection helper with no embedded mission-type knowledge.
-PART 3 — mission_factory.py Authority Check
-File: src/mission_factory.py
-CREATOR_BY_TYPE exists?
-Yes:
-    CREATOR_BY_TYPE: Dict[str, Any] = {        "delivery": "create_delivery_mission",  # marker only        # Future types (e.g., bounty) should be added here when their creators exist.    }
-Only implemented mission types present?
-Yes. Only "delivery" is listed. Comment notes future addition of bounty.
-Legacy create_mission() routing for unstructured types?
-create_mission() still exists, but no runtime generation path calls it:
-All create_mission( call sites are in tests (integration_test.py, cli_test.py) and not in game_engine.py.
-GameEngine._ensure_location_mission_offers() routes only to create_delivery_mission() and raises if mission_type_id != "delivery".
-Conclusion: No production routing of unstructured legacy types; create_mission() is effectively test-only now.
-Any switch/if chain referencing escort or recovery?
-No. Grep finds neither in mission_factory.py.
-PART 4 — GameEngine._ensure_location_mission_offers() Generation Path
-File: src/game_engine.py (excerpt around 1491–1615)
-Key points:
-Candidates loaded exclusively from mission_registry:
-  from mission_registry import mission_type_candidates_for_source  ...  candidates = mission_type_candidates_for_source(source_type=source_type)
-Filtering uses CREATOR_BY_TYPE:
-  implemented_candidates = []  for row in candidates:      mt_id = str(row.get("mission_type_id", "") or "")      if mt_id in CREATOR_BY_TYPE:          implemented_candidates.append(row)      else:          # log skipped_unimplemented_type  if not implemented_candidates:      raise ValueError(...)
-No reference to _mission_candidates():
-Confirmed via grep: _mission_candidates does not exist in src/.
-No fallback if registry returns empty other than raising ValueError:
-If implemented_candidates is empty ? explicit ValueError with clear message.
-String comparisons:
-Only if mission_type_id == "delivery" to route into create_delivery_mission().
-No == "escort" or == "recovery" anywhere in this method.
-Defensive fallback assignment:
-  mission_type, _ = select_weighted_mission_type(...)  mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
-This is a defensive fallback to "delivery" if the weighted selector returns None or non-string.
-With the current registry (only "delivery"), mission_type will always be "delivery"; the fallback is not exercised.
-However, the assignment is present and should be noted.
-PART 5 — NPC Spawn Audit (Bar Only)
-Search: "Mission Contact (" and "NPC-MSN"
-Files: src/game_engine.py, src/mission_core.py
-Usage patterns:
-In mission_core.py::list_offered():
-   if location_type == "bar" and mission.mission_contact_seed is not None:       npc_hash = hashlib.md5(mission.mission_contact_seed.encode()).hexdigest()[:8]       giver_npc_id = f"NPC-MSN-{npc_hash}"       row["giver_display_name"] = f"Mission Contact ({mission.mission_type})"
-Classification: B) Display logic / NPC spawn at Bar
-No mission_type branching: Only uses mission.mission_type as part of display name.
-In game_engine.py:
-When creating missions, for all generated missions:
-     mission.location_id = location_id     mission.mission_contact_seed = f"{self.world_seed}|...|{mission.mission_id}|contact"
-In NPC resolution / elevation code:
-Uses mission_contact_seed and NPC-MSN-{hash} both to create and to find the mission giver NPC.
-No mission_type-based conditionals; constraints on types now come exclusively from the registry + CREATOR_BY_TYPE.
-Conclusion:
-NPC generation happens after mission creation and purely off mission_contact_seed, not mission type.
-Because only delivery is generated now, Bar NPC mission_givers can only exist for delivery missions.
-No legacy mission-type-based NPC spawn logic remains.
-PART 6 — Deterministic Authority Confirmation
-1) Is there exactly ONE mission type source of truth?
-Yes.
-Mission types for generation are defined in src/mission_registry.py via _MISSION_TYPES.
-GameEngine._ensure_location_mission_offers() always calls mission_type_candidates_for_source(source_type) and then filters via CREATOR_BY_TYPE.
-There is no other candidate list or mission-type table in the generation path.
-2) Can escort or recovery be generated anywhere?
-No.
-escort / recovery do not appear anywhere in src/ except recovery_only world-state flags (non-mission) and are absent from mission_registry.
-No generation code references those strings.
-create_mission() is only invoked in tests/CLI test helpers, not in production generation paths.
-3) Can any mission type be generated without being present in mission_registry AND CREATOR_BY_TYPE?
-No.
-Candidates come only from mission_registry.mission_type_candidates_for_source.
-They are further filtered to mt_id in CREATOR_BY_TYPE.
-If filtering yields zero candidates ? ValueError (no fallback).
-If select_weighted_mission_type somehow returns an mt_id not in CREATOR_BY_TYPE, another ValueError is raised (has no creator in CREATOR_BY_TYPE).
-Thus, a mission type must be present in both mission_registry and CREATOR_BY_TYPE to be creatable.
-4) Is there any silent fallback to delivery?
-No silent fallback in selection or registry.
-The only fallback-like code is:
-    mission_type_id = mission_type if isinstance(mission_type, str) and mission_type else "delivery"
-This is a defensive default in case select_weighted_mission_type returns None or non-str; combined with:
-implemented_candidates being non-empty,
-weighted_items built from those candidates,
-In practice, this fallback is not exercised. There is:
-No hidden or alternative path that silently converts other types into delivery.
-All other failure modes raise ValueError, not fallback.
-5) Is mission generation deterministic for a fixed seed?
-Yes.
-RNG for mission generation is GameEngine._mission_rng_for_location(location_id, turn=None), seeded with world_seed, current_system_id, current_destination_id, and location_id.
-mission_generator.select_weighted_mission_type() uses that RNG and only deterministic operations.
-create_delivery_mission() uses that RNG for target selection and cargo payload deterministically.
-Registry content and CREATOR_BY_TYPE mappings are static and not stateful.
-Therefore, for a fixed world seed and same player state, mission offerings are deterministic.
-Final Verdict — Legacy Mission Purge Completeness
-Section-by-section:
-Hardcoded type sweep:
-No escort or mission-type recovery in generation code.
-_mission_candidates() removed.
-No static mission type arrays in game_engine.py; the only list of mission types is the new registry in mission_registry.py (by design).
-No weighted selection tables contain escort/recovery.
-mission_generator.py:
-Clean; no hardcoded types, no fallbacks, no escort/recovery.
-mission_factory.py:
-CREATOR_BY_TYPE exists and only contains "delivery".
-create_mission() remains but is not used by runtime generation.
-No escort/recovery references.
-game_engine generation path:
-Uses mission_registry + CREATOR_BY_TYPE exclusively.
-No _mission_candidates(), no escort/recovery, no silent type mapping.
-NPC spawn (Bar):
-Tied to mission_contact_seed and location_type "bar", not mission_type.
-With only delivery generated, Bar NPCs present delivery missions only.
-Overall Purge Verdict: PASS
-Escort and recovery cannot be generated.
-Only mission types present in both mission_registry and CREATOR_BY_TYPE are creatable (currently delivery).
-No static mission type lists remain in game_engine (replaced by the registry).
-No silent legacy fallbacks to escort/recovery or other types; the only fallback to "delivery" is a defensive guard that does not reintroduce legacy behavior.
+EMOJI REGISTRY AUDIT REPORT
+1. Registry summary
+Total registry entries (data/emoji.json): 298
+Verified by loading the file as JSON and counting the top-level array length.
+2. Referenced emoji_ids in data files
+Data files scanned (direct or indirect emoji sources):
+
+data/governments.json – emoji_id fields (11 governments)
+data/economies.json – no emoji_id fields (ids only)
+data/crew_roles.json – no emoji_id fields (role_id only)
+data/mission_definitions.json – no emoji_id fields (mission_type + tags only)
+data/hulls.json – uses traits (e.g. ship:trait_civilian) ? tags.json ? emoji_id
+data/modules.json – uses primary_tag (e.g. combat:weapon_energy) ? tags.json ? emoji_id
+data/tags.json – emoji_id fields (74 tags)
+data/encounter_types.json – no emoji_id fields (legacy emoji placeholders only)
+data/situations.json – emoji_id fields (27 situations)
+data/events.json – emoji_id fields (38 events)
+data/categories.json – emoji_id fields (11 goods categories)
+Distinct emoji_id families referenced:
+
+Governments:
+
+government_free_trade_coalition
+government_corporate_authority
+government_fascist
+government_anarchic
+government_democracy
+government_republic
+government_socialist
+government_communist
+government_collective_commune
+government_theocracy
+government_dictatorship
+Tags (74 entries in tags.json):
+
+Goods traits: goods_agricultural, goods_biological, goods_counterfeit, goods_cultural, goods_cybernetic, goods_data, goods_energy, goods_essential, goods_hazardous, goods_industrial, goods_luxury, goods_medical, goods_propaganda, goods_sentient_adjacent, goods_stolen, goods_synthetic, goods_technological, goods_weaponized, etc.
+Combat traits: combat_defense_adaptive, combat_defense_armored, combat_defense_shielded, combat_utility_cloak, combat_utility_engine_boost, combat_utility_overcharger, combat_utility_repair_system, combat_utility_signal_scrambler, combat_utility_targeting, combat_weapon_disruptive, combat_weapon_energy, combat_weapon_kinetic, etc.
+Crew traits: crew_alien, crew_awkward, crew_bargain_hunter, crew_blacklisted, crew_cluttered, crew_connected, crew_damage_control, crew_data_savvy, crew_evasive, crew_ex_navy, crew_ex_pirate, crew_fuel_efficient, crew_haggler, crew_high_maintenance, crew_loyal, crew_opportunist, crew_organized, crew_overconfident, crew_slow_reactions, crew_steady_aim, crew_trigger_happy, crew_undercover, crew_wanted, crew_wasteful.
+Ship traits/utilities: ship_trait_alien, ship_trait_civilian, ship_trait_experimental, ship_trait_freighter, ship_trait_military, ship_utility_data_array, ship_utility_extra_cargo, ship_utility_extra_fuel, ship_utility_interdiction, ship_utility_mining_equipment, ship_utility_probe_array, ship_utility_smuggler_hold.
+Meta: secondary_alien, secondary_compact, secondary_efficient, secondary_enhanced, secondary_prototype, secondary_unstable, tag_destroyed, tag_salvage_site.
+These are:
+
+Referenced directly in tags.json, and
+Referenced indirectly by hulls.json (traits) and modules.json (primary_tag).
+Situations (27 in situations.json):
+
+e.g. situation_trade_boom, situation_economic_recession, situation_pirate_surge, situation_military_mobilization, situation_border_tensions, situation_civil_unrest, situation_labor_strike, situation_industrial_expansion, situation_resource_shortage, situation_energy_crisis, situation_quarantine, situation_cultural_festival, situation_religious_revival, situation_black_market_expansion, situation_smuggling_crackdown, situation_exploration_craze, situation_infrastructure_strain, situation_refugee_strain, situation_reconstruction, situation_public_panic, situation_medical_shortage, situation_food_shortage, situation_industrial_parts_shortage, situation_luxury_goods_demand, situation_supply_chain_failure, situation_population_drain, situation_infrastructure_expansion.
+Events (38 in events.json):
+
+e.g. event_solar_flare_surge, event_alien_delegation, event_major_discovery, event_merchant_convoy_arrival, event_smuggler_amnesty, event_war, event_plague_outbreak, event_economic_shock, event_alien_incident, event_corporate_audit, event_pirate_warlord_emerges, event_trade_treaty_signed, event_resource_discovery, event_economic_crisis, event_political_assassination, event_infrastructure_collapse, event_scientific_breakthrough, event_alien_science_defector, etc.
+Goods categories (categories.json, 11 entries):
+
+goods_category_food, goods_category_ore, goods_category_metal, goods_category_medicine, goods_category_parts, goods_category_energy, goods_category_data, goods_category_weapons, goods_category_luxury, goods_category_chemicals, goods_category_machinery.
+Distinct referenced emoji_ids (from these families):
+
+Governments: 11
+Tags: 74
+Situations: 27
+Events: 38
+Categories: 11
+Total distinct referenced emoji_ids (union of these disjoint families):
+11 + 74 + 27 + 38 + 11 = 161
+
+Note: Hulls and modules do not introduce new emoji_ids; they re-use the tag-based emoji_ids listed above.
+
+3. Missing registry entries (CHECK A)
+Definition: emoji_ids referenced by the data layer that do not exist in data/emoji.json.
+
+From the families above:
+
+All **government_*** ids found in governments.jsonare present inemoji.json` (verified via grep).
+All tag-based emoji_ids from tags.json are present in emoji.json.
+All **situation_*** ids from situations.jsonare present inemoji.json`.
+All **event_*** ids from events.jsonare present inemoji.json`.
+All **goods_category_*** ids from categories.jsonare present inemoji.json`.
+Hulls and modules only reference tag-based IDs already covered above.
+Result:
+
+Missing emoji_ids:
+(none found)
+The registry includes every emoji_id currently referenced in the scanned data files.
+
+4. Orphaned registry entries (CHECK B)
+Definition: emoji_ids that exist in data/emoji.json but are not referenced anywhere in the data layer (directly or via traits/tags as modeled above).
+
+Since:
+
+Registry entries: 298
+Referenced emoji_ids: 161
+Orphaned registry entries: 298 ? 161 = 137
+These orphaned IDs fall into several broad categories:
+
+Crew roles (not yet wired in data via emoji_id):
+
+e.g. crew_role_pilot, crew_role_gunner, crew_role_tactician, crew_role_engineer, crew_role_mechanic, crew_role_navigator, crew_role_broker, crew_role_quartermaster, crew_role_lawyer, crew_role_science.
+(These exist in emoji.json but crew_roles.json currently has no emoji_id field.)
+Economies (prepared for future use):
+
+economy_mining, economy_agricultural, economy_industrial, economy_tech, economy_trade, economy_military, economy_research, economy_tourism, economy_cultural.
+(These exist in emoji.json but economies.json has no emoji_id fields yet.)
+Mission-level glyphs beyond the core ones used so far:
+
+Already used in data indirectly via UI/logic (status) but not referenced as emoji_id by data files:
+mission_active, mission_completed, mission_failed, mission_illegal.
+New mission-type emojis recently added but not yet referenced in data:
+mission_retrieval, mission_patrol, mission_rescue, mission_scan, mission_assassination, mission_escort, mission_recon, mission_supply, mission_smuggling, mission_blockade.
+Encounter emojis (registry entries not wired to data yet):
+
+encounter_trader, encounter_authority, encounter_pirate, encounter_raider, encounter_bounty_hunter, encounter_derelict, encounter_derelict_ship, encounter_derelict_station, encounter_distress, encounter_asteroid_field, encounter_ion_storm, encounter_debris_storm, encounter_comet, encounter_spatial_rift, encounter_ancient_beacon, encounter_quantum_echo, encounter_wormhole, encounter_random_event.
+(These exist in emoji.json, but encounter_types.json still uses legacy emoji string placeholders and no emoji_id fields.)
+Meta / system / status / crate glyphs that are engine/CLI-only and not referenced via data:
+
+Examples:
+Crates & caches: mining_cache, module_crate, npc_law, raider_crate, rare_crate, supply_cache, alien_crate, cargo_crate, etc.
+Status and reaction: mission_active, mission_completed, mission_failed, status_abandoned, status_inspected, status_scanned, reaction_friendly, reaction_hostile, reaction_neutral, pursuit_active, pursuit_engaged, pursuit_evaded, etc.
+Star/system markers: star_blue, star_neutron, star_red, star_white, star_yellow, and various victory_*, violation_* glyphs.
+These orphaned entries are not errors per se; many are intended for UI state, events, or future features that are not yet driven by data-layer emoji_id fields.
+
+5. Compliance summary
+Total registry entries (emoji.json): 298
+Total distinct emoji_ids referenced via data layer (direct or via tags/traits): 161
+Missing registry entries (data ? registry): 0
+Orphaned registry entries (registry ? data): 137 (see families above)
+Status:
+
+CHECK A – Missing registry entries:
+? Pass – Every emoji_id referenced by the scanned data files has a matching entry in emoji.json.
+
+CHECK B – Orphaned registry entries:
+? Partial – Large, intentional pool of emoji_ids (economies, crew roles, missions, encounters, and meta/status glyphs) are defined in emoji.json but are not yet referenced by the current data layer.
+
+Overall, the emoji registry is superset-compliant with the data layer: data never references a missing emoji_id, but the registry contains many additional (planned or UI-focused) emoji_ids that are not yet wired into data.

@@ -1,3 +1,10 @@
+"""
+Salvage resolver: select modules from destroyed ships for post-combat loot.
+
+Design (Phase 7.10): Salvaged modules occupy physical cargo space the same as goods
+(1 unit per module). When the player accepts salvage, modules are stored as cargo
+(by module_id) and count against physical cargo capacity until installed or sold.
+"""
 from __future__ import annotations
 
 import copy

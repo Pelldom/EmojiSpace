@@ -48,8 +48,8 @@ class MissionEntity:
     persistence_scope: str = "ephemeral"
     mission_state: MissionState = MissionState.OFFERED
 
-    # Outcome tracking
-    outcome: str | None = None
+    # Outcome tracking (normalized to enum)
+    outcome: MissionOutcome | None = None
     failure_reason: str | None = None
 
     # References
@@ -104,14 +104,23 @@ class MissionEntity:
                             # Fallback to OFFERED if invalid
                             value = MissionState.OFFERED
                 # Normalize outcome to enum if it's a string
-                elif key == "outcome" and isinstance(value, str) and value:
-                    try:
-                        value = MissionOutcome(value)
-                    except ValueError:
+                elif key == "outcome":
+                    if isinstance(value, str) and value:
                         try:
-                            value = MissionOutcome[value.upper()]
-                        except (KeyError, AttributeError):
-                            value = None
+                            value = MissionOutcome(value)
+                        except ValueError:
+                            try:
+                                value = MissionOutcome[value.upper()]
+                            except (KeyError, AttributeError):
+                                value = None
+                    elif value is None:
+                        value = None
+                    # If already an enum, keep it
+                    elif isinstance(value, MissionOutcome):
+                        pass
+                    else:
+                        # Unknown type, set to None
+                        value = None
                 # Handle legacy string objectives - convert to structured format
                 elif key == "objectives" and isinstance(value, list) and value and isinstance(value[0], str):
                     # Legacy format: convert string objectives to structured format

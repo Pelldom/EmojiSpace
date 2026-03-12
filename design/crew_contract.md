@@ -13,7 +13,7 @@ Crew are Tier 2 NPC entities and persist independently of ships unless permanent
 
 Crew:
 - Have exactly one primary role.
-- May have 0ñ2 secondary tags.
+- May have 0ù2 secondary tags.
 - Provide deterministic additive modifiers only.
 - Never introduce randomness at runtime.
 - Never override authority boundaries of other systems.
@@ -46,7 +46,7 @@ Persistent Fields:
 - npc_id
 - name
 - role_id
-- tag_ids (0ñ2; must reference tags with prefix `crew_`)
+- tag_ids (0ù2; must reference tags with prefix `crew_`)
 - rarity_tier
 - hiring_cost
 - wage_per_day
@@ -64,7 +64,7 @@ Each crew member has exactly one role.
 Roles define:
 - Primary domain
 - Base modifier values
-- Emoji identity
+- Primary emoji_id (resolved via emoji.json; convention e.g. crew_role_<role_id>)
 - Hiring cost baseline
 - Wage baseline
 
@@ -94,7 +94,7 @@ Multiple crew members may share the same role on a single ship.
 
 ## 5. Tag Structure
 
-Crew may have 0ñ2 tags.
+Crew may have 0ù2 tags.
 
 Tags:
 - Must use prefix `crew_*`
@@ -110,13 +110,13 @@ Cross-domain tags are forbidden in Phase 5.
 ## 6. Emoji Profile
 
 Crew emoji profile consists of:
-- Primary: role emoji
-- Secondary: tag emojis (0ñ2)
+- Primary: role emoji_id (from role; resolved via emoji.json)
+- Secondary: tag emoji_ids (0ù2, via tags.json -> emoji.json) (0ù2)
 
 Constructed using emoji_profile_contract.md.
-Emoji ordering:
-1. Role emoji
-2. Tag emojis in deterministic sorted order
+Ordering:
+1. Primary emoji (from role emoji_id)
+2. Secondary emoji_ids (from tag_ids via tags.json) in deterministic sorted order
 
 ---
 
@@ -253,7 +253,7 @@ RNG stream name:
 Generation determines:
 - Name
 - Role
-- Tags (0ñ2)
+- Tags (0ù2)
 - Rarity
 - Costs
 
@@ -463,7 +463,7 @@ Increased inspection chance
 
 For each ship, module, weapon, cargo system, or component containing a tag ending in `_alien`:
 
-Apply +1 to that elementís numeric modifier.
+Apply +1 to that elementùs numeric modifier.
 
 Rules:
 

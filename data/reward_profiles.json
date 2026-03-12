@@ -340,6 +340,123 @@
         "hull_id": "scarab",
         "dynamic_source": "none"
       }
+    },
+
+    {
+      "reward_profile_id": "mission_hull_voucher_xa",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "tier_multiplier": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0,
+        "5": 1.0
+      },
+      "selector": {
+        "frame": "XA",
+        "hull_frame": "XA",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "mission_hull_voucher_xb",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "tier_multiplier": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0,
+        "5": 1.0
+      },
+      "selector": {
+        "frame": "XB",
+        "hull_frame": "XB",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "mission_hull_voucher_xc",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "tier_multiplier": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0,
+        "5": 1.0
+      },
+      "selector": {
+        "frame": "XC",
+        "hull_frame": "XC",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "mission_hull_voucher_aln",
+      "emoji": "hull_placeholder",
+      "reward_type": "hull_voucher",
+      "tier_multiplier": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0,
+        "5": 1.0
+      },
+      "selector": {
+        "frame": "ALN",
+        "hull_frame": "ALN",
+        "dynamic_source": "none"
+      }
+    },
+
+    {
+      "reward_profile_id": "data_cache_small",
+      "emoji": "data_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "low",
+      "stolen_behavior": "none",
+      "notes": "Small cache of data cargo; used by anomalies and ion storms."
+    },
+
+    {
+      "reward_profile_id": "rare_cargo_small",
+      "emoji": "rare_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "low",
+      "stolen_behavior": "none",
+      "notes": "Small rare cargo bundle for anomaly outcomes."
+    },
+
+    {
+      "reward_profile_id": "rare_cargo_medium",
+      "emoji": "rare_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "medium",
+      "stolen_behavior": "none",
+      "notes": "Medium rare cargo bundle for anomaly outcomes."
+    },
+
+    {
+      "reward_profile_id": "mining_asteroid_small",
+      "emoji": "mining_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "low",
+      "stolen_behavior": "none",
+      "notes": "Small mining-style cargo yield for asteroid field encounters."
+    },
+
+    {
+      "reward_profile_id": "mining_comet_high",
+      "emoji": "mining_crate_placeholder",
+      "reward_kind": "cargo",
+      "quantity_band": "high",
+      "stolen_behavior": "none",
+      "notes": "High mining-style cargo yield for comet passage encounters."
     }
 
   ]

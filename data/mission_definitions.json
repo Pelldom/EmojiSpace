@@ -1,0 +1,56 @@
+{
+  "version": "0.1.0",
+  "missions": [
+    {
+      "mission_id": "alien_series_1",
+      "series_id": "alien_experimental_chain",
+      "sequence": 1,
+      "mission_type": "delivery",
+      "tier": 2,
+      "tags": ["ship:trait_alien"],
+      "allowed_source_types": ["bar", "administration"]
+    },
+    {
+      "mission_id": "alien_series_2",
+      "series_id": "alien_experimental_chain",
+      "sequence": 2,
+      "mission_type": "delivery_or_retrieval",
+      "tier": 3,
+      "tags": ["ship:trait_alien"],
+      "allowed_source_types": ["bar", "administration"],
+      "progression_gate": {
+        "requires_tag": "ship:trait_alien",
+        "min_completed_with_tag": 1
+      }
+    },
+    {
+      "mission_id": "alien_series_3",
+      "series_id": "alien_experimental_chain",
+      "sequence": 3,
+      "mission_type": "delivery",
+      "tier_min": 3,
+      "tier_max": 4,
+      "tags": ["ship:trait_alien"],
+      "allowed_source_types": ["bar", "administration"],
+      "progression_gate": {
+        "requires_tag": "ship:trait_alien",
+        "min_completed_with_tag": 2
+      }
+    },
+    {
+      "mission_id": "alien_series_4_finale",
+      "series_id": "alien_experimental_chain",
+      "sequence": 4,
+      "mission_type": "delivery",
+      "tier": 4,
+      "tags": ["ship:trait_alien"],
+      "allowed_source_types": ["bar", "administration"],
+      "reward_profile_id": "mission_hull_voucher_aln",
+      "progression_gate": {
+        "requires_tag": "ship:trait_alien",
+        "min_completed_with_tag": 3
+      }
+    }
+  ]
+}
+

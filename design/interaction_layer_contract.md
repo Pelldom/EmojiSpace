@@ -114,6 +114,16 @@ Notes:
 - Additional actions must be added only via explicit contract revision.
 - UI may present actions with different labels, but the action_id must match.
 
+Environmental encounter notes (documentation only):
+
+- Opportunity / Anomaly environmental encounters MUST always include ignore in their
+  allowed action set; resolvers interpret ignore as "no local effect".
+- Hazard environmental encounters MUST always include ignore in their allowed action
+  set; resolvers MAY interpret ignore as "reroute / go around" and apply a
+  deterministic time delay via the travel / time engine.
+  - The Interaction Layer still dispatches ignore -> end_encounter.
+  - Any time advancement or hull / reputation mutation remains resolver-owned.
+
 ----------------------------------------------------------------
 
 ## 7. Action Payloads (Optional Structured Data)
@@ -254,6 +264,13 @@ Clarification:
   - end_encounter
   - pursuit
   - combat
+
+Wormhole anomaly notes (documentation only):
+
+- Wormhole-related encounters use the standard mapping above.
+- System relocation (teleport) and creation of an "unstable_wormhole_exit"
+  destination node are handled by travel / world state resolvers, not by
+  the Interaction Layer.
 
 ----------------------------------------------------------------
 

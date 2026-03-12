@@ -33,9 +33,17 @@ class PlayerState:
     warehouses: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     visited_system_ids: set[str] = field(default_factory=set)
     visited_destination_ids: set[str] = field(default_factory=set)
+    # Knowledge-state snapshots (system/destination fog-of-war)
+    known_systems: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    known_destinations: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     
     # Salvage modules from combat (stored until installed via shipdock)
     salvage_modules: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Exploration and mining progression (Phase 7.12); key = destination_id, value = count
+    exploration_progress: Dict[str, int] = field(default_factory=dict)
+    exploration_attempts: Dict[str, int] = field(default_factory=dict)
+    mining_attempts: Dict[str, int] = field(default_factory=dict)
 
     # Financial instruments
     loans: List[Dict[str, Any]] = field(default_factory=list)
@@ -114,6 +122,7 @@ class PlayerState:
                 "goods": goods,
             }
         state.warehouses = normalized_warehouses
+        # Normalize visited_* containers
         raw_visited_system_ids = getattr(state, "visited_system_ids", set())
         if isinstance(raw_visited_system_ids, list) or isinstance(raw_visited_system_ids, set):
             state.visited_system_ids = {str(system_id) for system_id in raw_visited_system_ids if isinstance(system_id, str)}
@@ -128,6 +137,32 @@ class PlayerState:
             }
         else:
             state.visited_destination_ids = set()
+        # Normalize knowledge-state mappings
+        raw_known_systems = getattr(state, "known_systems", {})
+        if not isinstance(raw_known_systems, dict):
+            raw_known_systems = {}
+        normalized_known_systems: Dict[str, Dict[str, Any]] = {}
+        for system_id, snapshot in raw_known_systems.items():
+            if not isinstance(system_id, str) or not isinstance(snapshot, dict):
+                continue
+            normalized_known_systems[system_id] = dict(snapshot)
+        state.known_systems = normalized_known_systems
+
+        raw_known_destinations = getattr(state, "known_destinations", {})
+        if not isinstance(raw_known_destinations, dict):
+            raw_known_destinations = {}
+        normalized_known_destinations: Dict[str, Dict[str, Any]] = {}
+        for destination_id, snapshot in raw_known_destinations.items():
+            if not isinstance(destination_id, str) or not isinstance(snapshot, dict):
+                continue
+            normalized_known_destinations[destination_id] = dict(snapshot)
+        state.known_destinations = normalized_known_destinations
+        # Phase 7.12: exploration/mining dicts; normalize to dict[str, int]
+        for key in ("exploration_progress", "exploration_attempts", "mining_attempts"):
+            raw = getattr(state, key, None)
+            if not isinstance(raw, dict):
+                raw = {}
+            setattr(state, key, {str(k): int(v) for k, v in raw.items() if isinstance(v, (int, float)) and isinstance(k, str)})
         return state
 
     def to_dict(self) -> Dict[str, Any]:
@@ -165,6 +200,11 @@ class PlayerState:
             "warehouses": warehouses_payload,
             "visited_system_ids": sorted(self.visited_system_ids),
             "visited_destination_ids": sorted(self.visited_destination_ids),
+            "known_systems": {str(k): dict(v) for k, v in self.known_systems.items()},
+            "known_destinations": {str(k): dict(v) for k, v in self.known_destinations.items()},
+            "exploration_progress": dict(self.exploration_progress) if hasattr(self, "exploration_progress") else {},
+            "exploration_attempts": dict(self.exploration_attempts) if hasattr(self, "exploration_attempts") else {},
+            "mining_attempts": dict(self.mining_attempts) if hasattr(self, "mining_attempts") else {},
             "loans": list(self.loans),
             "insurance_policies": list(self.insurance_policies),
             "mission_slots": self.mission_slots,

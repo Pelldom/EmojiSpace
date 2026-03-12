@@ -514,3 +514,40 @@ Design options (TBD):
 - Logged event visible in Player/Missions panel
 
 This is a UX correction, not a mission logic change.
+
+## Future Feature – Emoji Profile Display Settings
+
+### 1 Emoji Profile Spacing
+
+**Modes:**
+
+- **Spaced (default)**  
+  Example: `🚛 Ⅱ ⚡ 🛰`
+- **Compact**  
+  Example: `🚛Ⅱ⚡🛰`
+
+**Implementation note:**  
+Builder returns a space-joined string of glyphs. The rendering layer (CLI, logs, future UI) decides formatting (spaced vs compact).
+
+### 2 Emoji Profile Detail Level
+
+**Modes:**
+
+- **Full**  
+  Primary + Tier + Secondary  
+  Example: `🚛 Ⅱ ⚡ 🛰 💾`
+- **Abbreviated**  
+  Primary + Tier  
+  Example: `🚛 Ⅱ`
+- **Future possible extension:** Minimal (Primary only)
+
+**Status:** Planned – UI Settings Phase
+
+### 3 Goods display (Phase 7.14)
+
+Goods rendering is standardized everywhere in the CLI (and future UI should follow the same rule):
+
+- **Format:** `[category emoji] Name [secondary emoji...]`
+- Category emoji comes from `data/categories.json` → `emoji_id` → `data/emoji.json`.
+- Secondary emojis come from good tags via `data/tags.json` → `data/emoji.json`.
+- No tier for goods. If category is missing but tags exist, show `Name [secondary...]`. If nothing resolves, show plain name.

@@ -50,7 +50,7 @@ _MODULE_REQUIRED_KEYS = {
     "salvage_policy",
     "description",
 }
-_MODULE_OPTIONAL_KEYS = {"numeric_bonus"}
+_MODULE_OPTIONAL_KEYS = {"numeric_bonus", "tags"}
 _MODULE_ALLOWED_KEYS = _MODULE_REQUIRED_KEYS | _MODULE_OPTIONAL_KEYS
 
 
@@ -241,6 +241,14 @@ def _validate_module(module: dict[str, Any], index: int) -> None:
                 raise ValueError(f"modules.json module[{index}]: numeric_bonus.{key} must be an integer.")
             if value > 2:
                 raise ValueError(f"modules.json module[{index}]: numeric_bonus.{key} must not exceed 2.")
+
+    tags = module.get("tags")
+    if tags is not None:
+        if not isinstance(tags, list):
+            raise ValueError(f"modules.json module[{index}]: tags must be a list when provided.")
+        for tag_index, tag in enumerate(tags):
+            if not isinstance(tag, str):
+                raise ValueError(f"modules.json module[{index}]: tags[{tag_index}] must be a string.")
 
 
 def _validate_module_primary_tag(slot_type: str, primary_tag: str, index: int) -> None:

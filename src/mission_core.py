@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from mission_entity import MissionState
 from mission_manager import MissionManager
+from reward_service import preview as reward_preview
 
 
 class MissionCore:
@@ -59,19 +60,18 @@ class MissionCore:
             if mission.mission_state != MissionState.OFFERED:
                 continue
             
-            # Calculate reward preview if ungranted (Phase 7.11.2b)
-            reward_summary = []
-            if mission.reward_status == "ungranted":
-                preview = self._mission_manager.calculate_reward_preview(mission)
-                if preview and "credits" in preview:
-                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+            # Calculate reward preview using RewardBundle (Commit 4)
+            reward_summary_lines = []
+            if mission.reward_status == "ungranted" and mission.reward_profile_id:
+                bundle = reward_preview(mission)
+                reward_summary_lines = bundle.to_reward_summary_lines()
             
             row = {
                 "mission_id": mission.mission_id,
                 "mission_type": mission.mission_type,
                 "mission_tier": int(mission.mission_tier),
                 "mission_state": str(mission.mission_state),
-                "reward_summary": reward_summary,  # Phase 7.11.2b - Add reward preview
+                "reward_summary_lines": reward_summary_lines,  # Commit 4 - Unified reward display
             }
             # Add giver information for Bar locations only
             if location_type == "bar" and mission.mission_contact_seed is not None:
@@ -104,12 +104,11 @@ class MissionCore:
         
         # Compare against enum values directly
         if mission.mission_state == MissionState.OFFERED:
-            # Calculate reward preview if ungranted (Phase 7.11.2b)
-            reward_summary = []
-            if mission.reward_status == "ungranted":
-                preview = self._mission_manager.calculate_reward_preview(mission)
-                if preview and "credits" in preview:
-                    reward_summary = [{"field": "credits", "delta": preview["credits"]}]
+            # Calculate reward preview using RewardBundle (Commit 4)
+            reward_summary_lines = []
+            if mission.reward_status == "ungranted" and mission.reward_profile_id:
+                bundle = reward_preview(mission)
+                reward_summary_lines = bundle.to_reward_summary_lines()
             
             return {
                 "ok": True,
@@ -117,7 +116,7 @@ class MissionCore:
                 "mission_type": mission.mission_type,
                 "mission_tier": int(mission.mission_tier),
                 "offer_only": True,
-                "reward_summary": reward_summary,  # Phase 7.11.2b - Add reward preview
+                "reward_summary_lines": reward_summary_lines,  # Commit 4 - Unified reward display
             }
         # If mission is active, return status message
         elif mission.mission_state == MissionState.ACTIVE:

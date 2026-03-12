@@ -117,7 +117,7 @@ Tier Emoji must:
 
 - Always appear if tier field exists.
 - Appear immediately after Primary Emoji.
-- Use roman numeral characters defined in emoji.json.
+- Use roman numeral emoji ids defined in emoji.json.
 - Be derived from stored tier integer.
 - Never be manually inserted.
 - Never be treated as a tag.
@@ -125,6 +125,21 @@ Tier Emoji must:
 
 Tier I must be displayed as ROMAN_I.
 Tier display is mandatory for tiered entities.
+
+4.1 Tier to emoji_id mapping (authoritative)
+
+Tier emoji must resolve to Roman numeral emoji ids. The builder must resolve these ids via emoji.json. No glyphs may be embedded in contracts or code.
+
+Tier 1 -> roman_i
+Tier 2 -> roman_ii
+Tier 3 -> roman_iii
+Tier 4 -> roman_iv
+Tier 5 -> roman_v
+Tier 6 -> roman_vi
+Tier 7 -> roman_vii
+Tier 8 -> roman_viii
+Tier 9 -> roman_ix
+Tier 10 -> roman_x
 
 ----------------------------------------------------------------
 
@@ -166,7 +181,23 @@ Emoji Profile must always be computed from:
 
 ----------------------------------------------------------------
 
-7. Authority Boundaries
+7. Authority Boundaries (Presentation-Only Rule)
+
+Emoji Profiles are presentation-only metadata.
+
+They MAY be used by:
+
+- CLI
+- logs
+- UI
+- narrative text
+
+They must NEVER affect:
+
+- gameplay logic
+- deterministic simulation
+- entity state
+- resolver decisions
 
 Emoji Profile:
 
@@ -181,7 +212,29 @@ Emoji Profile is strictly presentation metadata.
 
 ----------------------------------------------------------------
 
-8. Global Emoji Registry
+8. Tag-to-Emoji Pipeline (formal rule)
+
+Secondary emojis for entity tags are resolved by the following pipeline:
+
+  entity.tags (tag_ids)
+      |
+      v
+  data/tags.json (tag_id -> emoji_id)
+      |
+      v
+  emoji_id
+      |
+      v
+  data/emoji.json (emoji_id -> glyph, description)
+      |
+      v
+  emoji glyph (presentation only)
+
+Any system building an Emoji Profile from entity tags MUST use this pipeline. Tag_ids must not be resolved to glyphs except via tags.json and emoji.json.
+
+----------------------------------------------------------------
+
+9. Global Emoji Registry
 
 All emoji_id references must resolve to entries in data/emoji.json.
 
@@ -201,7 +254,7 @@ without explicit version update.
 
 ----------------------------------------------------------------
 
-9. Extensibility
+10. Extensibility
 
 Future systems may define:
 
@@ -218,7 +271,7 @@ All such systems must conform to:
 
 ----------------------------------------------------------------
 
-10. Contract Authority
+11. Contract Authority
 
 This contract defines the global Emoji Profile abstraction.
 

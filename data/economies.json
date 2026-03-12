@@ -7,6 +7,7 @@
     {
       "id": "mining",
       "name": "Mining",
+      "emoji_id": "economy_mining",
       "produces": ["ORE", "METAL"],
       "consumes": ["FOOD", "MEDICINE", "PARTS", "ENERGY"],
       "neutral_categories": ["PARTS", "MACHINERY"],
@@ -17,6 +18,7 @@
     {
       "id": "agricultural",
       "name": "Agricultural",
+      "emoji_id": "economy_agricultural",
       "produces": ["FOOD", "CHEMICALS"],
       "consumes": ["METAL", "PARTS", "ENERGY"],
       "neutral_categories": ["LUXURY", "DATA"],
@@ -29,6 +31,7 @@
     {
       "id": "industrial",
       "name": "Industrial",
+      "emoji_id": "economy_industrial",
       "produces": ["PARTS", "MACHINERY", "ENERGY"],
       "consumes": ["ORE", "METAL"],
       "neutral_categories": ["DATA", "MEDICINE"],
@@ -39,6 +42,7 @@
     {
       "id": "tech",
       "name": "Tech",
+      "emoji_id": "economy_tech",
       "produces": ["DATA", "PARTS"],
       "consumes": ["ENERGY", "METAL"],
       "neutral_categories": ["MEDICINE", "LUXURY"],
@@ -49,6 +53,7 @@
     {
       "id": "military",
       "name": "Military",
+      "emoji_id": "economy_military",
       "produces": ["WEAPONS", "MACHINERY"],
       "consumes": ["ENERGY", "PARTS", "METAL"],
       "neutral_categories": ["FOOD", "MEDICINE"],
@@ -61,6 +66,7 @@
     {
       "id": "tourism",
       "name": "Tourism",
+      "emoji_id": "economy_tourism",
       "produces": ["LUXURY", "FOOD", "DATA"],
       "consumes": ["FOOD", "ENERGY", "MEDICINE"],
       "neutral_categories": ["LUXURY", "DATA", "MEDICINE"],
@@ -73,6 +79,7 @@
     {
       "id": "cultural",
       "name": "Cultural",
+      "emoji_id": "economy_cultural",
       "produces": ["LUXURY", "DATA"],
       "consumes": ["FOOD", "ENERGY"],
       "neutral_categories": ["FOOD", "LUXURY", "DATA"],
@@ -83,6 +90,7 @@
     {
       "id": "trade",
       "name": "Trade",
+      "emoji_id": "economy_trade",
       "produces": [],
       "consumes": [],
       "neutral_categories": [
@@ -104,6 +112,7 @@
     {
       "id": "research",
       "name": "Research",
+      "emoji_id": "economy_research",
       "produces": ["DATA", "MEDICINE", "ENERGY"],
       "consumes": ["PARTS", "CHEMICALS"],
       "neutral_categories": ["DATA", "CHEMICALS"],

@@ -40,6 +40,7 @@ Each Ship entity MUST have:
 - model_id (reference to ship model data)
 - owner_type (player | npc | faction)
 - owner_id (identifier of owner)
+- emoji_id (string, reference to data/emoji.json for primary identity; e.g. from hull frame/trait)
 
 Optional:
 - name (player-assigned or narrative)
@@ -165,7 +166,7 @@ Ship damage represents physical condition only.
 Each Ship entity MUST track:
 
 - condition_state
-- condition_emoji
+- condition_emoji_id (string, reference to data/emoji.json; thematic/informational only)
 
 Canonical condition states include:
 - operational
@@ -173,7 +174,7 @@ Canonical condition states include:
 - disabled
 - destroyed
 
-Emoji representation is thematic and informational.
+Glyph resolution for condition is via emoji.json only. No raw glyphs in schema.
 
 Rules:
 - Physical damage may affect usability

@@ -966,52 +966,52 @@
   },
   {
     "emoji_id": "roman_i",
-    "glyph": "Ⅰ",
+    "glyph": "1️⃣",
     "description": "Tier I. Indicates the lowest tier in a progression scale."
   },
   {
     "emoji_id": "roman_ii",
-    "glyph": "Ⅱ",
+    "glyph": "2️⃣",
     "description": "Tier II. Indicates the second tier in a progression scale."
   },
   {
     "emoji_id": "roman_iii",
-    "glyph": "Ⅲ",
+    "glyph": "3️⃣",
     "description": "Tier III. Indicates the third tier in a progression scale."
   },
   {
     "emoji_id": "roman_iv",
-    "glyph": "Ⅳ",
+    "glyph": "4️⃣",
     "description": "Tier IV. Indicates the fourth tier in a progression scale."
   },
   {
     "emoji_id": "roman_ix",
-    "glyph": "Ⅸ",
+    "glyph": "9️⃣",
     "description": "Tier IX. Indicates the ninth tier in a progression scale."
   },
   {
     "emoji_id": "roman_v",
-    "glyph": "Ⅴ",
+    "glyph": "5️⃣",
     "description": "Tier V. Indicates the fifth tier in a progression scale."
   },
   {
     "emoji_id": "roman_vi",
-    "glyph": "Ⅵ",
+    "glyph": "6️⃣",
     "description": "Tier VI. Indicates the sixth tier in a progression scale."
   },
   {
     "emoji_id": "roman_vii",
-    "glyph": "Ⅶ",
+    "glyph": "7️⃣",
     "description": "Tier VII. Indicates the seventh tier in a progression scale."
   },
   {
     "emoji_id": "roman_viii",
-    "glyph": "Ⅷ",
+    "glyph": "8️⃣",
     "description": "Tier VIII. Indicates the eighth tier in a progression scale."
   },
   {
     "emoji_id": "roman_x",
-    "glyph": "Ⅹ",
+    "glyph": "🔟",
     "description": "Tier X. Indicates the highest defined tier in a progression scale."
   },
   {
@@ -1066,7 +1066,7 @@
   },
   {
     "emoji_id": "ship_trait_civilian",
-    "glyph": "🏠",
+    "glyph": "⛑",
     "description": "Civilian vessel."
   },
   {
@@ -1306,7 +1306,7 @@
   },
   {
     "emoji_id": "star_blackhole",
-    "glyph": "🕳",
+    "glyph": "⚫",
     "description": "Black hole."
   },
   {
@@ -1316,8 +1316,23 @@
   },
   {
     "emoji_id": "star_neutron",
-    "glyph": "🟣",
+    "glyph": "✨",
     "description": "Neutron star."
+  },
+  {
+    "emoji_id": "star_purple",
+    "glyph": "🟣",
+    "description": "Purple star."
+  },
+  {
+    "emoji_id": "star_pulsar",
+    "glyph": "💫",
+    "description": "Pulsar."
+  },
+  {
+    "emoji_id": "star_magnetar",
+    "glyph": "✴",
+    "description": "Magnetar."
   },
   {
     "emoji_id": "star_red",
@@ -1393,5 +1408,100 @@
     "emoji_id": "violation_minor",
     "glyph": "⚠️",
     "description": "Minor violation. Typically results in fines or warnings."
+  },
+  {
+    "emoji_id": "economy_mining",
+    "glyph": "⛏️",
+    "description": "Mining-focused economy."
+  },
+  {
+    "emoji_id": "economy_agricultural",
+    "glyph": "🌾",
+    "description": "Agricultural and food-production economy."
+  },
+  {
+    "emoji_id": "economy_industrial",
+    "glyph": "🏭",
+    "description": "Industrial manufacturing and processing economy."
+  },
+  {
+    "emoji_id": "economy_tech",
+    "glyph": "💻",
+    "description": "Technology and information-focused economy."
+  },
+  {
+    "emoji_id": "economy_trade",
+    "glyph": "💱",
+    "description": "Trade and exchange-focused economy."
+  },
+  {
+    "emoji_id": "economy_military",
+    "glyph": "⚔️",
+    "description": "Military and defense-focused economy."
+  },
+  {
+    "emoji_id": "economy_research",
+    "glyph": "🔬",
+    "description": "Research and experimental development economy."
+  },
+  {
+    "emoji_id": "economy_tourism",
+    "glyph": "🏝️",
+    "description": "Tourism and visitor-focused economy."
+  },
+  {
+    "emoji_id": "economy_cultural",
+    "glyph": "🎭",
+    "description": "Cultural and influence-focused economy."
+  },
+  {
+    "emoji_id": "mission_retrieval",
+    "glyph": "🔍",
+    "description": "Retrieval mission. Recover specified assets."
+  },
+  {
+    "emoji_id": "mission_patrol",
+    "glyph": "🚨",
+    "description": "Patrol mission. Maintain presence and respond to threats."
+  },
+  {
+    "emoji_id": "mission_rescue",
+    "glyph": "🆘",
+    "description": "Rescue mission. Aid distressed targets."
+  },
+  {
+    "emoji_id": "mission_scan",
+    "glyph": "📡",
+    "description": "Scan mission. Survey or analyze specified targets."
+  },
+  {
+    "emoji_id": "mission_assassination",
+    "glyph": "☠️",
+    "description": "Assassination mission. Eliminate a high-value target."
+  },
+  {
+    "emoji_id": "mission_escort",
+    "glyph": "🛡️",
+    "description": "Escort mission. Protect assets in transit."
+  },
+  {
+    "emoji_id": "mission_recon",
+    "glyph": "👁️",
+    "description": "Recon mission. Gather intelligence with minimal engagement."
+  },
+  {
+    "emoji_id": "mission_supply",
+    "glyph": "📥",
+    "description": "Supply mission. Deliver critical supplies to a target."
+  },
+  {
+    "emoji_id": "mission_smuggling",
+    "glyph": "🕵️",
+    "description": "Smuggling mission. Transport illicit goods covertly."
+  },
+  {
+    "emoji_id": "mission_blockade",
+    "glyph": "⛔",
+    "description": "Blockade mission. Restrict access to a region or target."
   }
 ]

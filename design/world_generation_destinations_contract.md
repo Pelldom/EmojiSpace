@@ -75,6 +75,7 @@ Destination-scoped fields (authoritative):
 - population (int 0-5, must be <= system.population)
 - primary_economy_id (string, from economies.json, optional if population=0)
 - secondary_economy_ids (list, may be empty)
+- emoji_id (string, reference to data/emoji.json; optional at worldgen, defaults by destination_type per implementation)
 
 Rules:
 - Destinations may have different economies within the same system.

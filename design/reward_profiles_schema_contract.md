@@ -19,12 +19,20 @@ A reward profile defines:
 - The BASE quantity band
 - The BASE credit range
 - Stolen tagging behavior
-- Emoji representation
+- Emoji representation (emoji_id reference to data/emoji.json)
 
 It contains NO logic and does not directly select goods.
 
 Goods are selected from the collective system markets at
 materialization time.
+
+Environmental encounter notes (documentation only):
+
+- Environmental encounters (opportunity, hazard, anomaly) MUST use encounter
+  reward profiles for all cargo / module / credit rewards.
+- Derelict-focused profiles MAY bias toward modules (e.g. derelict_ship) or
+  cargo (e.g. derelict_station) purely by how their quantity_band and
+  reward_kind are configured; no special casing is added to the schema.
 
 ----------------------------------------------------------------
 
@@ -53,7 +61,7 @@ Each object MUST contain:
 
 {
   "reward_profile_id": "string",
-  "emoji": "string",
+  "emoji_id": "string",
   "reward_kind": "cargo | credits | mixed | none",
   "quantity_band": "very_low | low | medium | high | very_high",
   "credit_range": { optional object },
@@ -79,14 +87,14 @@ Examples:
 
 ----------------------------------------------------------------
 
-### 4.2 emoji (required)
+### 4.2 emoji_id (required)
 
-- String field
-- Emoji representing this reward type
-- Placeholder allowed during early development
+- String field; reference to data/emoji.json.
+- Primary emoji identity for this reward type in presentation.
+- Glyphs must be resolved only through emoji.json. Placeholder ids allowed during early development if documented.
 
 Example:
-"emoji": "crate_placeholder"
+"emoji_id": "crate_placeholder"
 
 ----------------------------------------------------------------
 

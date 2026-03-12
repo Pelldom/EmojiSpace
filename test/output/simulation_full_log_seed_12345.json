@@ -79,7 +79,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -154,7 +154,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -234,7 +234,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -314,7 +314,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -371,7 +371,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -446,7 +446,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -508,7 +508,7 @@
       },
       "turn_after": 0,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -603,7 +603,7 @@
       },
       "turn_after": 1,
       "turn_before": 0,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -683,7 +683,7 @@
       },
       "turn_after": 1,
       "turn_before": 1,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -763,7 +763,7 @@
       },
       "turn_after": 1,
       "turn_before": 1,
-      "version": "0.11.2"
+      "version": "0.11.6"
     },
     {
       "active_encounter_count": 0,
@@ -838,7 +838,7 @@
       },
       "turn_after": 1,
       "turn_before": 1,
-      "version": "0.11.2"
+      "version": "0.11.6"
     }
   ],
   "seed": 12345,
@@ -859,7 +859,7 @@
     "determinism_verified": true,
     "enforcement_by_system": {},
     "enforcement_triggers": 0,
-    "engine_version": "0.11.2",
+    "engine_version": "0.11.6",
     "hard_stop": true,
     "hard_stop_reason": "pending_encounter_decision",
     "heat_delta": 0,

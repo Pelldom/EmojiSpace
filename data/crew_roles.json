@@ -1,6 +1,7 @@
 [
   {
     "role_id": "pilot",
+    "emoji_id": "crew_role_pilot",
     "hire_cost_min": 1000,
     "hire_cost_max": 1500,
     "base_daily_wage": 5,
@@ -8,6 +9,7 @@
   },
   {
     "role_id": "gunner",
+    "emoji_id": "crew_role_gunner",
     "hire_cost_min": 1100,
     "hire_cost_max": 1600,
     "base_daily_wage": 6,
@@ -15,6 +17,7 @@
   },
   {
     "role_id": "tactician",
+    "emoji_id": "crew_role_tactician",
     "hire_cost_min": 1300,
     "hire_cost_max": 1800,
     "base_daily_wage": 7,
@@ -22,6 +25,7 @@
   },
   {
     "role_id": "engineer",
+    "emoji_id": "crew_role_engineer",
     "hire_cost_min": 1200,
     "hire_cost_max": 1700,
     "base_daily_wage": 6,
@@ -29,6 +33,7 @@
   },
   {
     "role_id": "mechanic",
+    "emoji_id": "crew_role_mechanic",
     "hire_cost_min": 900,
     "hire_cost_max": 1400,
     "base_daily_wage": 5,
@@ -36,6 +41,7 @@
   },
   {
     "role_id": "navigator",
+    "emoji_id": "crew_role_navigator",
     "hire_cost_min": 1000,
     "hire_cost_max": 1450,
     "base_daily_wage": 5,
@@ -43,6 +49,7 @@
   },
   {
     "role_id": "broker",
+    "emoji_id": "crew_role_broker",
     "hire_cost_min": 1400,
     "hire_cost_max": 1900,
     "base_daily_wage": 7,
@@ -50,6 +57,7 @@
   },
   {
     "role_id": "quartermaster",
+    "emoji_id": "crew_role_quartermaster",
     "hire_cost_min": 1100,
     "hire_cost_max": 1600,
     "base_daily_wage": 6,
@@ -57,6 +65,7 @@
   },
   {
     "role_id": "lawyer",
+    "emoji_id": "crew_role_lawyer",
     "hire_cost_min": 1500,
     "hire_cost_max": 2000,
     "base_daily_wage": 8,
@@ -64,6 +73,7 @@
   },
   {
     "role_id": "science",
+    "emoji_id": "crew_role_science",
     "hire_cost_min": 1300,
     "hire_cost_max": 1850,
     "base_daily_wage": 7,

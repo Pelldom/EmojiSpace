@@ -8,26 +8,85 @@ def select_weighted_mission_type(
     rng: random.Random,
     world_state_engine: Any | None = None,
     system_id: str | None = None,
+    progression_context: dict[str, Any] | None = None,
 ) -> tuple[str | None, dict[str, float]]:
     """
     Select one mission_type using weighted random selection.
 
     This function preserves baseline behavior when world_state_engine/system_id are
     not provided by using base weights only.
+
+    Optional progression_context:
+      - Can include a mapping of completed mission counts by tag under
+        ``"completed_missions_by_tag"`` (e.g., {"ship:trait_alien": 2}).
+      - If an eligible mission includes a ``"progression_gate"`` field with
+        ``"requires_tag"`` and ``"min_completed_with_tag"``, this metadata is
+        used to filter out ineligible missions before weighting.
     """
+    # Apply optional progression gating before computing weights.
+    gated_missions: list[dict[str, Any]] = []
+    for mission in eligible_missions:
+        if _passes_progression_gate(mission, progression_context or {}):
+            gated_missions.append(mission)
+
+    # If all missions are filtered out by progression, fall back to original list
+    # to preserve baseline behavior rather than returning no selection.
+    effective_missions = gated_missions if gated_missions else eligible_missions
+
     adjusted_weights = _compute_adjusted_weights(
-        eligible_missions=eligible_missions,
+        eligible_missions=effective_missions,
         world_state_engine=world_state_engine,
         system_id=system_id,
     )
     weighted_items: list[tuple[str, float]] = []
-    for mission in eligible_missions:
+    for mission in effective_missions:
         mission_type_id = _mission_type_id(mission)
         if mission_type_id == "":
             continue
         weighted_items.append((mission_type_id, float(adjusted_weights.get(mission_type_id, 0.0))))
     selected = _weighted_pick(weighted_items, rng)
     return selected, adjusted_weights
+
+
+def _passes_progression_gate(mission: dict[str, Any], progression_context: dict[str, Any]) -> bool:
+    """
+    Evaluate optional progression_gate metadata on a mission candidate.
+
+    Expected mission["progression_gate"] shape:
+      {
+        "requires_tag": "<tag_id>",
+        "min_completed_with_tag": <int>
+      }
+
+    progression_context may include:
+      {
+        "completed_missions_by_tag": {
+          "<tag_id>": <int>,
+          ...
+        }
+      }
+    """
+    gate = mission.get("progression_gate")
+    if not isinstance(gate, dict):
+        return True
+
+    requires_tag = str(gate.get("requires_tag", "") or "").strip()
+    if not requires_tag:
+        # Malformed gate; treat as pass-through to avoid hard failures.
+        return True
+
+    try:
+        min_completed = int(gate.get("min_completed_with_tag", 0) or 0)
+    except (TypeError, ValueError):
+        min_completed = 0
+
+    completed_by_tag = progression_context.get("completed_missions_by_tag", {}) or {}
+    try:
+        completed_count = int(completed_by_tag.get(requires_tag, 0) or 0)
+    except (TypeError, ValueError):
+        completed_count = 0
+
+    return completed_count >= min_completed
 
 
 def _compute_adjusted_weights(

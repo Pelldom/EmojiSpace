@@ -145,7 +145,7 @@ starlane connections (neighbors)
 
 Each destination within a system is defined by:
 
-destination type (planet, station, explorable_stub, mining_stub)
+destination type (planet, station, exploration_site, resource_field)
 
 population (0-5, must be <= system population)
 
